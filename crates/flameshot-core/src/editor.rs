@@ -149,6 +149,21 @@ impl Document {
         self.commit(next);
         Ok(())
     }
+    /// Move an annotation to another position in bottom-to-top drawing order.
+    pub fn move_layer(&mut self, from: usize, to: usize) -> Result<(), EditError> {
+        if from >= self.annotations.len() || to >= self.annotations.len() {
+            return Err(EditError::InvalidIndex);
+        }
+        if from == to {
+            return Ok(());
+        }
+        self.finish_transaction();
+        let mut next = self.annotations.clone();
+        let annotation = next.remove(from);
+        next.insert(to, annotation);
+        self.commit(next);
+        Ok(())
+    }
     fn without_annotation(&self, index: usize) -> Result<Vec<Annotation>, EditError> {
         let removed = self.annotations.get(index).ok_or(EditError::InvalidIndex)?;
         let counter = if let Annotation::Counter { number, .. } = removed {
@@ -1092,6 +1107,32 @@ mod tests {
             filled: true,
             radius: 0.0,
         }
+    }
+    #[test]
+    fn moving_layers_changes_composition_and_picking_and_is_reversible() {
+        let mut doc = Document::new(base(), 10).unwrap();
+        let red = mark();
+        let mut blue = mark();
+        blue.set_color([0, 0, 255, 255]);
+        doc.add(red.clone()).unwrap();
+        doc.add(blue.clone()).unwrap();
+        let before = doc.render().unwrap();
+        assert_eq!(*before.get_pixel(8, 8), Rgba([0, 0, 255, 255]));
+        doc.move_layer(0, 1).unwrap();
+        assert_eq!(doc.annotations(), &[blue.clone(), red.clone()]);
+        assert_eq!(
+            *doc.render().unwrap().get_pixel(8, 8),
+            Rgba([255, 0, 0, 255])
+        );
+        assert_eq!(doc.hit_test(Point { x: 8.0, y: 8.0 }), Some(1));
+        assert!(doc.undo());
+        assert_eq!(doc.render().unwrap(), before);
+        doc.move_layer(0, 0).unwrap(); // No-op must not erase redo.
+        assert!(doc.move_layer(0, 2).is_err());
+        assert!(doc.redo());
+        assert_eq!(doc.annotations(), &[blue, red]);
+        doc.move_layer(1, 0).unwrap();
+        assert_eq!(doc.render().unwrap(), before);
     }
     #[test]
     fn deleting_a_counter_renumbers_following_values_in_one_reversible_edit() {

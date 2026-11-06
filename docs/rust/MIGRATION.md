@@ -1517,3 +1517,23 @@ Validation passed: `cargo test --locked --workspace --all-features`, all-target
 all-feature Clippy with warnings denied, formatting, and the complete isolated
 Xvfb suite including counter deletion/history/manual-override reset, Ctrl drawing
 constraints and grouped property undo. Temporary diagnostic logging was removed.
+
+### Object layer ordering
+
+Added Move Up/Move Down controls to the object panel using existing translations.
+They move the selected entry within the bottom-to-top drawing list, matching the
+baseline index direction: moving down in the list brings an object forward in the
+composition. Selection follows the object to its new index. Boundary controls are
+disabled; invalid/no-op core requests do not damage history. Reordering finishes
+an active property group before recording its own single undo entry and preserves
+annotation contents, including counter labels.
+
+The core test checks overlapping fill composition, hit-test ordering, up/down
+movement, invalid/no-op requests and undo/redo. The X11 test draws overlapping red
+and green rectangles, selects the lower layer outside the overlap, moves it both
+ways through the panel, and checks exact overlap pixels after each move and each
+undo/redo. Other object-property and final desktop acceptance work remains open.
+
+Validation passed: all-feature workspace tests, all-target/all-feature Clippy with
+warnings denied, formatting, and the complete isolated Xvfb suite with panel-driven
+layer movement, selection retention, pixel composition and multi-step undo/redo.

@@ -1266,6 +1266,41 @@ impl eframe::App for Editor {
                     if ui.color_edit_button_srgba(&mut self.color).changed() {
                         self.persist_color();
                     }
+                    ui.horizontal(|ui| {
+                        let selected = self
+                            .selected_object
+                            .filter(|index| *index < self.document.annotations().len());
+                        let mut target = None;
+                        if ui
+                            .add_enabled(
+                                selected.is_some_and(|index| index > 0),
+                                egui::Button::new(tr("AbstractWidgetList", "Move Up")),
+                            )
+                            .clicked()
+                        {
+                            target = selected.map(|index| (index, index - 1));
+                        }
+                        if ui
+                            .add_enabled(
+                                selected.is_some_and(|index| {
+                                    index + 1 < self.document.annotations().len()
+                                }),
+                                egui::Button::new(tr("AbstractWidgetList", "Move Down")),
+                            )
+                            .clicked()
+                        {
+                            target = selected.map(|index| (index, index + 1));
+                        }
+                        if let Some((from, to)) = target {
+                            match self.document.move_layer(from, to) {
+                                Ok(()) => {
+                                    self.selected_object = Some(to);
+                                    self.dirty = true;
+                                }
+                                Err(error) => self.error = error.to_string(),
+                            }
+                        }
+                    });
                     egui::ScrollArea::vertical()
                         .max_height(300.0)
                         .show(ui, |ui| {
