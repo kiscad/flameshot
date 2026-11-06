@@ -32,7 +32,11 @@ fn config_cli_updates_only_requested_settings_and_rejects_bad_values() {
         String::from_utf8_lossy(&result.stderr)
     );
     let saved = std::fs::read_to_string(&file).unwrap();
-    assert!(saved.starts_with(original));
+    let (general, shortcuts) = original.split_once("[Shortcuts]").unwrap();
+    assert!(saved.starts_with(general));
+    assert!(saved.ends_with(&format!("[Shortcuts]{shortcuts}")));
+    assert_eq!(saved.matches("[General]").count(), 1);
+    assert_eq!(saved.matches("[Shortcuts]").count(), 1);
     let ini = flameshot_core::config::IniDocument::parse(saved.clone());
     assert_eq!(
         ini.string("General", "disabledTrayIcon")

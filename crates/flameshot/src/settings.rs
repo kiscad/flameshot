@@ -552,7 +552,10 @@ mod tests {
         std::fs::write(&path, original).unwrap();
         Settings::update_at(&path, &[("jpegQuality", "90".into())]).unwrap();
         let saved = std::fs::read_to_string(&path).unwrap();
-        assert!(saved.starts_with(original));
+        assert_eq!(
+            saved,
+            original.replace("[Shortcuts]", "jpegQuality=\"90\"\n[Shortcuts]")
+        );
         assert_eq!(Settings::parse(&saved).unwrap().jpeg_quality, 90);
         assert!(Settings::update_at(&path, &[("jpegQuality", "999".into())]).is_err());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);

@@ -1537,3 +1537,20 @@ undo/redo. Other object-property and final desktop acceptance work remains open.
 Validation passed: all-feature workspace tests, all-target/all-feature Clippy with
 warnings denied, formatting, and the complete isolated Xvfb suite with panel-driven
 layer movement, selection retention, pixel composition and multi-step undo/redo.
+
+### INI insertion without new duplicate sections
+
+New settings now enter the last existing occurrence of their section instead of
+appending another section header for each key. Existing duplicate sections/keys
+remain intact, and updates still replace only the last effective matching key.
+Implicit General keys are preserved; empty/new files receive an explicit section.
+Insertion keeps comments, opaque Qt variants, unrelated sections and existing line
+endings unchanged, including CRLF and files without a trailing newline.
+
+The atomic-settings and actual CLI tests now verify preservation around the inserted
+keys and that repeated updates do not create extra headers. Core tests cover repeated,
+implicit, empty and unterminated sections, Unicode comments and opaque values. Invalid
+CLI/settings updates still leave the file unchanged. Validation passed: all-feature
+workspace tests (including configuration/CLI integration), all-target/all-feature
+Clippy with warnings denied, and formatting. This is a storage-format improvement;
+remaining live-reload semantics and the overall migration gates are not marked complete.

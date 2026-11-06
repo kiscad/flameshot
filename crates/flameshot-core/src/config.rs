@@ -136,19 +136,30 @@ impl IniDocument {
         let mut current = "General";
         let mut offset = 0;
         let mut location = None;
+        let mut in_target = false;
+        let mut insertion = None;
         for line in self.source.split_inclusive('\n') {
             let trimmed = line.trim();
             if let Some(name) = trimmed.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+                if in_target {
+                    insertion = Some(offset);
+                }
                 current = name;
+                in_target = current == section;
             } else if current == section
                 && !trimmed.starts_with([';', '#'])
                 && let Some((name, _)) = trimmed.split_once('=')
-                && name.trim() == key
             {
-                let end = offset + line.trim_end_matches(['\n', '\r']).len();
-                location = Some(offset..end);
+                in_target = true; // Includes existing implicit General keys.
+                if name.trim() == key {
+                    let end = offset + line.trim_end_matches(['\n', '\r']).len();
+                    location = Some(offset..end);
+                }
             }
             offset += line.len();
+        }
+        if in_target {
+            insertion = Some(self.source.len());
         }
         let replacement = format!("{key}={value}");
         if let Some(range) = location {
@@ -159,11 +170,21 @@ impl IniDocument {
             } else {
                 "\n"
             };
-            if !self.source.is_empty() && !self.source.ends_with('\n') {
-                self.source.push_str(newline);
+            if let Some(offset) = insertion {
+                let separator = if offset > 0 && !self.source[..offset].ends_with('\n') {
+                    newline
+                } else {
+                    ""
+                };
+                self.source
+                    .insert_str(offset, &format!("{separator}{replacement}{newline}"));
+            } else {
+                if !self.source.is_empty() && !self.source.ends_with('\n') {
+                    self.source.push_str(newline);
+                }
+                self.source
+                    .push_str(&format!("[{section}]{newline}{replacement}{newline}"));
             }
-            self.source
-                .push_str(&format!("[{section}]{newline}{replacement}{newline}"));
         }
         Ok(())
     }
@@ -266,6 +287,56 @@ fn decode_integer_list(raw: &str) -> Result<Vec<i32>, ConfigError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn new_keys_reuse_existing_sections_without_rewriting_other_bytes() {
+        let source = "; 注释\r\n[General]\r\nopaque=@Variant(\\0stuff)\r\n\r\n[Shortcuts]\r\nTYPE_COPY=Ctrl+C\r\n";
+        let mut ini = IniDocument::parse(source.into());
+        ini.set_string("General", "drawColor", "#ff0000").unwrap();
+        assert_eq!(
+            ini.source(),
+            source.replace("[Shortcuts]", "drawColor=\"#ff0000\"\r\n[Shortcuts]")
+        );
+        ini.set_string("General", "drawThickness", "4").unwrap();
+        assert_eq!(ini.source().matches("[General]").count(), 1);
+        assert_eq!(
+            ini.string("General", "drawThickness").unwrap().as_deref(),
+            Some("4")
+        );
+        assert!(
+            ini.source()
+                .ends_with("[Shortcuts]\r\nTYPE_COPY=Ctrl+C\r\n")
+        );
+    }
+    #[test]
+    fn inserting_handles_repeated_implicit_empty_and_unterminated_sections() {
+        let mut repeated = IniDocument::parse(
+            "[General]\na=first\n[Other]\nx=keep\n[General]\na=last\n[Other]\ny=keep".into(),
+        );
+        repeated.set_string("General", "b", "new").unwrap();
+        assert!(
+            repeated
+                .source()
+                .contains("a=last\nb=\"new\"\n[Other]\ny=keep")
+        );
+        repeated.set_string("General", "a", "updated").unwrap();
+        assert!(repeated.source().contains("a=first\n"));
+        assert_eq!(
+            repeated.string("General", "a").unwrap().as_deref(),
+            Some("updated")
+        );
+        let mut implicit = IniDocument::parse("foo=bar\n[Other]\nx=y".into());
+        implicit.set_string("General", "new", "value").unwrap();
+        assert_eq!(implicit.source(), "foo=bar\nnew=\"value\"\n[Other]\nx=y");
+        for source in ["", "; comment", "[General]", "[General]\nfoo=bar"] {
+            let mut ini = IniDocument::parse(source.into());
+            ini.set_string("General", "new", "value").unwrap();
+            assert_eq!(ini.source().matches("[General]").count(), 1);
+            assert_eq!(
+                ini.string("General", "new").unwrap().as_deref(),
+                Some("value")
+            );
+        }
+    }
     #[test]
     fn string_lists_handle_quoted_commas_and_reject_unclosed_quotes() {
         let ini = super::IniDocument::parse(
