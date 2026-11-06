@@ -1711,3 +1711,23 @@ Validation passed: the all-feature workspace tests, dedicated interruption/outpu
 tests, the private-bus full-capture/save regression, all-target/all-feature Clippy
 with warnings denied, and formatting. No installed application or user capture was
 modified during these tests; final filesystem/sandbox packaging acceptance remains.
+
+### Scalar integer validation parity
+
+Runtime settings now parse scalar integers through a shared signed 32-bit range
+validator, matching the checker and the baseline Qt integer domain. This closes
+cases where `config --check` rejected values above i32::MAX but runtime loading
+accepted them through u32/usize and later clamped them. It also makes valid signed
+zero consistent for nonnegative settings. Existing per-setting limits for opacity,
+JPEG quality, geometry mode, arrow style and undo history are preserved. Error
+messages state both ends of the accepted range.
+
+The matrix test compares checker/runtime acceptance across all active integer keys,
+boundaries, signed zero, overflow, fractional and invalid strings; upload-history
+validation is included only when that feature is enabled. Repeated-section tests
+verify last-effective-value behavior. Failed updates preserve the original file,
+and an oversized drawing setting is rejected by both `config --check` and `full
+--raw` before any bus access or capture. Validation passed with no default features,
+the all-feature workspace/CLI tests, all-target/all-feature Clippy and formatting.
+Legacy fallback/error presentation, inactive optional settings and live-reload
+semantics remain in the broader configuration audit.

@@ -156,3 +156,28 @@ fn legacy_color_options_are_headless_atomic_and_preserve_unknown_settings() {
         assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
     }
 }
+
+#[test]
+fn capture_and_config_check_reject_the_same_oversized_setting_before_bus_access() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path().join("flameshot");
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("flameshot.ini");
+    let source = "[General]\ndrawThickness=2147483648\n";
+    std::fs::write(&path, source).unwrap();
+    for args in [["config", "--check"], ["full", "--raw"]] {
+        let output = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("XDG_CONFIG_HOME", temp.path())
+            .env("DBUS_SESSION_BUS_ADDRESS", "invalid-test-address")
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .args(args)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1), "{:?}", output.stderr);
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("drawThickness"));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("2147483647"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
+    }
+}

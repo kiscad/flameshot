@@ -2,6 +2,12 @@
 use anyhow::{Context, Result, ensure};
 use flameshot_core::config::IniDocument;
 use std::path::PathBuf;
+fn integer_setting(value: &str, key: &str, minimum: i32, maximum: i32) -> Result<i32> {
+    let expected = || format!("{key} must be an integer between {minimum} and {maximum}");
+    let parsed: i32 = value.parse().with_context(expected)?;
+    ensure!((minimum..=maximum).contains(&parsed), "{}", expected());
+    Ok(parsed)
+}
 #[derive(Debug, Clone)]
 pub struct Settings {
     pub auto_close_idle: bool,
@@ -298,33 +304,18 @@ impl Settings {
             settings.extension = value;
         }
         if let Some(value) = ini.string("General", "showSelectionGeometry")? {
-            settings.selection_geometry = value.parse().context("Invalid showSelectionGeometry")?;
-            ensure!(
-                settings.selection_geometry <= 5,
-                "showSelectionGeometry must be between 0 and 5"
-            );
+            settings.selection_geometry =
+                integer_setting(&value, "showSelectionGeometry", 0, 5)? as u8;
         }
         if let Some(value) = ini.string("General", "showSelectionGeometryHideTime")? {
-            let value: u32 = value
-                .parse()
-                .context("Invalid selection geometry timeout")?;
-            ensure!(
-                value <= i32::MAX as u32,
-                "Selection geometry timeout exceeds legacy range"
-            );
-            settings.selection_geometry_timeout = u64::from(value);
+            settings.selection_geometry_timeout =
+                integer_setting(&value, "showSelectionGeometryHideTime", 0, i32::MAX)? as u64;
         }
         if let Some(value) = ini.string("General", "contrastOpacity")? {
-            settings.contrast_opacity = value
-                .parse()
-                .context("contrastOpacity must be between 0 and 255")?;
+            settings.contrast_opacity = integer_setting(&value, "contrastOpacity", 0, 255)? as u8;
         }
         if let Some(value) = ini.string("General", "jpegQuality")? {
-            settings.jpeg_quality = value.parse().context("Invalid JPEG quality")?;
-            ensure!(
-                settings.jpeg_quality <= 100,
-                "JPEG quality must be between 0 and 100"
-            );
+            settings.jpeg_quality = integer_setting(&value, "jpegQuality", 0, 100)? as u8;
         }
         for (key, destination) in [
             ("disabledTrayIcon", &mut settings.disabled_tray),
@@ -373,11 +364,7 @@ impl Settings {
             ("drawFontSize", &mut settings.font_size),
         ] {
             if let Some(value) = ini.string("General", key)? {
-                let parsed: u32 = value
-                    .parse()
-                    .with_context(|| format!("Invalid positive integer {key}"))?;
-                ensure!(parsed > 0, "{key} must be positive");
-                *destination = parsed as f32;
+                *destination = integer_setting(&value, key, 1, i32::MAX)? as f32;
             }
         }
         #[cfg(feature = "imgur")]
@@ -402,7 +389,7 @@ impl Settings {
             }
             if let Some(value) = ini.string("General", "uploadHistoryMax")? {
                 settings.upload_history_max =
-                    value.parse().context("Invalid upload history limit")?;
+                    integer_setting(&value, "uploadHistoryMax", 0, i32::MAX)? as usize;
             }
         }
         #[cfg(feature = "update-check")]
@@ -421,19 +408,13 @@ impl Settings {
             }
         }
         if let Some(value) = ini.string("General", "undoLimit")? {
-            settings.undo_limit = value.parse().context("Invalid undoLimit")?;
-            ensure!(
-                settings.undo_limit <= 999,
-                "undoLimit must be between 0 and 999"
-            );
+            settings.undo_limit = integer_setting(&value, "undoLimit", 0, 999)? as usize;
         }
         if let Some(value) = ini.string("General", "arrowStyle")? {
-            settings.arrow_style = value.parse().context("Invalid arrowStyle")?;
-            ensure!(settings.arrow_style <= 1, "arrowStyle must be 0 or 1");
+            settings.arrow_style = integer_setting(&value, "arrowStyle", 0, 1)? as u8;
         }
         if let Some(value) = ini.string("General", "drawRectangleSize")? {
-            let radius: u32 = value.parse().context("Invalid rectangle radius")?;
-            ensure!(radius > 0, "Rectangle radius must be positive");
+            let radius = integer_setting(&value, "drawRectangleSize", 1, i32::MAX)?;
             settings.rectangle_radius = (radius as f32).min(10000.0);
         }
         settings.palette = default_palette(settings.large_palette);
@@ -481,6 +462,76 @@ pub fn default_palette(large: bool) -> Vec<Option<[u8; 4]>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn numeric_loading_and_configuration_check_agree_on_legacy_ranges() {
+        let keys = [
+            "drawThickness",
+            "drawMarkerSize",
+            "drawPixelateSize",
+            "drawCircleCounterSize",
+            "drawFontSize",
+            "drawRectangleSize",
+            "showSelectionGeometryHideTime",
+            "showSelectionGeometry",
+            "contrastOpacity",
+            "jpegQuality",
+            "undoLimit",
+            "arrowStyle",
+        ];
+        for key in keys.into_iter().chain(if cfg!(feature = "imgur") {
+            Some("uploadHistoryMax")
+        } else {
+            None
+        }) {
+            for value in [
+                "0",
+                "-0",
+                "+1",
+                "1",
+                "2",
+                "5",
+                "6",
+                "100",
+                "101",
+                "255",
+                "256",
+                "999",
+                "1000",
+                "2147483647",
+                "2147483648",
+                "4294967295",
+                "-1",
+                "1.5",
+                "invalid",
+            ] {
+                let source = format!("[General]\n{key}={value}\n");
+                assert_eq!(
+                    Settings::parse(&source).is_ok(),
+                    crate::config_check::check(&source).is_empty(),
+                    "{key}={value}"
+                );
+            }
+        }
+    }
+    #[test]
+    fn numeric_validation_uses_the_last_effective_duplicate() {
+        for (first, last, valid) in [("2147483648", "3", true), ("3", "2147483648", false)] {
+            let source = format!(
+                "[General]\ndrawThickness={first}\n[Other]\nprivate=keep\n[General]\ndrawThickness={last}\n"
+            );
+            assert_eq!(Settings::parse(&source).is_ok(), valid);
+            assert_eq!(crate::config_check::check(&source).is_empty(), valid);
+        }
+    }
+    #[test]
+    fn integer_overflow_cannot_replace_valid_configuration() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("flameshot.ini");
+        let original = "[General]\ndrawThickness=3\n; keep\n";
+        std::fs::write(&path, original).unwrap();
+        assert!(Settings::update_at(&path, &[("drawThickness", "2147483648".into())]).is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+    }
     #[cfg(feature = "imgur")]
     #[test]
     fn reads_upload_confirmation_copy_and_deletion_preferences() {

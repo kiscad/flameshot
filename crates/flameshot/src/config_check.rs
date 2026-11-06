@@ -57,9 +57,9 @@ pub fn check(source: &str) -> Vec<String> {
         } else if contains(STRINGS, key) {
             Some("string")
         } else if contains(POSITIVE, key) {
-            Some("integer >= 1")
+            Some("integer between 1 and 2147483647")
         } else if contains(NONNEGATIVE, key) {
-            Some("integer >= 0")
+            Some("integer between 0 and 2147483647")
         } else {
             match key {
                 "undoLimit" => Some("integer between 0 and 999"),
