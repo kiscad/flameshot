@@ -1554,3 +1554,22 @@ CLI/settings updates still leave the file unchanged. Validation passed: all-feat
 workspace tests (including configuration/CLI integration), all-target/all-feature
 Clippy with warnings denied, and formatting. This is a storage-format improvement;
 remaining live-reload semantics and the overall migration gates are not marked complete.
+
+### Shell completion and package installation
+
+Bash completion now keeps subcommand context after flags/values, distinguishes
+`config -n` booleans from `screen -n` indices and `gui -s` switches, completes files
+with spaces for output paths, treats filename patterns as text, and stops after
+`--`. Fish/Zsh use the actual plural `--notifications`; completion version flags
+match the current Rust CLI's `-V`. Zsh value-taking flags declare arguments rather
+than treating delays, indices and booleans as switches. Optional history/update
+commands are offered according to the installed executable's help output.
+
+All three scripts are installed by shared Rust staging, with RPM file ownership
+updated. Added a CLI-parity/Bash test to the standard Rust check script plus optional
+Fish live-completion/Zsh syntax checks. Validation passed against all-feature,
+no-default-feature, and the existing Imgur-only staged executable; staged files
+match their sources and the RPM spec parses with the new entries. No screenshot,
+daemon, host installation or remote workflow was started by completion testing.
+Interactive Zsh behavior, the manual page, final CLI compatibility audit and fresh
+package builds remain pending; these checks do not close the entire CLI gate.

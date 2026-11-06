@@ -82,6 +82,10 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.flameshot.Flamesh
 %{_datadir}/icons/hicolor/128x128/apps/org.flameshot.Flameshot.png
 %{_datadir}/icons/hicolor/scalable/apps/org.flameshot.Flameshot.svg
 
+%{_datadir}/bash-completion/completions/flameshot
+%{_datadir}/zsh/site-functions/_flameshot
+%{_datadir}/fish/vendor_completions.d/flameshot.fish
+
 %changelog
 * Sun Nov 01 2026 Jeremy Borgman <borgman.jeremy@pm.me> - 15.0.0
 - Updated for v15.0.0 release

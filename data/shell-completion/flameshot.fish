@@ -67,12 +67,12 @@ end
 ###############
 
 # define the subcommands
-set -l SUBCOMMANDS gui screen full launcher config
+set -l SUBCOMMANDS gui screen full launcher config help
 
 # No subcommand
 complete -c flameshot                                                                                        --no-files --arguments "$SUBCOMMANDS" --condition __flameshot_no_positional_args 
 complete -c flameshot --long-option "help"    --short-option "h" --description "Display help message"        --no-files
-complete -c flameshot --long-option "version" --short-option "v" --description "Display version information" --no-files                            --condition __flameshot_no_positional_args
+complete -c flameshot --long-option "version" --short-option "V" --description "Display version information" --no-files                            --condition __flameshot_no_positional_args
 
 # GUI subcommand
 __flameshot_complete gui --no-files
@@ -114,10 +114,17 @@ __flameshot_complete launcher --no-files
 __flameshot_complete config --no-files
 __flameshot_complete config --long-option "autostart"      --short-option "a" --description "Enable or disable run at startup"           --require-parameter --no-files --arguments "true false"
 __flameshot_complete config --long-option "filename"       --short-option "f" --description "Set the filename pattern"                   --require-parameter --no-files 
-__flameshot_complete config --long-option "notification"   --short-option "n" --description "Enable or disable the notification"         --require-parameter --no-files --arguments "true false"
+__flameshot_complete config --long-option "notifications"   --short-option "n" --description "Enable or disable the notification"         --require-parameter --no-files --arguments "true false"
 __flameshot_complete config --long-option "trayicon"       --short-option "t" --description "Enable or disable the tray icon"            --require-parameter --no-files --arguments "true false"
 __flameshot_complete config --long-option "showhelp"       --short-option "s" --description "Show the help message in the capture mode"  --require-parameter --no-files --arguments "true false"
 __flameshot_complete config --long-option "maincolor"      --short-option "m" --description "Define the main UI color (hexadecimal)"     --require-parameter --no-files 
 __flameshot_complete config --long-option "contrastcolor"  --short-option "k" --description "Define the contrast UI color (hexadecimal)" --require-parameter --no-files 
 __flameshot_complete config --long-option "check"                             --description "Check the configuration for errors"                             --no-files
 __flameshot_complete config --long-option "help"           --short-option "h" --description "Show the available arguments"                                   --no-files
+
+# Optional commands follow the features of the installed executable.
+function __flameshot_has_command --argument-names name
+    command flameshot --help 2>/dev/null | string match -rq "^  $name +"
+end
+complete -c flameshot -f -a history -n '__flameshot_no_positional_args; and __flameshot_has_command history' -d 'Open upload history'
+complete -c flameshot -f -a updates -n '__flameshot_no_positional_args; and __flameshot_has_command updates' -d 'Check for updates'

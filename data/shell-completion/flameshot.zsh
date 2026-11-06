@@ -19,8 +19,8 @@
 _flameshot_gui_opts=(
     {-p,--path}'[Existing directory or new file to save to]':dir:_files
     {-c,--clipboard}'[Save the capture to the clipboard]'
-    {-d,--delay}'[Delay time in milliseconds]'
-    "--region[Screenshot region to select <WxH+X+Y or string>]"
+    {-d,--delay}'[Delay time in milliseconds]:milliseconds:'
+    "--region[Screenshot region to select]:region:(all screen0)"
     "--last-region[Repeat screenshot with previously selected region]"
     {-r,--raw}'[Print raw PNG capture]'
     {-g,--print-geometry}'[Print geometry of the selection in the format WxH+X+Y. Does nothing if raw is specified]'
@@ -38,12 +38,12 @@ _flameshot_gui() {
 # screen
 
 _flameshot_screen_opts=(
-    {-n,--number}'[Define the screen to capture (starting from 0). Default: screen containing the cursor]'
+    {-n,--number}'[Define the screen to capture (starting from 0)]:number:'
     {-e,--edit}'[Interactively select and edit the screenshot region]'
     {-p,--path}'[Existing directory or new file to save to]':dir:_files
     {-c,--clipboard}'[Save the capture to the clipboard]'
-    {-d,--delay}'[Delay time in milliseconds]'
-    "--region[Screenshot region to select <WxH+X+Y or string>]"
+    {-d,--delay}'[Delay time in milliseconds]:milliseconds:'
+    "--region[Screenshot region to select]:region:(all)"
     {-r,--raw}'[Print raw PNG capture]'
     "--pin[Pin the capture to the screen]"
     {-h,--help}'[Show the available arguments]'
@@ -60,7 +60,7 @@ _flameshot_screen() {
 _flameshot_full_opts=(
     {-p,--path}'[Existing directory or new file to save to]':dir:_files
     {-c,--clipboard}'[Save the capture to the clipboard]'
-    {-d,--delay}'[Delay time in milliseconds]'
+    {-d,--delay}'[Delay time in milliseconds]:milliseconds:'
     {-r,--raw}'[Print raw PNG capture]'
     {-h,--help}'[Show the available arguments]'
 )
@@ -74,13 +74,13 @@ _flameshot_full() {
 # config
 
 _flameshot_config_opts=(
-    {-a,--autostart}'[Enable or disable run at startup (true/false)]'
-    {-f,--filename}'[Set the filename pattern]'
-    {-n,--notification}'[Enable or disable the notification (true/false)]'
-    {-t,--trayicon}'[Enable or disable the tray icon (true/false)]'
-    {-s,--showhelp}'[Show the help message in the capture mode (true/false)]'
-    {-m,--maincolor}'[Define the main UI color (hexadecimal)]'
-    {-k,--contrastcolor}'[Define the contrast UI color (hexadecimal)]'
+    {-a,--autostart}'[Enable or disable run at startup]:boolean:(true false)'
+    {-f,--filename}'[Set the filename pattern]:pattern:'
+    {-n,--notifications}'[Enable or disable notifications]:boolean:(true false)'
+    {-t,--trayicon}'[Enable or disable the tray icon]:boolean:(true false)'
+    {-s,--showhelp}'[Show capture help]:boolean:(true false)'
+    {-m,--maincolor}'[Define the main UI color]:color:'
+    {-k,--contrastcolor}'[Define the contrast UI color]:color:'
     "--check[Check the configuration for errors]"
     {-h,--help}'[Show the available arguments]'
 )
@@ -94,7 +94,8 @@ _flameshot_config() {
 # Main handle
 _flameshot() {
     local curcontext="$curcontext" ret=1
-    local -a state line commands
+    local state
+    local -a line commands
 
     commands=(
         "gui:Start the manual capture in GUI mode"
@@ -102,11 +103,15 @@ _flameshot() {
         "full:Capture the entire desktop (all monitors)"
         "launcher:Open the capture launcher"
         "config:Configure Flameshot"
+        "help:Show command help"
     )
 
+    local help_text=$(command flameshot --help 2>/dev/null)
+    [[ $help_text == *$'\n  history '* ]] && commands+=("history:Open upload history")
+    [[ $help_text == *$'\n  updates '* ]] && commands+=("updates:Check for updates")
     _arguments -C -s -S -n \
-        '(- 1 *)'{-v,--version}"[display version information]: :->full" \
-        '(- 1 *)'{-h,--help}'[[display usage information]: :->full' \
+        '(- 1 *)'{-V,--version}"[display version information]" \
+        '(- 1 *)'{-h,--help}'[display usage information]' \
         '1:cmd:->cmds' \
         '*:: :->args' && ret=0
 
@@ -129,6 +134,9 @@ _flameshot() {
             ;;
             (config)
                 _flameshot_config && ret=0
+            ;;
+            (launcher|history|updates)
+                _arguments '(-h --help)'{-h,--help}'[Show help]' && ret=0
             ;;
             (*)
                 _default && ret=0

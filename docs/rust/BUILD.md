@@ -251,3 +251,21 @@ confinement compatibility. The dedicated `Rust Snap` workflow builds the prepare
 source and inspects the package for unexpected Qt libraries; it has not run remotely.
 Portal file access, host application launching and autostart under confinement
 remain part of the final sandbox acceptance work.
+
+## Shell completions
+
+The shared staging script installs Bash, Zsh and Fish completions in their standard
+`share` locations. Bash and Fish completions are exercised against the executable;
+optional `history`/`updates` suggestions follow that executable's enabled features.
+The basic check is included in `scripts/check-rust.sh`:
+
+```sh
+python3 tests/rust/completions.py target/debug/flameshot
+```
+
+An optional second argument supplies an extracted Ubuntu shell-tool root containing
+Fish, Zsh and Fish's helper functions for additional native-shell checks. Local
+validation covers Bash and Fish completion results, Zsh syntax, and staged file
+contents. Interactive Zsh completion and refreshed distribution package builds
+remain part of packaging acceptance. The legacy manual page is still pending its
+separate Rust CLI documentation audit.
