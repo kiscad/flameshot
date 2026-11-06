@@ -398,7 +398,7 @@ print('PASS: capture lock is released after a killed editor')
                 flags=['--raw','--region','400x200+500+450']
                 data=struct.pack('>II',127,11)+b'QList<int>\0'+struct.pack('>I',0)
                 variant='@Variant('+''.join(chr(92)+'x'+format(byte,'02x') for byte in data)+')'
-                test_config.write_text('[General]\ncheckForUpdates=false\nlanguage=en\nuserColors=#00ff00, #0000ff, #ff0000\nshowSelectionGeometry=0\nbuttons='+variant+'\n')
+                test_config.write_text('[General]\ncheckForUpdates=false\nlanguage=en\nuserColors=#00ff00, #0000ff, #ff0000\nshowSelectionGeometry=0\nbuttons='+variant+'\n[Shortcuts]\nTYPE_SIZEINCREASE=F9\n')
             if mode=='textedit':
                 flags=['--raw','--region','400x200+500+450']
                 test_config.write_text('[General]\ncheckForUpdates=false\ncopyOnDoubleClick=true\ndrawFontSize=18\nshowSelectionGeometry=0\n')
@@ -587,6 +587,23 @@ print('PASS: capture lock is released after a killed editor')
                 assert move_pixels()==preview,'Recoloring did not undo in one step'
                 tool('key','ctrl+shift+z')
                 assert move_pixels()==recolored,'Recoloring redo failed'
+                tool('mousemove','--window',window,'650','550')
+                tool('click','1')
+                time.sleep(.2)
+                def corner_pixel():
+                    move_pixels()
+                    return Image.open(artifact_dir/'rust-object-move-x11.png').convert('RGB').getpixel((631,531))
+                assert corner_pixel()==(0,255,0)
+                tool('key','--delay','80',*(['F9']*10))
+                assert corner_pixel()==background[1],'Selected filled rectangle did not gain round corners'
+                import configparser
+                saved_size=configparser.ConfigParser(interpolation=None,strict=False)
+                saved_size.read(test_config)
+                assert int(saved_size.get('General','drawRectangleSize').strip(chr(34)))==11,'Object size persisted to the wrong tool setting'
+                tool('key','--delay','80',*(['ctrl+z']*10))
+                assert corner_pixel()==(0,255,0),'Size edits did not undo'
+                tool('key','--delay','80',*(['ctrl+shift+z']*10))
+                assert corner_pixel()==background[1],'Size edits did not redo'
                 tool('mousemove','--window',window,'650','550')
                 tool('click','1')
                 time.sleep(.2)

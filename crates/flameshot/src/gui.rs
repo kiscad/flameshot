@@ -5,7 +5,7 @@ use eframe::egui::{
     self, Color32, Pos2, Rect, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions,
 };
 use flameshot_core::{
-    editor::{Annotation, Document, Point, Style},
+    editor::{Annotation, Document, Point, SizeKind, Style},
     geometry::PixelRect,
 };
 use image::RgbaImage;
@@ -677,8 +677,46 @@ impl Editor {
         }
         self.save_dialog = Some(dialog);
     }
+    fn selected_size(&self) -> Option<(SizeKind, f32)> {
+        if self.tool != Tool::Move {
+            return None;
+        }
+        self.selected_object
+            .and_then(|index| self.document.annotations().get(index))
+            .and_then(Annotation::tool_size)
+    }
     fn tool_size(&mut self) -> (&'static str, &mut f32, f32) {
-        match self.tool {
+        let tool = if let Some((kind, value)) = self.selected_size() {
+            match kind {
+                SizeKind::Stroke => {
+                    self.width = value;
+                    Tool::Pencil
+                }
+                SizeKind::Marker => {
+                    self.marker_size = value;
+                    Tool::Marker
+                }
+                SizeKind::Text => {
+                    self.font_size = value / 0.75;
+                    Tool::Text
+                }
+                SizeKind::Counter => {
+                    self.counter_size = value;
+                    Tool::Counter
+                }
+                SizeKind::CornerRadius => {
+                    self.rectangle_radius = value;
+                    Tool::FilledRectangle
+                }
+                SizeKind::Pixelate => {
+                    self.pixelate_size = value;
+                    Tool::Pixelate
+                }
+            }
+        } else {
+            self.tool
+        };
+        match tool {
             Tool::Marker => ("drawMarkerSize", &mut self.marker_size, 1.0),
             Tool::Pixelate => ("drawPixelateSize", &mut self.pixelate_size, 1.0),
             Tool::Counter => ("drawCircleCounterSize", &mut self.counter_size, 1.0),
@@ -688,6 +726,12 @@ impl Editor {
         }
     }
     fn adjust_tool_size(&mut self, delta: f32) {
+        if self.tool == Tool::Move
+            && self.selected_object.is_some()
+            && self.selected_size().is_none()
+        {
+            return;
+        }
         let (key, size, factor) = self.tool_size();
         let limit = match key {
             "drawFontSize" => 750.0,
@@ -745,6 +789,21 @@ impl Editor {
     }
     fn persist_tool_size(&mut self, key: &str, value: f32) {
         self.dirty = true;
+        if self.tool == Tool::Move
+            && let Some(index) = self.selected_object
+            && let Some(annotation) = self.document.annotations().get(index)
+        {
+            match annotation
+                .with_tool_size(value)
+                .and_then(|next| self.document.replace(index, next))
+            {
+                Ok(()) => {}
+                Err(error) => {
+                    self.error = error.to_string();
+                    return;
+                }
+            }
+        }
         if let Err(error) =
             crate::settings::Settings::update(&[(key, (value.round() as u32).to_string())])
         {
@@ -752,6 +811,12 @@ impl Editor {
         }
     }
     fn tool_size_control(&mut self, ui: &mut egui::Ui) {
+        if self.tool == Tool::Move
+            && self.selected_object.is_some()
+            && self.selected_size().is_none()
+        {
+            return;
+        }
         let (key, size, factor) = self.tool_size();
         let mut value = *size * factor;
         let limit = match key {

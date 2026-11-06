@@ -20,7 +20,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | --- | --- | --- |
 | Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
 | Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb and Sway cases pass; other compositor acceptance remains |
-| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, selection, previews and options implemented/tested; complete object-editing parity remains |
+| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; remaining object-editing parity pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text, X11 INCR and ownership lifecycle verified on Xvfb/Sway; other compositor paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Implemented and tested, including idle ownership/pin retention; full explicit-shutdown child audit remains |
@@ -1399,3 +1399,29 @@ Validation passed: `cargo test --locked --workspace --all-features`, all-target
 all-feature Clippy with warnings denied, formatting, and the complete isolated
 Xvfb suite with the added recolor/undo/redo/drawing-default assertions. The test
 palette respects the existing minimum of three configured color entries.
+
+### Selected-object size editing
+
+The Move object tool now reads the selected annotation's own size and applies
+size-control, wheel and size-shortcut changes to it through undoable replacements.
+Stroke width, marker width, text points, counter size, filled-rectangle corner
+radius and pixelation size are distinct properties. Text points map to raster
+font size by 4/3, counters include the existing 15-pixel radius offset, and pixel
+blocks retain the `2 * (size + 1)` conversion. Updates preserve all unrelated
+geometry, colors, layer order and effect flags. Invert has no size control and
+ignores size shortcuts while selected.
+
+Selected-object sizes persist to the corresponding existing per-tool INI key,
+rather than always writing `drawThickness` because the active tool is Move.
+The core tests cover each size kind, limits/non-finite values, undo/redo, and
+filled-rectangle radius changes without changing stroke width or endpoints.
+The X11 object-editing case increases roundness on the selected moved rectangle,
+checks a corner pixel and `drawRectangleSize`, and undoes/redoes the individual
+keyboard increments. These edits do not resize an object's geometry; drag handles
+and continuous-property gesture undo grouping remain pending.
+
+Validation passed: `cargo test --locked --workspace --all-features`, all-target
+all-feature Clippy with warnings denied, formatting, and the complete isolated
+Xvfb suite including selected-object roundness, configuration persistence and
+incremental undo/redo. The INI assertion accepts QSettings-compatible quoted values
+and repeated sections; pixel assertions sample outside the antialiased edge.

@@ -74,6 +74,25 @@ pub enum Annotation {
         insecure: bool,
     },
 }
+/// Size units exposed by the editor toolbar (text uses points).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SizeKind {
+    Stroke,
+    Marker,
+    Text,
+    Counter,
+    CornerRadius,
+    Pixelate,
+}
+impl SizeKind {
+    pub fn maximum(self) -> f32 {
+        match self {
+            Self::Text => 750.0,
+            Self::Counter => 985.0,
+            _ => 10000.0,
+        }
+    }
+}
 #[derive(Debug, thiserror::Error)]
 pub enum EditError {
     #[error("Invalid annotation coordinates or stroke width")]
@@ -800,6 +819,55 @@ fn pixelate(image: &mut RgbaImage, region: PixelRect, block_size: u32) {
 }
 
 impl Annotation {
+    pub fn tool_size(&self) -> Option<(SizeKind, f32)> {
+        Some(match self {
+            Self::Text { font_size, .. } => (SizeKind::Text, font_size * 0.75),
+            Self::Counter { radius, .. } => (SizeKind::Counter, radius - 15.0),
+            Self::Marker { style, .. } => (SizeKind::Marker, style.width),
+            Self::Rectangle {
+                filled: true,
+                radius,
+                ..
+            } => (SizeKind::CornerRadius, *radius),
+            Self::Pixelate { block_size, .. } => {
+                (SizeKind::Pixelate, *block_size as f32 / 2.0 - 1.0)
+            }
+            Self::Pencil { style, .. }
+            | Self::Line { style, .. }
+            | Self::Arrow { style, .. }
+            | Self::Rectangle { style, .. }
+            | Self::Ellipse { style, .. } => (SizeKind::Stroke, style.width),
+            Self::Invert(_) => return None,
+        })
+    }
+    pub fn with_tool_size(&self, value: f32) -> Result<Self, EditError> {
+        let Some((kind, _)) = self.tool_size() else {
+            return Ok(self.clone());
+        };
+        if !value.is_finite() || value < 1.0 || value > kind.maximum() {
+            return Err(EditError::InvalidAnnotation);
+        }
+        let mut next = self.clone();
+        match &mut next {
+            Self::Text { font_size, .. } => *font_size = value / 0.75,
+            Self::Counter { radius, .. } => *radius = value + 15.0,
+            Self::Rectangle {
+                filled: true,
+                radius,
+                ..
+            } => *radius = value,
+            Self::Pixelate { block_size, .. } => *block_size = (2.0 * (value + 1.0)) as u32,
+            Self::Pencil { style, .. }
+            | Self::Line { style, .. }
+            | Self::Arrow { style, .. }
+            | Self::Marker { style, .. }
+            | Self::Rectangle { style, .. }
+            | Self::Ellipse { style, .. } => style.width = value,
+            Self::Invert(_) => {}
+        }
+        validate(&next)?;
+        Ok(next)
+    }
     pub fn color(&self) -> Option<[u8; 4]> {
         match self {
             Self::Counter { color, .. } | Self::Text { color, .. } => Some(*color),
@@ -978,6 +1046,104 @@ mod tests {
             },
             filled: true,
             radius: 0.0,
+        }
+    }
+    #[test]
+    fn selected_sizes_use_tool_specific_units_and_preserve_other_properties() {
+        let region = PixelRect {
+            x: 2,
+            y: 3,
+            width: 12,
+            height: 10,
+        };
+        let cases = [
+            (mark(), SizeKind::CornerRadius),
+            (
+                Annotation::Text {
+                    position: Point { x: 2.0, y: 3.0 },
+                    text: "hello".into(),
+                    font_size: 24.0,
+                    family: "Sans".into(),
+                    color: [255; 4],
+                },
+                SizeKind::Text,
+            ),
+            (
+                Annotation::Counter {
+                    center: Point { x: 5.0, y: 5.0 },
+                    tip: Point { x: 15.0, y: 15.0 },
+                    number: 7,
+                    radius: 18.0,
+                    color: [255; 4],
+                    outline: true,
+                },
+                SizeKind::Counter,
+            ),
+            (
+                Annotation::Marker {
+                    start: Point { x: 2.0, y: 2.0 },
+                    end: Point { x: 18.0, y: 18.0 },
+                    style: Style {
+                        width: 2.0,
+                        color: [255; 4],
+                    },
+                },
+                SizeKind::Marker,
+            ),
+            (
+                Annotation::Line {
+                    start: Point { x: 2.0, y: 2.0 },
+                    end: Point { x: 18.0, y: 18.0 },
+                    style: Style {
+                        width: 2.0,
+                        color: [255; 4],
+                    },
+                },
+                SizeKind::Stroke,
+            ),
+            (
+                Annotation::Pixelate {
+                    region,
+                    block_size: 8,
+                    insecure: true,
+                },
+                SizeKind::Pixelate,
+            ),
+        ];
+        for (original, kind) in cases {
+            let changed = original.with_tool_size(9.0).unwrap();
+            assert_eq!(changed.tool_size(), Some((kind, 9.0)));
+            assert_eq!(changed.color(), original.color());
+            assert!(original.with_tool_size(f32::NAN).is_err());
+            assert!(original.with_tool_size(kind.maximum() + 1.0).is_err());
+            let mut doc = Document::new(base(), 10).unwrap();
+            doc.add(original.clone()).unwrap();
+            doc.replace(0, changed.clone()).unwrap();
+            assert!(doc.undo());
+            assert_eq!(doc.annotations(), &[original]);
+            assert!(doc.redo());
+            assert_eq!(doc.annotations(), &[changed]);
+        }
+        assert_eq!(Annotation::Invert(region).tool_size(), None);
+        assert_eq!(
+            Annotation::Invert(region).with_tool_size(9.0).unwrap(),
+            Annotation::Invert(region)
+        );
+        let changed = mark().with_tool_size(9.0).unwrap();
+        if let Annotation::Rectangle {
+            style,
+            start,
+            end,
+            radius,
+            ..
+        } = changed
+        {
+            assert_eq!(style.width, 2.0);
+            assert_eq!(start, Point { x: 4.0, y: 4.0 });
+            assert_eq!(end, Point { x: 12.0, y: 12.0 });
+            assert_eq!(radius, 9.0);
+        } else {
+            panic!("wrong shape");
         }
     }
     #[test]
