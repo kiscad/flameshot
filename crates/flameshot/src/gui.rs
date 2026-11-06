@@ -11,6 +11,26 @@ use flameshot_core::{
 use image::RgbaImage;
 use std::sync::{Arc, Mutex};
 
+fn drawing_control_modifier(events: &[egui::Event], fallback: bool) -> bool {
+    events
+        .iter()
+        .rev()
+        .find_map(|event| {
+            if let egui::Event::PointerButton {
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers,
+                ..
+            } = event
+            {
+                Some(modifiers.ctrl)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(fallback)
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum Action {
     Accept,
@@ -219,6 +239,7 @@ struct Editor {
     show_help: bool,
     selected_object: Option<usize>,
     property_pointer_down: bool,
+    constrain_drawing: bool,
     counter_outline: bool,
     rendered: Option<RgbaImage>,
     magnifier: bool,
@@ -294,6 +315,7 @@ impl Editor {
             show_help: crate::settings::Settings::load()?.show_help,
             selected_object: None,
             property_pointer_down: false,
+            constrain_drawing: false,
             counter_outline: settings.counter_outline,
             rendered: None,
             magnifier: settings.magnifier,
@@ -851,6 +873,20 @@ impl Editor {
         }
         let start = *self.points.first()?;
         let end = *self.points.last()?;
+        let end = if self.constrain_drawing {
+            use flameshot_core::constraints::{DrawingConstraint, endpoint};
+            match self.tool {
+                Tool::Line | Tool::Arrow | Tool::Marker => {
+                    endpoint(start, end, DrawingConstraint::AxisAndDiagonal)
+                }
+                Tool::Rectangle | Tool::FilledRectangle | Tool::Ellipse => {
+                    endpoint(start, end, DrawingConstraint::Diagonal)
+                }
+                _ => end,
+            }
+        } else {
+            end
+        };
         if self.points.len() < 2 {
             return None;
         }
@@ -1042,6 +1078,18 @@ impl eframe::App for Editor {
             return;
         }
         let ctx = ui.ctx().clone();
+        let constrain = ctx.input(|input| {
+            if self.points.is_empty() {
+                input.modifiers.ctrl
+            } else {
+                drawing_control_modifier(&input.events, input.modifiers.ctrl)
+            }
+        });
+        if self.constrain_drawing != constrain {
+            self.constrain_drawing = constrain;
+            self.dirty = true;
+            ctx.request_repaint();
+        }
         if self.dismissed_dialog_frame != Some(ctx.cumulative_frame_nr())
             && ctx.input(|i| i.key_pressed(egui::Key::Escape))
         {
@@ -1794,6 +1842,21 @@ fn selected_rect(a: Point, b: Point, size: [u32; 2]) -> Option<PixelRect> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn drawing_keeps_mouse_release_modifiers_when_control_is_released_in_same_frame() {
+        let events = [egui::Event::PointerButton {
+            pos: egui::pos2(10.0, 20.0),
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers {
+                ctrl: true,
+                ..Default::default()
+            },
+        }];
+        assert!(drawing_control_modifier(&events, false));
+        assert!(!drawing_control_modifier(&[], false));
+        assert!(drawing_control_modifier(&[], true));
+    }
     #[test]
     fn native_close_is_consumed_once_before_eframe_can_replay_it() {
         let mut input = egui::RawInput::default();

@@ -1453,3 +1453,38 @@ remaining object-specific properties are still pending.
 Validation passed: 48 core tests within the all-feature workspace test run,
 all-target/all-feature Clippy with warnings denied, formatting, and the complete
 isolated Xvfb suite including held-pointer preview and grouped undo/redo.
+
+### Baseline audit: geometry editing and Ctrl drawing constraints
+
+The earlier log entries that listed post-creation annotation resize handles as a
+missing legacy feature were an incorrect inference. In the baseline implementation,
+`CaptureTool::drawObjectSelectionRect` draws an outline, and the selected-object
+branch of `CaptureWidget::mouseMoveEvent` calls `move`; `AbstractTwoPointTool::move`
+translates both points. There is no corresponding handle-resize interface for
+completed annotations. Capture-region resizing and pinned-image scaling are real,
+separate baseline behaviors and remain within acceptance scope. This correction
+does not waive any baseline functionality or the full Linux migration gates.
+
+A real geometry-interaction gap was found and implemented: holding **Ctrl**, not
+Shift, during drawing constrains line/arrow/marker directions to axes or diagonals,
+and outline/filled rectangles and ellipses to equal width/height. Pencil, counter,
+effects, capture regions and object movement keep their existing behavior. The
+helper follows the baseline angular sectors and rounding direction at sector ties;
+image-space fractional coordinates are retained rather than truncated to integers.
+
+The pending annotation uses the current modifier without rewriting raw pointer
+positions, so releasing Ctrl restores free drawing. Pointer-release modifiers win
+over the final frame's keyboard state, including a Ctrl release in the same frame.
+This applies before preview rendering as well as commit to avoid a release-frame
+shape change. The core tests cover all quadrants, zero/fractional drags and axis
+ties; the GUI unit test covers release-event modifier retention. The X11 case
+checks live free/constrained/free switching without pointer movement, constrained
+commit/undo/redo, and a horizontal constrained line. Full object-property and
+cross-desktop acceptance is still incomplete; unsupported extra resize handles
+are not a substitute for those requirements.
+
+Validation passed: the all-feature workspace tests (including 51 core tests and
+the mouse-release modifier unit test), all-target/all-feature Clippy with warnings
+denied, formatting, and the complete isolated Xvfb suite with live Ctrl constraints,
+release, undo/redo and line snapping. Other compositor/modifier acceptance remains
+part of the final desktop audit.

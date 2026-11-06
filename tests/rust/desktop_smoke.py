@@ -354,7 +354,7 @@ print('PASS: capture lock is released after a killed editor')
         assert (Path(directory)/'flameshot/flameshot.ini').read_text()=='[General]\ncheckForUpdates=false\n'
         process=None
         print('PASS: configuration window opens and closes without modifying settings')
-        for mode in ('cancel','raw','geometry','both','autosave','adjust','magnifier','save-retry','save-cancel','preset','last','lastconfig','lastoverride','fixed','shortcut','shortcutmeta','shortcutdefault','openwith','toolsize','undolimit','color','opacity','textedit','objectmove','palette','uploadcancel','buttons','geometryoverlay','pixelatesafe','pixelateinsecure','quitresume','quitconfirm','quitdisable','monitors','monitoroverride','monitordelay'):
+        for mode in ('cancel','raw','geometry','both','autosave','adjust','magnifier','save-retry','save-cancel','preset','last','lastconfig','lastoverride','fixed','shortcut','shortcutmeta','shortcutdefault','openwith','toolsize','undolimit','color','opacity','textedit','objectmove','constraints','palette','uploadcancel','buttons','geometryoverlay','pixelatesafe','pixelateinsecure','quitresume','quitconfirm','quitdisable','monitors','monitoroverride','monitordelay'):
             if mode=='uploadcancel' and b'history' not in help_text: continue
             cancel = mode in ('cancel','quitconfirm','quitdisable')
             flags = ['--raw'] if mode in ('cancel','raw') else ['--accept-on-select','--print-geometry']
@@ -394,6 +394,9 @@ print('PASS: capture lock is released after a killed editor')
             if mode=='palette':
                 flags=['--raw']
                 test_config.write_text('[General]\ncheckForUpdates=false\nuserColors=#00ff00, red, picker\n')
+            if mode=='constraints':
+                flags=['--raw','--region','400x200+500+450']
+                test_config.write_text('[General]\ncheckForUpdates=false\nshowSelectionGeometry=0\ndrawColor=#ff0000\ndrawThickness=3\n')
             if mode=='objectmove':
                 flags=['--raw','--region','400x200+500+450']
                 data=struct.pack('>II',127,11)+b'QList<int>\0'+struct.pack('>I',0)
@@ -516,6 +519,53 @@ print('PASS: capture lock is released after a killed editor')
                 assert any(value!=255 for value in geometry_pixels()),'Selection movement did not restore geometry'
                 tool('key','Return')
             elif mode in ('monitors','monitoroverride','monitordelay'):
+                tool('key','Return')
+            elif mode=='constraints':
+                import io
+                from PIL import Image
+                def constrained_pixels(points):
+                    time.sleep(.2)
+                    captured=subprocess.run(bus_command+[str(binary),'full','--raw'],env=env,capture_output=True,timeout=20)
+                    assert captured.returncode==0,captured.stderr.decode()
+                    image=Image.open(io.BytesIO(captured.stdout)).convert('RGB')
+                    return tuple(image.getpixel(point) for point in points)
+                points=((550,520),(600,490))
+                background=constrained_pixels(points)
+                tool('key','r')
+                time.sleep(.2)
+                tool('mousemove','--window',window,'530','480')
+                tool('mousedown','1')
+                time.sleep(.15)
+                tool('mousemove','--window',window,'610','500')
+                assert constrained_pixels(points)==(background[0],(255,0,0))
+                tool('keydown','Control_L')
+                assert constrained_pixels(points)==((255,0,0),background[1]),'Ctrl did not constrain the held rectangle'
+                tool('keyup','Control_L')
+                assert constrained_pixels(points)==(background[0],(255,0,0)),'Releasing Ctrl did not restore free drawing'
+                tool('keydown','Control_L')
+                assert constrained_pixels(points)==((255,0,0),background[1])
+                tool('mouseup','1')
+                tool('keyup','Control_L')
+                assert constrained_pixels(points)==((255,0,0),background[1]),'Release modifiers were lost on commit'
+                tool('key','ctrl+z')
+                assert constrained_pixels(points)==background
+                tool('key','ctrl+shift+z')
+                assert constrained_pixels(points)==((255,0,0),background[1])
+                tool('key','ctrl+z')
+                time.sleep(.2)
+                line_points=((570,480),(570,490))
+                line_background=constrained_pixels(line_points)
+                tool('key','d')
+                time.sleep(.2)
+                tool('mousemove','--window',window,'530','480')
+                tool('mousedown','1')
+                time.sleep(.15)
+                tool('keydown','Control_L')
+                tool('mousemove','--window',window,'610','500')
+                assert constrained_pixels(line_points)==((255,0,0),line_background[1]),'Ctrl line did not snap horizontally'
+                tool('mouseup','1')
+                tool('keyup','Control_L')
+                assert constrained_pixels(line_points)==((255,0,0),line_background[1])
                 tool('key','Return')
             elif mode=='objectmove':
                 import io
@@ -864,7 +914,7 @@ print('PASS: capture lock is released after a killed editor')
                 pixels=Image.open(io.BytesIO(out)).convert('RGB')
                 assert pixels.size==(512,768),pixels.size
                 assert pixels.getpixel((256,384))==((0,0,255) if mode=='monitoroverride' else (255,0,0)),'Wrong X11 monitor captured'
-            elif mode in ('textedit','objectmove'):
+            elif mode in ('textedit','objectmove','constraints'):
                 assert png(out)==(400,200)
             elif mode in ('preset','last','lastconfig','lastoverride'):
                 assert out==(b'20x10+5+6\n' if mode=='lastoverride' else b'80x60+20+30\n'),out
