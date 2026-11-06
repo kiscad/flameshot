@@ -1689,3 +1689,25 @@ Validation passed: the complete isolated Xvfb suite, including two-level owner
 termination and independent clipboard survival; the native Sway/Wayland suite;
 all-feature workspace tests; private-bus signal/disconnection tests; all-target
 Clippy and formatting. No host process policy or installed application was changed.
+
+### Complete-file publication for saved captures
+
+File saves now encode first, write and sync a same-directory staging file, and then
+publish it with no-clobber persistence. Collision retries retain the completed staged
+file and choose the existing numbered-name convention. The final image name is never
+used for an in-progress write, including when an owned capture is terminated with its
+parent. Normal output permissions continue to follow the process umask.
+
+Tests cover injected write failure and cleanup, destination invisibility during
+partial writes, eight concurrent writers with an existing destination, broken symlink
+collisions, normal file modes, supported image formats and actual capture/save output.
+A subprocess test stops a writer after partial staging and forcibly terminates it;
+the final PNG name remains absent. Forced termination can leave a hidden
+`.flameshot-*.tmp` staging file, since destructors cannot run in that case. This change
+does not claim power-loss durability of directory entries or universal filesystem
+support beyond the no-clobber primitive's behavior.
+
+Validation passed: the all-feature workspace tests, dedicated interruption/output
+tests, the private-bus full-capture/save regression, all-target/all-feature Clippy
+with warnings denied, and formatting. No installed application or user capture was
+modified during these tests; final filesystem/sandbox packaging acceptance remains.

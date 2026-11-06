@@ -2,7 +2,6 @@
 use anyhow::{Context, Result, bail, ensure};
 use image::{ImageFormat, RgbaImage};
 use std::{
-    fs::OpenOptions,
     io::{Cursor, Write},
     path::{Path, PathBuf},
 };
@@ -222,6 +221,33 @@ pub fn save_with_settings(
         destination.set_extension(&settings.extension);
     }
     let data = encode_file(image, format_for(&destination)?, settings.jpeg_quality)?;
+    publish_image(&destination, |file| file.write_all(&data))
+}
+
+fn publish_image(
+    destination: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<PathBuf> {
+    let parent = destination
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".flameshot-").suffix(".tmp");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Keep the previous create-new file mode, subject to the user's umask.
+        builder.permissions(std::fs::Permissions::from_mode(0o666));
+    }
+    let mut staged = builder
+        .tempfile_in(parent)
+        .context("Cannot stage screenshot")?;
+    write(staged.as_file_mut()).context("Cannot write screenshot")?;
+    staged
+        .as_file()
+        .sync_all()
+        .context("Cannot sync screenshot")?;
     let stem = destination
         .file_stem()
         .context("Missing filename")?
@@ -232,28 +258,22 @@ pub fn save_with_settings(
         .to_os_string();
     for index in 0_u64.. {
         let candidate = if index == 0 {
-            destination.clone()
+            destination.to_path_buf()
         } else {
             let mut name = stem.clone();
             name.push(format!("_{index}."));
             name.push(&extension);
             destination.with_file_name(name)
         };
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
-        {
-            Ok(mut file) => {
-                if let Err(error) = file.write_all(&data).and_then(|()| file.sync_all()) {
-                    drop(file);
-                    let _ = std::fs::remove_file(&candidate);
+        match staged.persist_noclobber(&candidate) {
+            Ok(_) => return Ok(candidate),
+            Err(error) => {
+                let tempfile::PersistError { error, file } = error;
+                staged = file;
+                if error.kind() != std::io::ErrorKind::AlreadyExists {
                     return Err(error.into());
                 }
-                return Ok(candidate);
             }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(error) => return Err(error.into()),
         }
     }
     bail!("No available output filename")
@@ -261,6 +281,141 @@ pub fn save_with_settings(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "subprocess helper for interrupted publication"]
+    fn interrupted_save_child() {
+        let directory = std::path::PathBuf::from(
+            std::env::var_os("FLAMESHOT_TEST_OUTPUT_DIR").expect("private output test directory"),
+        );
+        let _ = publish_image(&directory.join("capture.png"), |file| {
+            file.write_all(b"partial image data")?;
+            std::fs::write(directory.join("ready"), b"ready")?;
+            loop {
+                std::thread::park();
+            }
+        });
+    }
+    #[test]
+    fn process_interruption_leaves_no_published_partial_image() {
+        let temp = tempfile::tempdir().unwrap();
+        let children = std::sync::Arc::new(crate::children::Children::default());
+        let _guard = children.guard();
+        children
+            .spawn(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "output::tests::interrupted_save_child",
+                        "--ignored",
+                    ])
+                    .env("FLAMESHOT_TEST_OUTPUT_DIR", temp.path())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null()),
+                None,
+            )
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !temp.path().join("ready").exists() {
+            assert!(
+                !children.idle(),
+                "Writer exited before reaching the partial-write checkpoint"
+            );
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(!temp.path().join("capture.png").exists());
+        children.shutdown();
+        assert!(!temp.path().join("capture.png").exists());
+        // Forced termination bypasses Drop; only a clearly temporary file remains.
+        assert!(std::fs::read_dir(temp.path()).unwrap().any(|entry| {
+            entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".flameshot-")
+        }));
+    }
+    #[test]
+    fn failed_writes_never_publish_a_partial_capture() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("capture.png");
+        let error = publish_image(&destination, |file| {
+            file.write_all(b"partial")?;
+            assert!(!destination.exists());
+            Err(std::io::Error::other("injected write failure"))
+        })
+        .unwrap_err();
+        assert!(format!("{error:#}").contains("injected write failure"));
+        assert!(!destination.exists());
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+        let saved = publish_image(&destination, |file| {
+            file.write_all(b"first")?;
+            assert!(!destination.exists());
+            file.write_all(b"second")
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(saved).unwrap(), b"firstsecond");
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 1);
+    }
+    #[test]
+    fn concurrent_saves_publish_complete_distinct_files_without_overwrite() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("capture.png");
+        std::fs::write(&destination, b"keep existing").unwrap();
+        let paths = std::thread::scope(|scope| {
+            let jobs: Vec<_> = (0..8)
+                .map(|value| {
+                    let path = &destination;
+                    scope.spawn(move || {
+                        let image =
+                            RgbaImage::from_pixel(12, 10, image::Rgba([value, 30, 60, 255]));
+                        let saved = save(&image, path).unwrap();
+                        assert_eq!(image::open(&saved).unwrap().to_rgba8(), image);
+                        saved
+                    })
+                })
+                .collect();
+            jobs.into_iter()
+                .map(|job| job.join().unwrap())
+                .collect::<std::collections::HashSet<_>>()
+        });
+        assert_eq!(paths.len(), 8);
+        assert_eq!(std::fs::read(destination).unwrap(), b"keep existing");
+        assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 9);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn staging_keeps_normal_output_permissions_without_changing_umask() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        let reference = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(temp.path().join("reference"))
+            .unwrap();
+        let saved = save(&RgbaImage::new(2, 2), &temp.path().join("capture.png")).unwrap();
+        assert_eq!(
+            std::fs::metadata(saved).unwrap().permissions().mode() & 0o777,
+            reference.metadata().unwrap().permissions().mode() & 0o777
+        );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn broken_symlinks_are_collisions_not_output_targets() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("capture.png");
+        let missing = temp.path().join("do-not-create");
+        std::os::unix::fs::symlink(&missing, &destination).unwrap();
+        let saved = save(&RgbaImage::new(2, 2), &destination).unwrap();
+        assert_eq!(saved.file_name().unwrap(), "capture_1.png");
+        assert!(
+            std::fs::symlink_metadata(destination)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert!(!missing.exists());
+    }
     #[test]
     fn supported_formats_encode_and_raster_codecs_decode() {
         let image = RgbaImage::from_fn(16, 12, |x, y| {
