@@ -136,3 +136,28 @@ Driver recommendations use the distro packages
 [Fedora mesa-vulkan-drivers](https://packages.fedoraproject.org/pkgs/mesa/mesa-vulkan-drivers/index.html)
 and [openSUSE libvulkan_lvp](https://slc-downloadcontent.opensuse.org/repositories/X11%3A/XOrg/openSUSE_Factory/x86_64/).
 Select a screenshot portal backend appropriate for the running desktop.
+
+## Arch development packages
+
+The PKGBUILD consumes a local snapshot produced by the source-archive helper:
+
+```sh
+mkdir -p target/arch-build
+scripts/package-rust-source.sh target/arch-build/flameshot-15.0.0-rust.tar.gz
+cp PKGBUILD target/arch-build/
+cd target/arch-build
+makepkg
+```
+
+The archive records a Git revision for `pkgver()`; dirty working trees are marked.
+The local snapshot checksum is skipped because each revision produces different
+content. For publishing, pin the prepared archive/checksum and use an appropriate
+release source location. Cargo builds and tests run offline once the required Rust
+toolchain and declared package dependencies are installed. Imgur is enabled and
+application update checking is disabled.
+
+Arch's [libx11 package](https://archlinux.org/packages/extra/x86_64/libx11/files/)
+includes X11-XCB, and its [wayland package](https://archlinux.org/packages/extra/x86_64/wayland/files/)
+includes the Wayland EGL library. A GPU driver or
+[vulkan-swrast software driver](https://archlinux.org/packages/extra/x86_64/vulkan-swrast/)
+is needed for Vulkan rendering; OpenGL is the alternative backend.

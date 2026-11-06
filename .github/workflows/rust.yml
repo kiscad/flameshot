@@ -58,6 +58,11 @@ jobs:
         run: python3 tests/rust/desktop_smoke.py / target/debug/flameshot
       - name: Native Wayland and mixed-scale smoke
         run: python3 tests/rust/wayland_smoke.py / target/debug/flameshot
+      - name: Native Wayland OpenGL fallback
+        env:
+          WGPU_BACKEND: gl
+          FLAMESHOT_TEST_ARTIFACT_DIR: target/wayland-gl-artifacts
+        run: python3 tests/rust/wayland_smoke.py / target/debug/flameshot
       - name: Release build
         run: |
           cargo build --locked --release --all-features

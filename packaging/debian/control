@@ -33,6 +33,7 @@ Depends:
  libxkbcommon0,
  libxkbcommon-x11-0,
  libwayland-client0,
+ libwayland-egl1,
  libegl1,
  libgl1,
  libvulkan1,

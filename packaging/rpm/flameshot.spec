@@ -39,6 +39,7 @@ Requires: libXrandr.so.2%{library_suffix}
 Requires: libxkbcommon.so.0%{library_suffix}
 Requires: libxkbcommon-x11.so.0%{library_suffix}
 Requires: libwayland-client.so.0%{library_suffix}
+Requires: libwayland-egl.so.1%{library_suffix}
 Requires: libEGL.so.1%{library_suffix}
 Requires: libGL.so.1%{library_suffix}
 Requires: libvulkan.so.1%{library_suffix}

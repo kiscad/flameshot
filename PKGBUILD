@@ -1,47 +1,52 @@
+# Build the local source archive with scripts/package-rust-source.sh first.
 pkgname=flameshot-git
 _pkgname=flameshot
-pkgver=r2022.277eb2f4
+_source_version=15.0.0
+pkgver=r0
 pkgrel=1
-pkgdesc="Powerful yet simple to use screenshot software"
+pkgdesc='Screenshot capture and annotation (Rust development build)'
 arch=('i686' 'x86_64' 'aarch64' 'armv7h')
-url="https://github.com/flameshot-org/flameshot"
+url='https://github.com/flameshot-org/flameshot'
 license=('GPL-3.0-or-later')
-depends=('qt6-base' 'qt6-svg' 'hicolor-icon-theme' 'kguiaddons' 'kdsingleapplication')
-makedepends=('qt6-tools' 'cmake' 'ninja')
-optdepends=(
-    'gnome-shell-extension-appindicator: for system tray icon if you are using Gnome'
-    'xdg-desktop-portal: for wayland support, you will need the implementation for your wayland desktop environment'
-    'qt6-imageformats: for additional export image formats (e.g. tiff, webp, and more)'
-)
-provides=(flameshot)
-conflicts=(flameshot)
-source=()
-
-prepare() {
-    cp -R "${startdir}/" "${srcdir}/${_pkgname}/"
-}
+depends=('glibc' 'gcc-libs' 'dbus' 'libx11' 'libxcursor' 'libxi' 'libxrandr'
+         'libxkbcommon' 'libxkbcommon-x11' 'wayland' 'libglvnd'
+         'vulkan-icd-loader' 'glib2' 'hicolor-icon-theme' 'ttf-dejavu')
+makedepends=('cargo' 'pkgconf' 'desktop-file-utils')
+checkdepends=('python')
+optdepends=('xdg-desktop-portal: Wayland screenshot portal frontend'
+            'xdg-desktop-portal-gtk: GTK portal backend'
+            'xdg-desktop-portal-gnome: GNOME portal backend'
+            'xdg-desktop-portal-kde: KDE portal backend'
+            'xdg-desktop-portal-wlr: wlroots screenshot backend'
+            'vulkan-swrast: software Vulkan rendering when no GPU driver is available'
+            'mesa: OpenGL rendering implementation'
+            'gnome-shell-extension-appindicator: GNOME tray icon support')
+provides=("flameshot=${_source_version}")
+conflicts=('flameshot')
+source=("flameshot-${_source_version}-rust.tar.gz")
+# This is a local, commit-specific source snapshot, not a remote release download.
+sha256sums=('SKIP')
 
 pkgver() {
-    cd "${srcdir}/${_pkgname}"
-
-    printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+    cat "${srcdir}/flameshot-${_source_version}/.git-version"
 }
 
 build() {
-    cd "${srcdir}/${_pkgname}"
+    cd "${srcdir}/flameshot-${_source_version}"
+    export CARGO_INCREMENTAL=0
+    cargo build --locked --offline --release -p flameshot --no-default-features --features imgur
+}
 
-    cmake -GNinja -B build -S . \
-        -DCMAKE_BUILD_TYPE=None \
-        -DCMAKE_INSTALL_PREFIX=/usr \
-        -DUSE_WAYLAND_CLIPBOARD=1 \
-        -DDISABLE_UPDATE_CHECKER=1 \
-        -DUSE_BUNDLED_KDSINGLEAPPLICATION=OFF \
-
-    cmake --build build
+check() {
+    cd "${srcdir}/flameshot-${_source_version}"
+    cargo test --locked --offline --workspace --no-default-features --features imgur
 }
 
 package() {
-    cd "${srcdir}/${_pkgname}"
-
-    DESTDIR="${pkgdir}" cmake --install build
+    cd "${srcdir}/flameshot-${_source_version}"
+    DESTDIR="${pkgdir}" PREFIX=/usr \
+        FLAMESHOT_BINARY="${CARGO_TARGET_DIR:-target}/release/flameshot" scripts/stage-rust.sh
+    desktop-file-validate "${pkgdir}/usr/share/applications/org.flameshot.Flameshot.desktop"
+    install -Dm644 README.md "${pkgdir}/usr/share/doc/flameshot/README.md"
+    install -Dm644 docs/rust/BUILD.md "${pkgdir}/usr/share/doc/flameshot/BUILD.md"
 }

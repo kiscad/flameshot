@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Implemented with isolated service/window tests; full desktop integration acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM Cargo package builds and packaged-binary desktop suites validated locally; Arch/Flatpak/Snap/Nix and clean-distro installs pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch Cargo package builds and packaged-binary desktop suites validated locally; Flatpak/Snap/Nix and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb and native Sway/mixed-DPI suites pass; full GNOME/KDE and IME coverage pending |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -1221,3 +1221,30 @@ IPC metadata and absence of Qt linkage. Debian was rebuilt with the same dynamic
 library corrections and session-bus dependency. Native Fedora/openSUSE clean-root
 installation and non-x86 binary execution remain unverified; macro parsing alone
 is not claimed as those tests. Arch/Flatpak/Snap/Nix migration remains pending.
+
+PKGBUILD now consumes the vendored local Rust snapshot, builds/tests offline with
+Cargo, and installs through the shared staging script. It preserves the development
+package name and derives its version from a generated .git-version snapshot file.
+Qt/KDE/CMake build dependencies were replaced by native libraries and Cargo tools.
+The source helper exports PKGBUILD and records dirty worktree state. An actual
+makepkg run with externally supplied tools and an isolated empty pacman database
+(--nodeps) produced a .pkg.tar.zst; release build, workspace tests, stripping and
+metadata generation passed. This does not claim a clean Arch dependency-install
+or non-x86 runtime test. Desktop/AppStream metadata and executable startup passed.
+Source inspection also found the Wayland EGL library needed by the GLES backend;
+Debian/RPM runtime declarations were corrected. Packaged-binary X11, native Wayland
+and forced GLES desktop regressions are running.
+The packaged Arch executable passed full X11 and native Sway desktop suites, and
+also the complete native suite with WGPU_BACKEND=gl. This verifies the GLES fallback
+rather than only Vulkan on this environment. The same fallback check was added to
+the Rust CI workflow. Runtime dependency names/file ownership were checked against
+Arch's published libx11 and wayland file lists; vulkan-swrast is offered as an
+optional software driver. Final package metadata is being rebuilt and checked.
+
+The final Arch package was rebuilt with the completed metadata; its executable
+bytes exactly match the version tested under X11, native Wayland and forced GLES.
+Package metadata, Git snapshot provenance and no-Qt linkage checks passed. Debian
+and RPM metadata rebuilds also contain the Wayland EGL runtime dependency. The
+workflow YAML and shell recipes parse successfully. These validations used extracted
+tools on the development host; clean Arch installation and non-x86 execution are
+still not claimed. Flatpak, Snap and Nix migration remains pending.
