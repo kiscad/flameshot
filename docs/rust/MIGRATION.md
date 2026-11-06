@@ -1321,3 +1321,28 @@ unrun CI workflow now builds the vendored source and inspects its payload, repla
 the old Snap job that read its version from CMake. Provider build, installed desktop
 acceptance, arm64 compilation, portal file/host-app access and confined autostart
 remain open.
+
+### Live object movement and cancellation
+
+Moving an annotation now uses an immutable replacement preview at its original
+layer. The selected object's outline follows that preview; release commits one
+replacement. No-op edits no longer create undo entries or discard redo. Invalid
+moves leave the document/history intact. Escape clears the pending movement and
+its drag state; the subsequent mouse release is ignored, preserving the existing
+capture selection instead of replacing it with an empty one.
+
+Core tests cover overlapping layers, preview/export agreement, single-step undo,
+redo preservation after no-op movement, and rejected movement. The X11 desktop
+case draws a rectangle, holds the pointer down to inspect intermediate pixels,
+compares release with preview, checks undo/redo, cancels another drag, then verifies
+redo and the exported selection size. Its reduced English toolbar provides stable
+coordinates, and pointer events are separated by rendering delays. This closes the
+live-movement gap, not all object-editing parity: legacy selection uses rendered
+search areas with near/far tolerances, while Rust hit testing still uses bounds;
+resize/property editing also needs further compatibility work.
+
+Validation passed: `cargo test --locked --workspace --all-features`, all-target
+all-feature Clippy with warnings denied, Rust formatting, the complete isolated
+Xvfb suite including the new movement case, and the native Sway/Wayland suite.
+The Wayland run exercises existing capture/clipboard/pin/selection regressions;
+the new held-pointer movement assertions currently run on X11.

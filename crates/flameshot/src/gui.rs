@@ -839,6 +839,27 @@ impl Editor {
             *number = number.saturating_add(1).min(999);
         }
     }
+    fn pending_move(&self) -> Option<(usize, Point)> {
+        if self.tool != Tool::Move || self.selection_drag.is_some() {
+            return None;
+        }
+        let start = self.points.first()?;
+        let end = self.points.last()?;
+        Some((
+            self.selected_object?,
+            Point {
+                x: end.x - start.x,
+                y: end.y - start.y,
+            },
+        ))
+    }
+    fn preview(&self) -> Result<RgbaImage, flameshot_core::editor::EditError> {
+        if let Some((index, delta)) = self.pending_move() {
+            self.document.preview_move(index, delta.x, delta.y)
+        } else {
+            self.document.preview(self.pending_annotation().as_ref())
+        }
+    }
     fn finish_stroke(&mut self) {
         if self.selection_drag.is_some() {
             // The selection was already updated during the drag.
@@ -935,6 +956,7 @@ impl eframe::App for Editor {
             if self.tool != Tool::Select {
                 self.tool = Tool::Select;
                 self.points.clear();
+                self.selection_drag = None;
                 self.dirty = true;
             } else if self.selected_object.take().is_some() {
             } else if self.panel_visible {
@@ -1192,7 +1214,7 @@ impl eframe::App for Editor {
                 });
             });
         if self.dirty {
-            match self.document.preview(self.pending_annotation().as_ref()) {
+            match self.preview() {
                 Ok(image) => {
                     let pixels = egui::ColorImage::from_rgba_unmultiplied(
                         [self.size[0] as usize, self.size[1] as usize],
@@ -1528,6 +1550,7 @@ impl eframe::App for Editor {
             }
         }
         if (response.dragged() || response.drag_stopped())
+            && !self.points.is_empty()
             && let Some(position) = response.interact_pointer_pos()
         {
             self.dirty = true;
@@ -1548,7 +1571,7 @@ impl eframe::App for Editor {
                 self.size,
             );
         }
-        if response.drag_stopped() {
+        if response.drag_stopped() && !self.points.is_empty() {
             self.finish_stroke();
             if self.tool == Tool::Select
                 && self.selection.is_some()
@@ -1561,7 +1584,10 @@ impl eframe::App for Editor {
             .selected_object
             .and_then(|index| self.document.annotations().get(index))
         {
-            let (min, max) = annotation.bounds();
+            let moved = self.pending_move().and_then(|(index, delta)| {
+                self.document.moved_annotation(index, delta.x, delta.y).ok()
+            });
+            let (min, max) = moved.as_ref().unwrap_or(annotation).bounds();
             ui.painter().rect_stroke(
                 Rect::from_min_max(
                     rect.min + egui::vec2(min.x * scale, min.y * scale),

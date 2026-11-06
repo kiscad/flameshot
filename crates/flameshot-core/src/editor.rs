@@ -138,6 +138,9 @@ impl Document {
         Ok(())
     }
     fn commit(&mut self, after: Vec<Annotation>) {
+        if self.annotations == after {
+            return;
+        }
         let before = std::mem::replace(&mut self.annotations, after.clone());
         self.redo.clear();
         self.undo.push(Change { before, after });
@@ -168,14 +171,27 @@ impl Document {
             point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y
         })
     }
-    pub fn move_annotation(&mut self, index: usize, dx: f32, dy: f32) -> Result<(), EditError> {
+    /// Compute a movement without mutating either the document or its history.
+    pub fn moved_annotation(
+        &self,
+        index: usize,
+        dx: f32,
+        dy: f32,
+    ) -> Result<Annotation, EditError> {
         let mut annotation = self
             .annotations
             .get(index)
             .ok_or(EditError::InvalidIndex)?
             .clone();
         annotation.translate(dx, dy)?;
-        self.replace(index, annotation)
+        Ok(annotation)
+    }
+    pub fn preview_move(&self, index: usize, dx: f32, dy: f32) -> Result<RgbaImage, EditError> {
+        let annotation = self.moved_annotation(index, dx, dy)?;
+        self.preview_replacement(index, Some(&annotation))
+    }
+    pub fn move_annotation(&mut self, index: usize, dx: f32, dy: f32) -> Result<(), EditError> {
+        self.replace(index, self.moved_annotation(index, dx, dy)?)
     }
     pub fn undo(&mut self) -> bool {
         let Some(change) = self.undo.pop() else {
@@ -826,6 +842,49 @@ mod tests {
             filled: true,
             radius: 0.0,
         }
+    }
+    #[test]
+    fn move_preview_preserves_layers_and_commits_as_one_undo_step() {
+        let mut doc = Document::new(base(), 10).unwrap();
+        doc.add(mark()).unwrap();
+        let mut cover = mark();
+        if let Annotation::Rectangle { style, .. } = &mut cover {
+            style.color = [0, 0, 255, 255];
+        }
+        doc.add(cover.clone()).unwrap();
+        let before = doc.render().unwrap();
+        let preview = doc.preview_move(0, 5.0, 0.0).unwrap();
+        assert_eq!(*preview.get_pixel(10, 8), Rgba([0, 0, 255, 255]));
+        assert_eq!(*preview.get_pixel(15, 8), Rgba([255, 0, 0, 255]));
+        assert_eq!(doc.render().unwrap(), before);
+        assert_eq!(doc.annotations(), &[mark(), cover]);
+        doc.move_annotation(0, 5.0, 0.0).unwrap();
+        assert_eq!(doc.render().unwrap(), preview);
+        assert!(doc.undo());
+        assert_eq!(doc.render().unwrap(), before);
+        // An unchanged drag must not consume undo or erase redo.
+        doc.move_annotation(0, 0.0, 0.0).unwrap();
+        assert!(doc.redo());
+        assert_eq!(doc.render().unwrap(), preview);
+        assert!(doc.undo());
+        assert!(doc.undo());
+        assert_eq!(doc.annotations(), &[mark()]);
+    }
+    #[test]
+    fn invalid_move_preview_leaves_document_and_history_intact() {
+        let mut doc = Document::new(base(), 10).unwrap();
+        let region = PixelRect {
+            x: 2,
+            y: 2,
+            width: 4,
+            height: 4,
+        };
+        doc.add(Annotation::Invert(region)).unwrap();
+        assert!(doc.preview_move(0, -3.0, 0.0).is_err());
+        assert!(doc.move_annotation(0, f32::NAN, 0.0).is_err());
+        assert_eq!(doc.annotations(), &[Annotation::Invert(region)]);
+        assert!(doc.undo());
+        assert!(doc.annotations().is_empty());
     }
     #[test]
     fn filled_arrowheads_reverse_and_curved_style_changes_the_head() {

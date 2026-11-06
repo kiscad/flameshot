@@ -354,7 +354,7 @@ print('PASS: capture lock is released after a killed editor')
         assert (Path(directory)/'flameshot/flameshot.ini').read_text()=='[General]\ncheckForUpdates=false\n'
         process=None
         print('PASS: configuration window opens and closes without modifying settings')
-        for mode in ('cancel','raw','geometry','both','autosave','adjust','magnifier','save-retry','save-cancel','preset','last','lastconfig','lastoverride','fixed','shortcut','shortcutmeta','shortcutdefault','openwith','toolsize','undolimit','color','opacity','textedit','palette','uploadcancel','buttons','geometryoverlay','pixelatesafe','pixelateinsecure','quitresume','quitconfirm','quitdisable','monitors','monitoroverride','monitordelay'):
+        for mode in ('cancel','raw','geometry','both','autosave','adjust','magnifier','save-retry','save-cancel','preset','last','lastconfig','lastoverride','fixed','shortcut','shortcutmeta','shortcutdefault','openwith','toolsize','undolimit','color','opacity','textedit','objectmove','palette','uploadcancel','buttons','geometryoverlay','pixelatesafe','pixelateinsecure','quitresume','quitconfirm','quitdisable','monitors','monitoroverride','monitordelay'):
             if mode=='uploadcancel' and b'history' not in help_text: continue
             cancel = mode in ('cancel','quitconfirm','quitdisable')
             flags = ['--raw'] if mode in ('cancel','raw') else ['--accept-on-select','--print-geometry']
@@ -394,6 +394,11 @@ print('PASS: capture lock is released after a killed editor')
             if mode=='palette':
                 flags=['--raw']
                 test_config.write_text('[General]\ncheckForUpdates=false\nuserColors=#00ff00, red, picker\n')
+            if mode=='objectmove':
+                flags=['--raw','--region','400x200+500+450']
+                data=struct.pack('>II',127,11)+b'QList<int>\0'+struct.pack('>I',0)
+                variant='@Variant('+''.join(chr(92)+'x'+format(byte,'02x') for byte in data)+')'
+                test_config.write_text('[General]\ncheckForUpdates=false\nlanguage=en\nshowSelectionGeometry=0\nbuttons='+variant+'\n')
             if mode=='textedit':
                 flags=['--raw','--region','400x200+500+450']
                 test_config.write_text('[General]\ncheckForUpdates=false\ncopyOnDoubleClick=true\ndrawFontSize=18\nshowSelectionGeometry=0\n')
@@ -511,6 +516,53 @@ print('PASS: capture lock is released after a killed editor')
                 assert any(value!=255 for value in geometry_pixels()),'Selection movement did not restore geometry'
                 tool('key','Return')
             elif mode in ('monitors','monitoroverride','monitordelay'):
+                tool('key','Return')
+            elif mode=='objectmove':
+                import io
+                from PIL import Image
+                def move_pixels():
+                    time.sleep(.2)
+                    captured=subprocess.run(bus_command+[str(binary),'full','--raw'],env=env,capture_output=True,timeout=20)
+                    assert captured.returncode==0,captured.stderr.decode()
+                    (artifact_dir/'rust-object-move-x11.png').write_bytes(captured.stdout)
+                    image=Image.open(io.BytesIO(captured.stdout)).convert('RGB')
+                    return image.getpixel((550,500)),image.getpixel((650,550))
+                background=move_pixels()
+                tool('key','r')
+                time.sleep(.2)
+                tool('mousemove','--window',window,'530','480')
+                tool('mousedown','1')
+                time.sleep(.15)
+                tool('mousemove','--window',window,'570','520')
+                time.sleep(.2)
+                tool('mouseup','1')
+                original=move_pixels()
+                assert original[0][0]>original[0][1]+80,original
+                tool('mousemove','--window',window,'180','37')
+                tool('click','1') # The reduced toolbar contains Capture region and Move object.
+                time.sleep(.2)
+                def drag_object():
+                    tool('mousemove','--window',window,'550','500')
+                    tool('mousedown','1')
+                    time.sleep(.15)
+                    tool('mousemove','--window',window,'650','550')
+                drag_object()
+                preview=move_pixels()
+                assert preview[0]==background[0] and preview[1]==original[0],(preview,original,background)
+                tool('mouseup','1')
+                assert move_pixels()==preview,'Move preview changed on release'
+                tool('key','ctrl+z')
+                assert move_pixels()==original,'Moving was not one undoable edit'
+                tool('key','ctrl+shift+z')
+                assert move_pixels()==preview,'Redo failed to restore movement'
+                tool('key','ctrl+z')
+                drag_object()
+                assert move_pixels()==preview
+                tool('key','Escape')
+                tool('mouseup','1')
+                assert move_pixels()==original,'Cancelling a move changed the document'
+                tool('key','ctrl+shift+z')
+                assert move_pixels()==preview,'Cancelled drag erased redo history'
                 tool('key','Return')
             elif mode=='textedit':
                 import io
@@ -747,7 +799,7 @@ print('PASS: capture lock is released after a killed editor')
                 pixels=Image.open(io.BytesIO(out)).convert('RGB')
                 assert pixels.size==(512,768),pixels.size
                 assert pixels.getpixel((256,384))==((0,0,255) if mode=='monitoroverride' else (255,0,0)),'Wrong X11 monitor captured'
-            elif mode=='textedit':
+            elif mode in ('textedit','objectmove'):
                 assert png(out)==(400,200)
             elif mode in ('preset','last','lastconfig','lastoverride'):
                 assert out==(b'20x10+5+6\n' if mode=='lastoverride' else b'80x60+20+30\n'),out
