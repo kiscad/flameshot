@@ -52,11 +52,13 @@ fn main() -> Result<()> {
         .get_property(false, window, property, AtomEnum::ANY, 0, u32::MAX)?
         .reply()?;
     ensure!(header.type_ == incr, "Expected a large INCR transfer");
+    let started = std::time::Instant::now();
     println!("ready");
     std::io::stdout().flush()?;
     let mut command = String::new();
     std::io::stdin().read_line(&mut command)?;
     ensure!(command.trim() == "read", "Expected read command");
+    eprintln!("Resuming INCR after {:?}", started.elapsed());
     connection.delete_property(window, property)?;
     connection.flush()?;
     let mut data = Vec::new();
@@ -68,6 +70,11 @@ fn main() -> Result<()> {
             let part = connection
                 .get_property(true, window, property, AtomEnum::ANY, 0, u32::MAX)?
                 .reply()?;
+            eprintln!(
+                "INCR received {} bytes at {:?}",
+                part.value.len(),
+                started.elapsed()
+            );
             ensure!(
                 part.type_ == png && part.format == 8,
                 "Wrong clipboard data format"

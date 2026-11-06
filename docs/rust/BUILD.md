@@ -86,3 +86,33 @@ Legacy theme-color options are supported without starting the GUI:
 The short forms are `-m` and `-k`. Colors accept Qt/SVG names, `#RRGGBB`, or
 Flameshot's `#RRGGBBAA` form. Quote hexadecimal values in shell commands so `#`
 is not interpreted as a shell comment. Invalid values leave the INI file intact.
+
+## Debian source and binary packages
+
+From a Git checkout, prepare a portable source archive with the locked Cargo
+registry dependencies included:
+
+```sh
+scripts/package-rust-source.sh target/flameshot_15.0.0.orig.tar.gz
+```
+
+This exports repository files, vendors dependencies and normalizes archive metadata.
+Dependency preparation may download crates; the resulting archive configures Cargo
+for offline builds. Install the build dependencies listed in
+`packaging/debian/control`, including Rust/Cargo 1.99 or newer, then build from the
+unpacked archive:
+
+```sh
+cp -a packaging/debian debian
+dpkg-buildpackage -b -us -uc
+```
+
+The Debian recipe runs Cargo tests and installs through `stage-rust.sh`. It includes
+Imgur support and disables the application's update checker. Vendored files are
+excluded from debhelper cleanup so their Cargo checksums remain valid. `CARGO_TARGET_DIR`
+may point to an external build cache.
+
+To run desktop tests against an unpacked package executable, set
+`FLAMESHOT_TEST_HELPER_DIR` to the directory containing the Rust test helpers and
+`FLAMESHOT_TEST_ARTIFACT_DIR` to a writable directory for diagnostic screenshots.
+The test scripts locate fixtures relative to their own repository location.

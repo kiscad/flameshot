@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Implemented with isolated service/window tests; full desktop integration acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Cargo staging exists; distribution-specific recipes still pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian Cargo source/package build and desktop suites validated; RPM/Arch/Flatpak/Snap/Nix pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb and native Sway/mixed-DPI suites pass; full GNOME/KDE and IME coverage pending |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -1163,3 +1163,38 @@ the complete native suite passed. A wl-copy test invocation was changed to avoid
 waiting on output pipes inherited by its background provider. No test touches the
 real desktop clipboard. All Linux legacy option keys now appear in Settings, which
 is read-path coverage rather than proof of full feature acceptance.
+
+Debian build/install rules now use locked offline Cargo, with Imgur enabled and
+application update checking disabled. Qt/CMake build/runtime dependencies were
+replaced with Rust and native graphics/runtime requirements; shlibs dependencies
+are generated from the executable. The staging script now installs the legacy
+D-Bus interface XML. A source-archive script exports tracked project files and
+vendors locked dependencies, normalizes tar metadata and publishes the archive
+atomically. It does not include the old root CMake/C++ project.
+
+Actual validation built an optimized executable from the archive using an empty
+Cargo home and offline mode. Extracted debhelper tools were used without installing
+them on the host; dpkg-buildpackage -d bypassed package-database checks for these
+externally supplied tools/toolchain. The standard build, Cargo tests, stripping,
+debug-symbol package and .deb generation succeeded. Debhelper cleanup initially
+removed vendor Cargo.toml.orig files; excluding vendor and disabling irrelevant
+autotools hooks fixed checksum failures. The existing upstream changelog emits a
+version-ordering warning for 15.0.0 versus its earlier 15.0.rc2 entry; it was not
+silently rewritten. Desktop/AppStream metadata validated and the package binary
+has no direct Qt linkage. Other distro recipes remain pending.
+
+Release package testing exposed an X11 INCR termination race: all data chunks
+arrived, but after ownership loss the provider could drop its connection before
+the empty terminator reached the server. It now waits for the receiver's final
+property deletion (or window destruction/timeout), and synchronizes with the X
+server before dropping its connection. The paused-reader package test passed after
+this fix; final package desktop suites are pending. Test helpers now emit progress
+on failure and can be supplied independently of the executable installation path.
+Final stripped Debian package executable passed the complete X11 and native Sway
+suites, including the paused INCR paste that exposed the release-only race. Final
+workspace checks passed. Desktop/AppStream validation and Qt-linkage checks passed.
+Two source archive runs produced the same SHA-256 at the validation snapshot:
+7493e16d4768cb039dde017c70127df4193d4024d27d60b1b87e115a1459dab8.
+The archive was inspected for portable vendor configuration, absence of the legacy
+root C++/CMake project, and inclusion of the final clipboard fix. Debian packaging
+is migrated/locally validated; RPM, Arch, Flatpak, Snap and Nix remain pending.

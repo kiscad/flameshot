@@ -16,6 +16,9 @@ import tempfile
 import time
 
 root,binary=map(lambda p:Path(p).resolve(),sys.argv[1:3])
+artifact_dir=Path(os.environ.get('FLAMESHOT_TEST_ARTIFACT_DIR',str(binary.parent.parent)))
+artifact_dir.mkdir(parents=True,exist_ok=True)
+helper_dir=Path(os.environ.get('FLAMESHOT_TEST_HELPER_DIR',str(binary.parent/'examples')))
 if '--inside' not in sys.argv:
     with tempfile.TemporaryDirectory(prefix='flameshot-wayland-') as directory:
         directory=Path(directory)
@@ -61,7 +64,7 @@ try:
     wait_for(lambda:any((directory/'runtime').glob('sway-ipc.*.sock')))
     env['SWAYSOCK']=str(next((directory/'runtime').glob('sway-ipc.*.sock')))
     pointer_env=env.copy();pointer_env['FLAMESHOT_TEST_WAYLAND_INPUT']='1'
-    pointer=subprocess.Popen([str(binary.parent/'examples/wayland_pointer')],env=pointer_env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
+    pointer=subprocess.Popen([str(helper_dir/'wayland_pointer')],env=pointer_env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
     processes.append(pointer);assert pointer.stdout.readline().strip()=='ready'
     def point(command):
         pointer.stdin.write(command+'\n');pointer.stdin.flush();assert pointer.stdout.readline().strip()=='ok'
@@ -162,7 +165,7 @@ try:
     time.sleep(.3)
     point('right')
     time.sleep(.3)
-    snapshot=call(str(root/'usr/bin/grim'),'-c','-');(binary.parent.parent/'rust-wayland-pin-menu.png').write_bytes(snapshot.stdout)
+    snapshot=call(str(root/'usr/bin/grim'),'-c','-');(artifact_dir/'rust-wayland-pin-menu.png').write_bytes(snapshot.stdout)
     call(str(root/'usr/bin/wtype'),'-s','300','-k','Down','-s','150','-k','Down','-s','150','-k','Return')
     wait_for(lambda:pin_node()['rect']['width']==300 and pin_node()['rect']['height']==400,5)
     result=call(str(root/'usr/bin/grim'),'-');rotated=Image.open(BytesIO(result.stdout)).convert('RGB');rect=pin_node()['rect']
@@ -236,7 +239,7 @@ try:
     call(str(root/'usr/bin/wtype'),'-s','200','-k','Return','-s','200')
     time.sleep(.4)
     assert closing.poll() is None,'Default No accepted native close'
-    snapshot=call(str(root/'usr/bin/grim'),'-o','HEADLESS-2','-');(binary.parent.parent/'rust-wayland-quit-after-no.png').write_bytes(snapshot.stdout)
+    snapshot=call(str(root/'usr/bin/grim'),'-o','HEADLESS-2','-');(artifact_dir/'rust-wayland-quit-after-no.png').write_bytes(snapshot.stdout)
     call(str(root/'usr/bin/swaymsg'),f'[pid={closing.pid}] focus')
     call(str(root/'usr/bin/wtype'),'-s','200','-k','Escape','-s','200')
     time.sleep(.3)
@@ -244,7 +247,7 @@ try:
     time.sleep(.2)
     call(str(root/'usr/bin/wtype'),'-s','200','-k','Return','-s','200')
     time.sleep(.3)
-    snapshot=call(str(root/'usr/bin/grim'),'-o','HEADLESS-2','-');(binary.parent.parent/'rust-wayland-quit-after-yes.png').write_bytes(snapshot.stdout)
+    snapshot=call(str(root/'usr/bin/grim'),'-o','HEADLESS-2','-');(artifact_dir/'rust-wayland-quit-after-yes.png').write_bytes(snapshot.stdout)
     out,err=closing.communicate(timeout=10)
     assert closing.returncode==2 and not out,err.decode()
     print('PASS: native close respects confirmation, default No, and confirmed cancellation',flush=True)

@@ -23,3 +23,5 @@ install -Dm644 data/img/material/LICENSE.txt "$package_root/share/licenses/flame
 chmod 644 "$package_root/share/applications/org.flameshot.Flameshot.desktop" \
   "$package_root/share/dbus-1/services/org.flameshot.Flameshot.service" \
   "$package_root/share/metainfo/org.flameshot.Flameshot.metainfo.xml"
+
+install -Dm644 data/dbus/org.flameshot.Flameshot.xml "$package_root/share/dbus-1/interfaces/org.flameshot.Flameshot.xml"

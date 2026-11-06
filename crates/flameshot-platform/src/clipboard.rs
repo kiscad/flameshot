@@ -158,6 +158,7 @@ fn serve_x11(
         return Ok(());
     }
     struct Transfer {
+        ending: bool,
         offset: usize,
         target: u32,
         last: Instant,
@@ -233,6 +234,7 @@ fn serve_x11(
                         transfers.insert(
                             (request.requestor, property),
                             Transfer {
+                                ending: false,
                                 offset: 0,
                                 target: request.target,
                                 last: Instant::now(),
@@ -263,17 +265,22 @@ fn serve_x11(
             Event::PropertyNotify(event) if event.state == Property::DELETE => {
                 let key = (event.window, event.atom);
                 if let Some(transfer) = transfers.get_mut(&key) {
-                    let end = (transfer.offset + chunk).min(data.len());
-                    connection.change_property8(
-                        PropMode::REPLACE,
-                        event.window,
-                        event.atom,
-                        transfer.target,
-                        &data[transfer.offset..end],
-                    )?;
-                    let done = transfer.offset == data.len();
-                    transfer.offset = end;
-                    transfer.last = Instant::now();
+                    let done = transfer.ending;
+                    if !done {
+                        let end = (transfer.offset + chunk).min(data.len());
+                        connection.change_property8(
+                            PropMode::REPLACE,
+                            event.window,
+                            event.atom,
+                            transfer.target,
+                            &data[transfer.offset..end],
+                        )?;
+                        // Keep the provider alive until the receiver deletes the empty
+                        // terminator too. Otherwise disconnect can discard the last write.
+                        transfer.ending = transfer.offset == data.len();
+                        transfer.offset = end;
+                        transfer.last = Instant::now();
+                    }
                     if done {
                         transfers.remove(&key);
                         if !transfers.keys().any(|(window, _)| *window == event.window) {
@@ -292,5 +299,8 @@ fn serve_x11(
             _ => {}
         }
     }
+    // A flush only writes to the socket; wait for server acknowledgement before
+    // dropping the connection so even small outstanding replies are delivered.
+    connection.get_input_focus()?.reply()?;
     Ok(())
 }

@@ -1,30 +1,29 @@
 #!/usr/bin/make -f
-# See debhelper(7) (uncomment to enable)
-# output every command that modifies files on the build system.
-#export DH_VERBOSE = 1
-
-
-# see FEATURE AREAS in dpkg-buildflags(1)
+# SPDX-License-Identifier: GPL-3.0-or-later
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
-
-# see ENVIRONMENT in dpkg-buildflags(1)
-# package maintainers to append CFLAGS
-#export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
-# package maintainers to append LDFLAGS
-export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
+export CARGO_INCREMENTAL = 0
+export CARGO_TARGET_DIR ?= target
+CARGO_ARGS = --locked --offline --no-default-features --features imgur
 
 %:
-	dh $@ 
+	dh $@ --buildsystem=none
 
-override_dh_auto_configure:
-	# The existence of an empty .git directory triggers syncqt.
-	mkdir .git || true
-	# This is required to use Cmake FetchContent
-	dh_auto_configure -- \
-		-DFETCHCONTENT_FULLY_DISCONNECTED=OFF
+override_dh_auto_build:
+	cargo build $(CARGO_ARGS) --release -p flameshot
+
+override_dh_auto_test:
+ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
+	cargo test $(CARGO_ARGS) --workspace
+endif
 
 override_dh_auto_install:
-	dh_auto_install
-	# Remove not required headers, etc.
-	rm -rf debian/flameshot/usr/include
-	rm -rf debian/flameshot/usr/lib
+	DESTDIR="$(CURDIR)/debian/flameshot" PREFIX=/usr FLAMESHOT_BINARY="$(CARGO_TARGET_DIR)/release/flameshot" scripts/stage-rust.sh
+
+override_dh_auto_clean:
+	rm -rf target
+
+# Debhelper must not rewrite or delete files covered by Cargo vendor checksums.
+override_dh_update_autotools_config override_dh_autoreconf override_dh_autoreconf_clean:
+
+override_dh_clean:
+	dh_clean --exclude=vendor/

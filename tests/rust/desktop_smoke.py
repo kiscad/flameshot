@@ -12,6 +12,8 @@ import tempfile
 import time
 
 root, binary = map(lambda p: Path(p).resolve(), sys.argv[1:])
+artifact_dir=Path(os.environ.get("FLAMESHOT_TEST_ARTIFACT_DIR",str(binary.parent.parent)))
+artifact_dir.mkdir(parents=True,exist_ok=True)
 env = os.environ.copy()
 env.pop('WAYLAND_DISPLAY', None)
 env['XDG_SESSION_TYPE'] = 'x11'
@@ -135,7 +137,7 @@ try:
     copied=subprocess.run([xclip,'-selection','clipboard','-t','image/png','-o'],capture_output=True,timeout=10)
     assert copied.returncode==0 and copied.stdout==expected.stdout,'Large INCR clipboard transfer differs from capture'
     pending_file=config.parent/'pending-paste.png'
-    probe=subprocess.Popen([str(Path(binary).parent/'examples/x11_clipboard_probe'),str(pending_file)],env=dict(os.environ,FLAMESHOT_TEST_X11_INPUT='1'),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    probe=subprocess.Popen([str(Path(os.environ.get('FLAMESHOT_TEST_HELPER_DIR',str(Path(binary).parent/'examples')))/'x11_clipboard_probe'),str(pending_file)],env=dict(os.environ,FLAMESHOT_TEST_X11_INPUT='1'),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
     try:
         import select
         assert select.select([probe.stdout],[],[],5)[0],'Clipboard probe did not start'
@@ -146,7 +148,8 @@ try:
         subprocess.run([xclip,'-selection','clipboard','-loops','1'],input=b'replacement',stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,check=True,timeout=5)
         time.sleep(1.2)
         assert service_owned(),'Idle daemon abandoned an older in-flight paste'
-        out,err=probe.communicate('read\n',timeout=10)
+        try:out,err=probe.communicate('read\n',timeout=10)
+        except subprocess.TimeoutExpired as error:raise AssertionError(f'INCR probe timed out: {error.stderr!r}') from error
         assert probe.returncode==0 and 'done' in out,err
         assert pending_file.read_bytes()==expected.stdout,'In-flight paste lost data after ownership changed'
     finally:
@@ -318,7 +321,7 @@ print('PASS: capture lock is released after a killed editor')
         if b'history' in help_text:
             history=Path(directory)/'flameshot/history'
             history.mkdir(parents=True,exist_ok=True)
-            fixture=binary.parents[2]/'crates/flameshot-core/tests/fixtures/qt6-clipboard.bin'
+            fixture=Path(__file__).resolve().parents[2]/'crates/flameshot-core/tests/fixtures/qt6-clipboard.bin'
             (history/'imgur-testtoken-abc.png').write_bytes(fixture.read_bytes()[4:])
             process=subprocess.Popen(bus_command+[str(binary),'history'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             deadline=time.monotonic()+15
@@ -456,7 +459,7 @@ print('PASS: capture lock is released after a killed editor')
                 time.sleep(.3)
                 artifact = subprocess.run(bus_command+[str(binary),'full','--raw'],env=env,capture_output=True,timeout=20)
                 assert artifact.returncode==0,artifact.stderr.decode()
-                (binary.parent.parent/'rust-magnifier-x11.png').write_bytes(artifact.stdout)
+                (artifact_dir/'rust-magnifier-x11.png').write_bytes(artifact.stdout)
                 tool('key','g')
             if mode in ('quitresume','quitconfirm','quitdisable'):
                 if mode=='quitresume':
@@ -642,7 +645,7 @@ print('PASS: capture lock is released after a killed editor')
                 if mode=='buttons':
                     captured=subprocess.run(bus_command+[str(binary),'full','--raw'],env=env,capture_output=True,timeout=20)
                     assert captured.returncode==0,captured.stderr.decode()
-                    (binary.parent.parent/'rust-toolbar-x11.png').write_bytes(captured.stdout)
+                    (artifact_dir/'rust-toolbar-x11.png').write_bytes(captured.stdout)
                     import io,configparser
                     from PIL import Image
                     pixels=Image.open(io.BytesIO(captured.stdout)).convert('RGB')
