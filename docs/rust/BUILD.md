@@ -187,3 +187,29 @@ The development environment currently rejects bubblewrap UID-map setup. Manifest
 parsing, source downloads and unconfined build/runtime checks therefore do not prove
 a successful Flatpak sandbox build. The dedicated CI workflow provides that build
 gate on a runner with the required namespace support; it has not yet run remotely.
+
+## Nix
+
+The Linux flake uses `rustPlatform.buildRustPackage`, dependencies locked by
+`Cargo.lock`, and the shared Rust package staging script. Its pinned nixpkgs
+provides Rust 1.99.0, satisfying the workspace's Rust 1.99 minimum (the non-Nix
+rustup toolchain remains 1.99.1). No Qt or CMake build hooks are used. Imgur is
+enabled; the application update checker is disabled. Runtime wrapping supplies
+the dynamically loaded X11/Wayland/OpenGL/Vulkan libraries and the `gio` launcher.
+The desktop session must provide its graphics driver, fonts, D-Bus and portals.
+
+```sh
+nix flake check --all-systems --no-build
+nix build .#flameshot
+./result/bin/flameshot --version
+nix develop
+```
+
+Both `x86_64-linux` and `aarch64-linux` expressions are evaluated locally. The
+portable application-launch test also passes after removing its hardcoded Python
+path. A complete Nix build is **not yet verified**: the available Nix 2.18 client
+can fetch/evaluate in a relocated private store, but cannot execute builders at
+the canonical `/nix/store` paths in this environment. Enabling its sandbox option
+does not resolve that mapping. The `Rust Nix` workflow uses a normal Nix store to
+build and test the native package; that hosted workflow has not run yet. Evaluation
+of aarch64 does not constitute an aarch64 compilation or desktop test.

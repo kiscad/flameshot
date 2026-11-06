@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Implemented with isolated service/window tests; full desktop integration acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak Cargo manifest migrated but sandbox validation blocked by UID-map setup; Snap/Nix and clean-distro installs pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak/Nix definitions migrated with local environment build blockers; Snap and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb and native Sway/mixed-DPI suites pass; full GNOME/KDE and IME coverage pending |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -1273,3 +1273,22 @@ claiming filesystem or bus confinement. Normal X11/native Sway suites passed too
 Actual SDK-sandbox compilation, cleanup/bundle execution and sandbox file/app-chooser
 flows remain unverified because user-namespace setup is denied here. The goal stays
 open; this environment limitation is not treated as complete Flatpak acceptance.
+
+### Nix Cargo migration
+
+Replaced the Qt/CMake flake with `rustPlatform.buildRustPackage`, Cargo-lock
+vendoring, the shared Rust staging script, and native library/`gio` wrapping.
+Removed obsolete Qt dependency fetches, flake-parts, treefmt-nix and Darwin outputs;
+Linux x86_64/aarch64 match the current rewrite acceptance scope. The updated lock
+pins nixpkgs `1d060086d60cb76a40cf37109f979d88a5bd6396` with Rust 1.99.0.
+The development shell supplies Cargo, rustc, rustfmt, Clippy and launcher tools.
+
+Validation: Nix 2.18.1 `flake check --all-systems --no-build` succeeds; evaluating
+native build inputs confirms Rust/Cargo 1.99.0 and no Qt/CMake hooks. The launcher
+test passes using PATH-resolved Python, and Rust formatting remains clean. Actual
+Nix builds stop before project compilation: the relocated private store does not
+make canonical `/nix/store/.../bin/bash` builder paths executable, including with
+`sandbox = true`. No system store or host namespace policy was changed. Added an
+unrun hosted workflow for normal-store builds and installed executable checks.
+Nix package compilation/runtime acceptance and clean-distro installs remain open;
+Snap still needs migration.

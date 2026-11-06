@@ -1,0 +1,35 @@
+name: Rust Nix
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Cargo.*'
+      - 'crates/**'
+      - 'data/**'
+      - 'scripts/stage-rust.sh'
+      - '*.nix'
+      - 'flake.lock'
+      - '.github/workflows/nix-rust.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Nix
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nix-bin
+          sudo git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Evaluate both Linux targets
+        run: sudo nix --extra-experimental-features 'nix-command flakes' flake check --all-systems --no-build
+      - name: Build and test the native package
+        run: sudo nix --extra-experimental-features 'nix-command flakes' build -L .#flameshot
+      - name: Verify packaged executable and integration files
+        run: |
+          result/bin/flameshot --version
+          test -f result/share/applications/org.flameshot.Flameshot.desktop
+          test -f result/share/dbus-1/services/org.flameshot.Flameshot.service
+          test -f result/share/icons/hicolor/scalable/apps/org.flameshot.Flameshot.svg

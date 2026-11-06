@@ -80,7 +80,7 @@ mod tests {
         let script = root.path().join("receiver script.py");
         std::fs::write(&script,format!("import pathlib,sys\npathlib.Path({:?}).write_text(str(len(sys.argv)-1)+'\\n'+sys.argv[1])\n",receipt.to_str().unwrap())).unwrap();
         let desktop = root.path().join("receiver.desktop");
-        std::fs::write(&desktop,format!("[Desktop Entry]\nType=Application\nName=Test\nExec=/usr/bin/python3 \"{}\" %f\nTerminal=false\n",script.display())).unwrap();
+        std::fs::write(&desktop,format!("[Desktop Entry]\nType=Application\nName=Test\nExec=python3 \"{}\" %f\nTerminal=false\n",script.display())).unwrap();
         let image = root.path().join("space $(literal).png");
         std::fs::write(&image, b"synthetic").unwrap();
         launch(
