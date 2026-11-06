@@ -114,6 +114,7 @@ pub struct Document {
     undo: Vec<Change>,
     redo: Vec<Change>,
     undo_limit: usize,
+    transaction: Option<Vec<Annotation>>,
     text_renderer: std::cell::RefCell<Option<crate::text::TextRenderer>>,
 }
 impl Document {
@@ -127,6 +128,7 @@ impl Document {
             undo: vec![],
             redo: vec![],
             undo_limit,
+            transaction: None,
             text_renderer: std::cell::RefCell::new(None),
         })
     }
@@ -156,7 +158,28 @@ impl Document {
         self.commit(next);
         Ok(())
     }
+    /// Group live replacements into a single history entry. Nested starts are inert.
+    pub fn begin_transaction(&mut self) {
+        if self.transaction.is_none() {
+            self.transaction = Some(self.annotations.clone());
+        }
+    }
+    pub fn finish_transaction(&mut self) {
+        if let Some(before) = self.transaction.take() {
+            let after = std::mem::replace(&mut self.annotations, before);
+            self.commit(after);
+        }
+    }
+    pub fn cancel_transaction(&mut self) {
+        if let Some(before) = self.transaction.take() {
+            self.annotations = before;
+        }
+    }
     fn commit(&mut self, after: Vec<Annotation>) {
+        if self.transaction.is_some() {
+            self.annotations = after;
+            return;
+        }
         if self.annotations == after {
             return;
         }
@@ -325,6 +348,7 @@ impl Document {
         self.replace(index, self.moved_annotation(index, dx, dy)?)
     }
     pub fn undo(&mut self) -> bool {
+        self.finish_transaction();
         let Some(change) = self.undo.pop() else {
             return false;
         };
@@ -333,6 +357,7 @@ impl Document {
         true
     }
     pub fn redo(&mut self) -> bool {
+        self.finish_transaction();
         let Some(change) = self.redo.pop() else {
             return false;
         };
@@ -1047,6 +1072,54 @@ mod tests {
             filled: true,
             radius: 0.0,
         }
+    }
+    #[test]
+    fn live_transaction_is_one_undo_entry_and_obeys_history_limit() {
+        let mut doc = Document::new(base(), 1).unwrap();
+        doc.add(mark()).unwrap();
+        doc.begin_transaction();
+        for value in [2.0, 4.0, 6.0, 9.0] {
+            doc.begin_transaction();
+            let mut changed = mark().with_tool_size(value).unwrap();
+            changed.set_color([0, (value * 20.0) as u8, 255, 180]);
+            doc.replace(0, changed).unwrap();
+        }
+        let final_image = doc.render().unwrap();
+        assert_ne!(
+            final_image,
+            Document::new(base(), 1)
+                .unwrap()
+                .preview(Some(&mark()))
+                .unwrap()
+        );
+        doc.finish_transaction();
+        assert!(doc.undo());
+        assert_eq!(doc.annotations(), &[mark()]);
+        assert!(!doc.undo());
+        assert!(doc.redo());
+        assert_eq!(doc.render().unwrap(), final_image);
+    }
+    #[test]
+    fn cancelled_or_unchanged_transactions_preserve_redo() {
+        let mut doc = Document::new(base(), 10).unwrap();
+        doc.add(mark()).unwrap();
+        doc.move_annotation(0, 3.0, 0.0).unwrap();
+        let moved = doc.annotations().to_vec();
+        assert!(doc.undo());
+        doc.begin_transaction();
+        doc.replace(0, mark().with_tool_size(9.0).unwrap()).unwrap();
+        doc.cancel_transaction();
+        assert_eq!(doc.annotations(), &[mark()]);
+        doc.begin_transaction();
+        doc.replace(0, mark().with_tool_size(9.0).unwrap()).unwrap();
+        doc.replace(0, mark()).unwrap();
+        doc.finish_transaction();
+        assert!(doc.redo());
+        assert_eq!(doc.annotations(), moved);
+        doc.begin_transaction();
+        doc.replace(0, mark().with_tool_size(6.0).unwrap()).unwrap();
+        assert!(doc.undo()); // History commands finish an in-flight gesture first.
+        assert_eq!(doc.annotations(), moved);
     }
     #[test]
     fn selected_sizes_use_tool_specific_units_and_preserve_other_properties() {

@@ -607,6 +607,22 @@ print('PASS: capture lock is released after a killed editor')
                 tool('mousemove','--window',window,'650','550')
                 tool('click','1')
                 time.sleep(.2)
+                tool('mousemove','--window',window,'310','37')
+                tool('mousedown','1')
+                time.sleep(.2)
+                for size_x in (308,306,304,302,300,298,296):
+                    tool('mousemove','--window',window,str(size_x),'37')
+                    time.sleep(.15)
+                assert corner_pixel()==(0,255,0),'Size drag did not preview while held'
+                tool('mouseup','1')
+                assert corner_pixel()==(0,255,0)
+                tool('key','ctrl+z')
+                assert corner_pixel()==background[1],'Continuous size drag was not one undo step'
+                tool('key','ctrl+shift+z')
+                assert corner_pixel()==(0,255,0),'Continuous size redo failed'
+                tool('mousemove','--window',window,'650','550')
+                tool('click','1')
+                time.sleep(.2)
                 tool('key','p')
                 time.sleep(.2)
                 tool('mousemove','--window',window,'77','60')

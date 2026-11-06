@@ -1425,3 +1425,31 @@ all-feature Clippy with warnings denied, formatting, and the complete isolated
 Xvfb suite including selected-object roundness, configuration persistence and
 incremental undo/redo. The INI assertion accepts QSettings-compatible quoted values
 and repeated sections; pixel assertions sample outside the antialiased edge.
+
+### Continuous property edits in undo history
+
+The core document now supports a live edit group: intermediate replacements render
+normally but retain one starting snapshot. Finishing records one undo entry and
+honors the history limit. Cancellation restores the snapshot, and finishing a
+no-op group preserves redo. Undo/redo first finish any active group so pending
+changes cannot leak across history operations.
+
+The editor begins a group when a selected-object color or size changes while the
+primary pointer is held. It flushes on the frame after release, including changes
+reported on the release frame itself. A repaint ensures that flush happens even
+if the user stops interacting. A subsequent press flushes the prior group before
+starting another. Keyboard increments and palette clicks remain discrete edits.
+The cancellation API is core behavior; this change does not introduce an Escape
+rollback of already-applied property values in the UI.
+
+Core tests cover repeated starts, mixed color/size changes, bounded history,
+cancellation/no-op redo preservation and undo during a live group. The X11 test
+holds the size control across several motion frames, inspects the held preview,
+then verifies single-step undo/redo; existing discrete-increment checks remain.
+The color picker shares the same grouping path, but its entire popup interaction
+has not separately been automated in this change. Geometry resize handles and
+remaining object-specific properties are still pending.
+
+Validation passed: 48 core tests within the all-feature workspace test run,
+all-target/all-feature Clippy with warnings denied, formatting, and the complete
+isolated Xvfb suite including held-pointer preview and grouped undo/redo.

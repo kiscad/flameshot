@@ -218,6 +218,7 @@ struct Editor {
     error: String,
     show_help: bool,
     selected_object: Option<usize>,
+    property_pointer_down: bool,
     counter_outline: bool,
     rendered: Option<RgbaImage>,
     magnifier: bool,
@@ -292,6 +293,7 @@ impl Editor {
             error: String::new(),
             show_help: crate::settings::Settings::load()?.show_help,
             selected_object: None,
+            property_pointer_down: false,
             counter_outline: settings.counter_outline,
             rendered: None,
             magnifier: settings.magnifier,
@@ -776,6 +778,9 @@ impl Editor {
         {
             let mut annotation = original.clone();
             annotation.set_color(self.color.to_srgba_unmultiplied());
+            if self.property_pointer_down {
+                self.document.begin_transaction();
+            }
             if let Err(error) = self.document.replace(index, annotation) {
                 self.error = error.to_string();
             }
@@ -793,10 +798,12 @@ impl Editor {
             && let Some(index) = self.selected_object
             && let Some(annotation) = self.document.annotations().get(index)
         {
-            match annotation
-                .with_tool_size(value)
-                .and_then(|next| self.document.replace(index, next))
-            {
+            match annotation.with_tool_size(value).and_then(|next| {
+                if self.property_pointer_down {
+                    self.document.begin_transaction();
+                }
+                self.document.replace(index, next)
+            }) {
                 Ok(()) => {}
                 Err(error) => {
                     self.error = error.to_string();
@@ -975,6 +982,16 @@ impl eframe::App for Editor {
         }
     }
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        // Flush one frame after release so final release-frame changes belong
+        // to the same gesture, even when the next input starts another gesture.
+        if !self.property_pointer_down {
+            self.document.finish_transaction();
+        }
+        let pointer_down = ui.input(|input| input.pointer.primary_down());
+        if self.property_pointer_down && !pointer_down {
+            ui.ctx().request_repaint();
+        }
+        self.property_pointer_down = pointer_down;
         if self.quit_prompt {
             self.quit_ui(ui);
             return;
