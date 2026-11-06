@@ -12,6 +12,31 @@ use std::{
     time::Duration,
 };
 use zbus::{Connection, Proxy};
+#[derive(Debug)]
+pub enum Stop {
+    Interrupt,
+    Terminate,
+    Disconnected,
+}
+impl Stop {
+    pub fn code(&self) -> u8 {
+        match self {
+            Self::Interrupt => 130,
+            Self::Terminate => 143,
+            Self::Disconnected => 3,
+        }
+    }
+}
+impl std::fmt::Display for Stop {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Interrupt => "Interrupted",
+            Self::Terminate => "Terminated",
+            Self::Disconnected => "Session D-Bus disconnected",
+        })
+    }
+}
+impl std::error::Error for Stop {}
 const SERVICE: &str = "org.flameshot.Flameshot";
 #[derive(Default)]
 pub(crate) struct Activity {
@@ -174,6 +199,9 @@ impl Service {
     }
 }
 pub async fn run() -> Result<()> {
+    // Install handlers before publishing the service name as readiness.
+    let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let activity = Arc::new(Activity::default());
     let connection = zbus::connection::Builder::session()?
         .serve_at(
@@ -230,7 +258,7 @@ pub async fn run() -> Result<()> {
     let mut tray_handle = None;
     let mut refresh = tokio::time::interval(Duration::from_secs(1));
     let mut messages = zbus::MessageStream::from(&connection);
-    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+
     loop {
         tokio::select! {
             _=quit.notified()=>break,
@@ -249,9 +277,9 @@ pub async fn run() -> Result<()> {
                     }
                 }
             },
-            _=tokio::signal::ctrl_c()=>break,
-            _=terminate.recv()=>break,
-            message=messages.next()=>{if message.is_none() || message.is_some_and(|m|m.is_err()) {break;}}
+            _=interrupt.recv()=>return Err(Stop::Interrupt.into()),
+            _=terminate.recv()=>return Err(Stop::Terminate.into()),
+            message=messages.next()=>{if message.is_none() || message.is_some_and(|m|m.is_err()) {return Err(Stop::Disconnected.into());}}
         }
     }
     Ok(())

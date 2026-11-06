@@ -1598,3 +1598,25 @@ with no warnings. The earlier manual claimed D-Bus exit 3 and signal-specific
 statuses that the current Rust paths do not yet consistently implement; those
 remain explicit compatibility gaps rather than being claimed by this manual.
 Argument-error priority and final command syntax also remain in the CLI audit.
+
+### Daemon signal and disconnection exit status
+
+The background service now returns the baseline statuses for caught SIGINT (130),
+SIGTERM (143), and loss of an established session-bus connection (3), instead of
+reporting all three as successful exits. Signal handlers are registered before
+publishing the D-Bus service name. Normal tray and idle exits retain success status;
+signal shutdown does not print an operation-failure diagnostic, while bus loss does.
+
+An ignored integration test creates its own private bus and configuration for each
+case, waits for service ownership, signals only the spawned child (or kills its own
+bus), and checks the actual process status. It is included in `check-rust.sh` behind
+the private-bus test guard. The existing private-bus tray/single-instance test still
+passes. All-feature workspace tests, all-target/all-feature Clippy, formatting and
+warning-free manual rendering pass as well.
+
+This closes established-daemon shutdown statuses, not every bus failure or child
+lifecycle path. Initial connection failures, capture-client failures and explicit
+shutdown of spawned windows remain under audit. Baseline argument parsing also
+needs case-by-case treatment: `parse` failure can reach `finish` and return zero in
+`src/main.cpp`, so changing every parser failure to one purported legacy error code
+would not be evidence-based. Current Rust argument rejection remains nonzero.

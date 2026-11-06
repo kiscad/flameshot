@@ -134,6 +134,12 @@ async fn main() -> std::process::ExitCode {
     match run(cli).await {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
+            if let Some(stop) = error.downcast_ref::<daemon::Stop>() {
+                if matches!(stop, daemon::Stop::Disconnected) {
+                    eprintln!("flameshot: {error:#}");
+                }
+                return std::process::ExitCode::from(stop.code());
+            }
             eprintln!("flameshot: {error:#}");
             let code = if matches!(
                 error.downcast_ref::<portal::CaptureError>(),

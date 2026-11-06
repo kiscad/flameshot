@@ -158,6 +158,15 @@ An operation failed, including an unavailable desktop service or invalid configu
 .TP
 .B 2
 Capture was cancelled or command-line arguments were rejected.
+.TP
+.B 3
+The background service lost its established session D-Bus connection.
+.TP
+.B 130
+The background service received SIGINT.
+.TP
+.B 143
+The background service received SIGTERM.
 .SH EXAMPLES
 .TP
 .B flameshot gui
