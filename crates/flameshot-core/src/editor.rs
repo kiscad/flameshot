@@ -165,11 +165,123 @@ impl Document {
             .saturating_add(1)
             .min(999)
     }
+    /// Search visible strokes first within three pixels, then within five.
+    /// Text gets extra tolerance for spaces between glyphs, matching the legacy
+    /// selector. Coverage shares the export renderer; only query samples are cached.
     pub fn hit_test(&self, point: Point) -> Option<usize> {
-        self.annotations.iter().rposition(|a| {
-            let (min, max) = a.bounds();
-            point.x >= min.x && point.x <= max.x && point.y >= min.y && point.y <= max.y
-        })
+        if !point.x.is_finite()
+            || !point.y.is_finite()
+            || point.x < -8.0
+            || point.y < -8.0
+            || f64::from(point.x) > f64::from(self.base.width()) + 8.0
+            || f64::from(point.y) > f64::from(self.base.height()) + 8.0
+        {
+            return None;
+        }
+        let x = f64::from(point.x).round() as i64;
+        let y = f64::from(point.y).round() as i64;
+        let left = (x - 8).max(0);
+        let top = (y - 8).max(0);
+        let right = (x + 9).min(i64::from(self.base.width()));
+        let bottom = (y + 9).min(i64::from(self.base.height()));
+        if right <= left || bottom <= top {
+            return None;
+        }
+        let mut masks = std::collections::BTreeMap::new();
+        for radius in [3, 5] {
+            for (index, annotation) in self.annotations.iter().enumerate().rev() {
+                let text = matches!(annotation, Annotation::Text { .. });
+                if text && radius == 5 {
+                    continue;
+                }
+                let radius = if text { radius + 5 } else { radius };
+                let l = (x - radius).max(left);
+                let t = (y - radius).max(top);
+                let r = (x + radius + 1).min(right);
+                let b = (y + radius + 1).min(bottom);
+                if r <= l || b <= t {
+                    continue;
+                }
+                if let Annotation::Invert(region) | Annotation::Pixelate { region, .. } = annotation
+                {
+                    if l < i64::from(region.x.saturating_add(region.width))
+                        && r > i64::from(region.x)
+                        && t < i64::from(region.y.saturating_add(region.height))
+                        && b > i64::from(region.y)
+                    {
+                        return Some(index);
+                    }
+                    continue;
+                }
+                // Bounds only reject distant vector objects; they never decide
+                // a hit. Text bounds are estimates, so inspect its glyphs directly.
+                if !text {
+                    let (min, max) = annotation.bounds();
+                    if (r as f32) < min.x
+                        || (b as f32) < min.y
+                        || (l as f32) > max.x
+                        || (t as f32) > max.y
+                    {
+                        continue;
+                    }
+                }
+                let mask = masks.entry(index).or_insert_with(|| {
+                    // Keep the whole object inside the scratch surface. Clipping
+                    // curves to the tiny query rectangle changes raster coverage.
+                    let (ox, oy, ex, ey) = if text {
+                        (
+                            0,
+                            0,
+                            i64::from(self.base.width()),
+                            i64::from(self.base.height()),
+                        )
+                    } else {
+                        let (min, max) = annotation.bounds();
+                        (
+                            (min.x.floor() as i64).max(0),
+                            (min.y.floor() as i64).max(0),
+                            (max.x.ceil() as i64 + 1).min(i64::from(self.base.width())),
+                            (max.y.ceil() as i64 + 1).min(i64::from(self.base.height())),
+                        )
+                    };
+                    if ex <= ox || ey <= oy {
+                        return None;
+                    }
+                    let mut rendered = RgbaImage::new((ex - ox) as u32, (ey - oy) as u32);
+                    if matches!(
+                        annotation,
+                        Annotation::Counter { .. } | Annotation::Text { .. }
+                    ) {
+                        let moved = self
+                            .moved_annotation(index, -(ox as f32), -(oy as f32))
+                            .ok()?;
+                        rendered = self
+                            .render_annotations_on(rendered, std::iter::once(&moved))
+                            .ok()?;
+                    } else {
+                        draw_at(
+                            &mut rendered,
+                            annotation,
+                            Transform::from_translate(-(ox as f32), -(oy as f32)),
+                        )
+                        .ok()?;
+                    }
+                    let mut mask = RgbaImage::new((right - left) as u32, (bottom - top) as u32);
+                    image::imageops::overlay(&mut mask, &rendered, ox - left, oy - top);
+                    Some(mask)
+                });
+                if let Some(mask) = mask {
+                    for py in t..b {
+                        for px in l..r {
+                            if mask.get_pixel((px - left) as u32, (py - top) as u32)[3] != 0 {
+                                return Some(index);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
     }
     /// Compute a movement without mutating either the document or its history.
     pub fn moved_annotation(
@@ -245,7 +357,13 @@ impl Document {
         &self,
         annotations: impl Iterator<Item = &'a Annotation>,
     ) -> Result<RgbaImage, EditError> {
-        let mut image = self.base.clone();
+        self.render_annotations_on(self.base.clone(), annotations)
+    }
+    fn render_annotations_on<'a>(
+        &self,
+        mut image: RgbaImage,
+        annotations: impl Iterator<Item = &'a Annotation>,
+    ) -> Result<RgbaImage, EditError> {
         for annotation in annotations {
             match annotation {
                 Annotation::Counter {
@@ -392,6 +510,9 @@ fn validate(a: &Annotation) -> Result<(), EditError> {
     }
 }
 fn draw(image: &mut RgbaImage, a: &Annotation) -> Result<(), EditError> {
+    draw_at(image, a, Transform::identity())
+}
+fn draw_at(image: &mut RgbaImage, a: &Annotation, transform: Transform) -> Result<(), EditError> {
     let mut builder = PathBuilder::new();
     let (style, filled) = match a {
         Annotation::Pencil { points, style } => {
@@ -414,6 +535,7 @@ fn draw(image: &mut RgbaImage, a: &Annotation) -> Result<(), EditError> {
                 if *reversed { *start } else { *end },
                 *style,
                 *curved,
+                transform,
             );
         }
         Annotation::Line { start, end, style } | Annotation::Marker { start, end, style } => {
@@ -469,13 +591,7 @@ fn draw(image: &mut RgbaImage, a: &Annotation) -> Result<(), EditError> {
     );
     paint.anti_alias = true;
     if filled {
-        layer.fill_path(
-            &path,
-            &paint,
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
+        layer.fill_path(&path, &paint, FillRule::Winding, transform, None);
     } else {
         let stroke = Stroke {
             width: if marker {
@@ -490,7 +606,7 @@ fn draw(image: &mut RgbaImage, a: &Annotation) -> Result<(), EditError> {
             },
             ..Default::default()
         };
-        layer.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+        layer.stroke_path(&path, &paint, &stroke, transform, None);
     }
     composite(image, &layer, marker);
     Ok(())
@@ -544,6 +660,7 @@ fn draw_arrow(
     end: Point,
     style: Style,
     curved: bool,
+    transform: Transform,
 ) -> Result<(), EditError> {
     let length = (end.x - start.x).hypot(end.y - start.y);
     if length <= f32::EPSILON {
@@ -613,18 +730,12 @@ fn draw_arrow(
                 },
                 ..Default::default()
             },
-            Transform::identity(),
+            transform,
             None,
         );
     }
     if let Some(path) = head.finish() {
-        layer.fill_path(
-            &path,
-            &paint,
-            FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
+        layer.fill_path(&path, &paint, FillRule::Winding, transform, None);
     }
     composite(image, &layer, false);
     Ok(())
@@ -842,6 +953,213 @@ mod tests {
             filled: true,
             radius: 0.0,
         }
+    }
+    #[test]
+    fn picking_uses_visible_geometry_and_near_hits_before_far_hits() {
+        let mut doc = Document::new(RgbaImage::new(100, 100), 10).unwrap();
+        let style = Style {
+            color: [255, 0, 0, 255],
+            width: 1.0,
+        };
+        doc.add(Annotation::Rectangle {
+            start: Point { x: 10.0, y: 10.0 },
+            end: Point { x: 90.0, y: 90.0 },
+            style,
+            filled: false,
+            radius: 0.0,
+        })
+        .unwrap();
+        assert_eq!(doc.hit_test(Point { x: 50.0, y: 50.0 }), None);
+        assert_eq!(doc.hit_test(Point { x: 10.0, y: 50.0 }), Some(0));
+        doc.add(Annotation::Line {
+            start: Point { x: 20.0, y: 50.0 },
+            end: Point { x: 80.0, y: 50.0 },
+            style,
+        })
+        .unwrap();
+        doc.add(Annotation::Line {
+            start: Point { x: 20.0, y: 55.0 },
+            end: Point { x: 80.0, y: 55.0 },
+            style,
+        })
+        .unwrap();
+        assert_eq!(doc.hit_test(Point { x: 50.0, y: 50.0 }), Some(1));
+        assert_eq!(doc.hit_test(Point { x: 50.0, y: 53.0 }), Some(2));
+        assert_eq!(doc.hit_test(Point { x: 50.0, y: 60.0 }), Some(2));
+        assert_eq!(doc.hit_test(Point { x: 50.0, y: 70.0 }), None);
+        doc.add(Annotation::Line {
+            start: Point { x: 20.0, y: 20.0 },
+            end: Point { x: 80.0, y: 80.0 },
+            style,
+        })
+        .unwrap();
+        assert_eq!(doc.hit_test(Point { x: 25.0, y: 75.0 }), None);
+        assert_eq!(doc.hit_test(Point { x: 40.0, y: 40.0 }), Some(3));
+        assert_eq!(
+            doc.hit_test(Point {
+                x: f32::NAN,
+                y: 40.0
+            }),
+            None
+        );
+        assert_eq!(doc.hit_test(Point { x: -100.0, y: 40.0 }), None);
+    }
+    #[test]
+    fn picking_regions_fills_and_transparency_preserves_layer_order() {
+        let mut doc = Document::new(RgbaImage::new(100, 100), 10).unwrap();
+        let region = PixelRect {
+            x: 20,
+            y: 20,
+            width: 60,
+            height: 60,
+        };
+        doc.add(Annotation::Pixelate {
+            region,
+            block_size: 8,
+            insecure: false,
+        })
+        .unwrap();
+        doc.add(Annotation::Ellipse {
+            start: Point { x: 10.0, y: 10.0 },
+            end: Point { x: 90.0, y: 90.0 },
+            style: Style {
+                color: [255, 0, 0, 255],
+                width: 1.0,
+            },
+            filled: false,
+        })
+        .unwrap();
+        assert_eq!(doc.hit_test(Point { x: 50.0, y: 50.0 }), Some(0));
+        assert_eq!(doc.hit_test(Point { x: 10.0, y: 50.0 }), Some(1));
+        assert_eq!(doc.hit_test(Point { x: 10.0, y: 10.0 }), None);
+        doc.add(Annotation::Rectangle {
+            start: Point { x: 20.0, y: 20.0 },
+            end: Point { x: 80.0, y: 80.0 },
+            style: Style {
+                color: [255, 0, 0, 0],
+                width: 1.0,
+            },
+            filled: true,
+            radius: 0.0,
+        })
+        .unwrap();
+        assert_eq!(doc.hit_test(Point { x: 50.0, y: 50.0 }), Some(0));
+        doc.add(Annotation::Invert(region)).unwrap();
+        assert_eq!(doc.hit_test(Point { x: 50.0, y: 50.0 }), Some(3));
+    }
+    #[test]
+    fn local_hit_masks_match_exported_pixels_across_tools() {
+        let start = Point { x: 12.0, y: 15.0 };
+        let end = Point { x: 85.0, y: 77.0 };
+        let style = Style {
+            color: [200, 50, 20, 180],
+            width: 3.0,
+        };
+        let annotations = [
+            Annotation::Pencil {
+                points: vec![start, Point { x: 80.0, y: 20.0 }, end],
+                style,
+            },
+            Annotation::Marker { start, end, style },
+            Annotation::Line { start, end, style },
+            Annotation::Arrow {
+                start,
+                end,
+                style,
+                curved: false,
+                reversed: false,
+            },
+            Annotation::Arrow {
+                start,
+                end,
+                style,
+                curved: true,
+                reversed: true,
+            },
+            Annotation::Rectangle {
+                start,
+                end,
+                style,
+                filled: false,
+                radius: 18.0,
+            },
+            Annotation::Rectangle {
+                start,
+                end,
+                style,
+                filled: true,
+                radius: 18.0,
+            },
+            Annotation::Ellipse {
+                start,
+                end,
+                style,
+                filled: false,
+            },
+            Annotation::Ellipse {
+                start,
+                end,
+                style,
+                filled: true,
+            },
+            Annotation::Counter {
+                center: Point { x: 40.0, y: 40.0 },
+                tip: end,
+                number: 12,
+                radius: 14.0,
+                color: style.color,
+                outline: false,
+            },
+            Annotation::Text {
+                position: start,
+                text: "AB\nCD".into(),
+                font_size: 18.0,
+                family: "DejaVu Sans".into(),
+                color: style.color,
+            },
+        ];
+        for annotation in annotations {
+            let radius = if matches!(annotation, Annotation::Text { .. }) {
+                8
+            } else {
+                5
+            };
+            let mut doc = Document::new(RgbaImage::new(100, 100), 1).unwrap();
+            doc.add(annotation.clone()).unwrap();
+            let rendered = doc.render().unwrap();
+            for y in (0i32..100).step_by(7) {
+                for x in (0i32..100).step_by(7) {
+                    let expected = ((y - radius).max(0)..(y + radius + 1).min(100)).any(|py| {
+                        ((x - radius).max(0)..(x + radius + 1).min(100))
+                            .any(|px| rendered.get_pixel(px as u32, py as u32)[3] != 0)
+                    });
+                    assert_eq!(
+                        doc.hit_test(Point {
+                            x: x as f32,
+                            y: y as f32
+                        })
+                        .is_some(),
+                        expected,
+                        "{annotation:?} at {x},{y}"
+                    );
+                }
+            }
+        }
+    }
+    #[test]
+    fn text_picking_uses_glyphs_with_extra_space_tolerance() {
+        let mut doc = Document::new(RgbaImage::new(300, 100), 10).unwrap();
+        doc.add(Annotation::Text {
+            position: Point { x: 10.0, y: 10.0 },
+            text: "I                 I".into(),
+            font_size: 20.0,
+            family: "DejaVu Sans".into(),
+            color: [255, 0, 0, 255],
+        })
+        .unwrap();
+        assert_eq!(doc.hit_test(Point { x: 13.0, y: 22.0 }), Some(0));
+        assert_eq!(doc.hit_test(Point { x: 75.0, y: 22.0 }), None);
+        assert_eq!(doc.hit_test(Point { x: 250.0, y: 22.0 }), None);
     }
     #[test]
     fn move_preview_preserves_layers_and_commits_as_one_undo_step() {

@@ -1346,3 +1346,34 @@ all-feature Clippy with warnings denied, Rust formatting, the complete isolated
 Xvfb suite including the new movement case, and the native Sway/Wayland suite.
 The Wayland run exercises existing capture/clipboard/pin/selection regressions;
 the new held-pointer movement assertions currently run on X11.
+
+### Selecting rendered objects
+
+Replaced bounding-box-only picking with rendered coverage. Search follows the
+legacy near-then-far passes (3 and 5 image pixels); text receives another 5 pixels
+on the near pass for glyph spacing and is excluded from the far pass. Each pass
+visits layers from top to bottom, so a near hit on a lower layer wins over a far
+hit on an upper one. Invert and pixelate retain filled rectangular search areas.
+Transparent shapes, hollow interiors and empty portions of diagonal bounding boxes
+no longer intercept objects underneath.
+
+Vector bounds are only a rejection filter. Candidate vector paths are rendered in
+an object-sized scratch surface before extracting the small query mask: directly
+clipping a curve to the query surface changed tiny-skia's edge coverage, discovered
+by the pixel comparison test. Text uses its actual glyph rendering, not estimated
+character widths. Only query masks survive for reuse by the second search pass.
+The shared export renderer still uses its original identity transform.
+
+Core regression coverage includes near/far priority, layer order, filled effect
+regions, transparency, empty glyph spaces and invalid coordinates. A grid comparison
+checks picking against exported alpha pixels across pencil, marker, line, straight
+and curved/reversed arrows, outlined/filled rounded rectangles and ellipses, counter
+and multiline text. The X11 movement case now puts an outline above a filled shape
+and selects through the hollow center. This addresses geometry-based picking;
+complete object resizing/property editing and final mixed-DPI interaction acceptance
+remain separate pending requirements.
+
+Validation passed: 44 core tests, `cargo test --locked --workspace --all-features`,
+all-target/all-feature Clippy with warnings denied, formatting, and the complete
+isolated Xvfb suite including overlapping-object movement and double-click text
+editing. No GNOME/KDE or mixed-DPI picking parity is claimed by these checks.
