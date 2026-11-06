@@ -5,19 +5,25 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+default = ["update-check"]
+update-check = ["flameshot-platform/update-check"]
+imgur = ["flameshot-platform/imgur"]
+
 [dependencies]
 flameshot-platform = { path = "../flameshot-platform" }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "signal"] }
 zbus = { version = "5.19", default-features = false, features = ["tokio"] }
-image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "bmp", "ico", "pnm", "tiff", "webp", "gif"] }
 chrono = "0.4"
 dirs = "6"
 
 flameshot-core = { path = "../flameshot-core" }
 eframe = { version = "0.37.0", default-features = false, features = ["wgpu", "x11", "wayland", "default_fonts"] }
 
+# Enable Wayland clipboard support in egui text widgets. Screenshot ownership is managed separately.
 arboard = { version = "3.7", features = ["wayland-data-control"] }
 futures-util = "0.3"
 

@@ -13,3 +13,6 @@ pub mod i18n;
 pub mod selection;
 
 pub mod inspection;
+pub mod region;
+
+pub mod color;

@@ -85,3 +85,7 @@ result-*
 
 # Rust
 /target/
+
+# Python test bytecode
+__pycache__/
+*.pyc

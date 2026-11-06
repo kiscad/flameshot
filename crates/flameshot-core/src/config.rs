@@ -10,6 +10,8 @@ pub enum ConfigError {
     InvalidString,
     #[error("Qt typed value cannot be read as a string")]
     TypedValue,
+    #[error("Malformed Qt integer list")]
+    InvalidIntegerList,
     #[error("Invalid INI section or key")]
     InvalidKey,
 }
@@ -45,6 +47,85 @@ impl IniDocument {
     /// Replace only the last effective value. Other lines, including earlier
     /// duplicates and unknown serialized Qt data, retain their original bytes.
     pub fn set_string(&mut self, section: &str, key: &str, value: &str) -> Result<(), ConfigError> {
+        self.set_raw(section, key, &encode_string(value))
+    }
+    pub fn integer_list(&self, section: &str, key: &str) -> Result<Option<Vec<i32>>, ConfigError> {
+        self.raw(section, key).map(decode_integer_list).transpose()
+    }
+    /// Decode QSettings' comma-separated string lists, preserving quoted commas.
+    pub fn string_list(
+        &self,
+        section: &str,
+        key: &str,
+    ) -> Result<Option<Vec<String>>, ConfigError> {
+        let Some(raw) = self.raw(section, key) else {
+            return Ok(None);
+        };
+        let mut values = Vec::new();
+        let (mut quoted, mut escaped, mut start) = (false, false, 0);
+        for (index, ch) in raw.char_indices() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => quoted = !quoted,
+                ',' if !quoted => {
+                    values.push(decode_string(raw[start..index].trim())?);
+                    start = index + 1;
+                }
+                _ => {}
+            }
+        }
+        if quoted || escaped {
+            return Err(ConfigError::InvalidString);
+        }
+        values.push(decode_string(raw[start..].trim())?);
+        Ok(Some(values))
+    }
+    pub fn set_string_list(
+        &mut self,
+        section: &str,
+        key: &str,
+        values: &[String],
+    ) -> Result<(), ConfigError> {
+        self.set_raw(
+            section,
+            key,
+            &values
+                .iter()
+                .map(|value| encode_string(value))
+                .collect::<Vec<_>>()
+                .join(", "),
+        )
+    }
+    pub fn set_integer_list(
+        &mut self,
+        section: &str,
+        key: &str,
+        values: &[i32],
+    ) -> Result<(), ConfigError> {
+        let mut bytes = 127_u32.to_be_bytes().to_vec();
+        bytes.extend_from_slice(&11_u32.to_be_bytes());
+        bytes.extend_from_slice(b"QList<int>\0");
+        bytes.extend_from_slice(
+            &u32::try_from(values.len())
+                .map_err(|_| ConfigError::InvalidIntegerList)?
+                .to_be_bytes(),
+        );
+        for value in values {
+            bytes.extend_from_slice(&value.to_be_bytes());
+        }
+        // Escaping each byte avoids ambiguity when a hex escape precedes an ASCII hex digit.
+        let mut raw = String::from("@Variant(");
+        for byte in bytes {
+            raw.push_str(&format!("\\x{byte:02x}"));
+        }
+        raw.push(')');
+        self.set_raw(section, key, &raw)
+    }
+    fn set_raw(&mut self, section: &str, key: &str, value: &str) -> Result<(), ConfigError> {
         if section.is_empty()
             || key.is_empty()
             || section.contains(['[', ']', '\n', '\r'])
@@ -69,7 +150,7 @@ impl IniDocument {
             }
             offset += line.len();
         }
-        let replacement = format!("{key}={}", encode_string(value));
+        let replacement = format!("{key}={value}");
         if let Some(range) = location {
             self.source.replace_range(range, &replacement);
         } else {
@@ -106,6 +187,15 @@ fn encode_string(value: &str) -> String {
     encoded
 }
 fn decode_string(raw: &str) -> Result<String, ConfigError> {
+    let mut decoded = decode_escaped(raw)?;
+    if decoded.starts_with("@@") {
+        decoded.remove(0);
+    } else if decoded.starts_with('@') {
+        return Err(ConfigError::TypedValue);
+    }
+    Ok(decoded)
+}
+fn decode_escaped(raw: &str) -> Result<String, ConfigError> {
     let raw = if raw.starts_with('"') {
         raw.strip_prefix('"')
             .and_then(|r| r.strip_suffix('"'))
@@ -125,6 +215,10 @@ fn decode_string(raw: &str) -> Result<String, ConfigError> {
             'r' => decoded.push('\r'),
             't' => decoded.push('\t'),
             '0' => decoded.push('\0'),
+            'a' => decoded.push('\x07'),
+            'b' => decoded.push('\x08'),
+            'f' => decoded.push('\x0c'),
+            'v' => decoded.push('\x0b'),
             '\\' => decoded.push('\\'),
             '"' => decoded.push('"'),
             'x' => {
@@ -139,16 +233,88 @@ fn decode_string(raw: &str) -> Result<String, ConfigError> {
             _ => return Err(ConfigError::InvalidString),
         }
     }
-    if decoded.starts_with("@@") {
-        decoded.remove(0);
-    } else if decoded.starts_with('@') {
-        return Err(ConfigError::TypedValue);
-    }
     Ok(decoded)
 }
+fn decode_integer_list(raw: &str) -> Result<Vec<i32>, ConfigError> {
+    let decoded = decode_escaped(raw)?;
+    let body = decoded
+        .strip_prefix("@Variant(")
+        .and_then(|s| s.strip_suffix(')'))
+        .ok_or(ConfigError::InvalidIntegerList)?;
+    let bytes: Vec<u8> = body
+        .chars()
+        .map(|c| u8::try_from(c as u32).map_err(|_| ConfigError::InvalidIntegerList))
+        .collect::<Result<_, _>>()?;
+    if bytes.len() < 23
+        || bytes[..4] != 127_u32.to_be_bytes()
+        || bytes[4..8] != 11_u32.to_be_bytes()
+        || &bytes[8..19] != b"QList<int>\0"
+    {
+        return Err(ConfigError::InvalidIntegerList);
+    }
+    let count = u32::from_be_bytes(bytes[19..23].try_into().unwrap()) as usize;
+    if count > 10000 || bytes.len() != 23 + count * 4 {
+        return Err(ConfigError::InvalidIntegerList);
+    }
+    Ok(bytes[23..]
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|chunk| i32::from_be_bytes(*chunk))
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn string_lists_handle_quoted_commas_and_reject_unclosed_quotes() {
+        let ini = super::IniDocument::parse(
+            r##"[General]
+colors=red, "#abc", picker
+words="a,b", "c\\d", plain
+broken="unfinished
+"##
+            .into(),
+        );
+        assert_eq!(
+            ini.string_list("General", "colors").unwrap().unwrap(),
+            ["red", "#abc", "picker"]
+        );
+        assert_eq!(
+            ini.string_list("General", "words").unwrap().unwrap(),
+            ["a,b", r"c\d", "plain"]
+        );
+        assert!(ini.string_list("General", "broken").is_err());
+    }
+
     use super::*;
+    #[test]
+    fn reads_actual_qsettings_list_and_roundtrips_without_touching_other_values() {
+        let source = include_str!("../tests/fixtures/qt6-settings.ini");
+        let mut ini = IniDocument::parse(source.into());
+        assert_eq!(
+            ini.integer_list("General", "buttons").unwrap().unwrap(),
+            vec![
+                0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24
+            ]
+        );
+        let quoted = ini.string("General", "quoted").unwrap();
+        ini.set_integer_list("General", "buttons", &[18, 0, -1, 255])
+            .unwrap();
+        assert_eq!(
+            ini.integer_list("General", "buttons").unwrap().unwrap(),
+            vec![18, 0, -1, 255]
+        );
+        assert_eq!(ini.string("General", "quoted").unwrap(), quoted);
+        if let Some(path) = std::env::var_os("FLAMESHOT_INI_ARTIFACT") {
+            std::fs::write(path, ini.source()).unwrap();
+        }
+        assert!(
+            IniDocument::parse("buttons=@Variant(\\0)".into())
+                .integer_list("General", "buttons")
+                .is_err()
+        );
+    }
     #[test]
     fn preserves_unknown_variants_comments_and_crlf() {
         let original = "; keep\r\n[General]\r\nbuttons=@Variant(\\0\\0\\x7f)\r\nsavePath=/old\r\n[Other]\r\nvalue=42\r\n";

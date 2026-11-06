@@ -35,6 +35,25 @@ impl Watcher {
     }
 }
 
+struct Notifications(tokio::sync::mpsc::UnboundedSender<String>);
+#[zbus::interface(name = "org.freedesktop.Notifications")]
+impl Notifications {
+    #[allow(clippy::too_many_arguments)]
+    fn notify(
+        &self,
+        _app: &str,
+        _replaces: u32,
+        _icon: &str,
+        _title: &str,
+        body: &str,
+        _actions: Vec<String>,
+        _hints: HashMap<String, OwnedValue>,
+        _timeout: i32,
+    ) -> u32 {
+        let _ = self.0.send(body.into());
+        1
+    }
+}
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires private D-Bus"]
 async fn daemon_protocol_single_instance_tray_icon_and_quit() {
@@ -52,7 +71,26 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         .build()
         .await
         .unwrap();
+    let (notify_sender, mut notifications) = tokio::sync::mpsc::unbounded_channel();
+    let _notifications = zbus::connection::Builder::session()
+        .unwrap()
+        .name("org.freedesktop.Notifications")
+        .unwrap()
+        .serve_at(
+            "/org/freedesktop/Notifications",
+            Notifications(notify_sender),
+        )
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
     let temp = tempfile::tempdir().unwrap();
+    std::fs::create_dir(temp.path().join("flameshot")).unwrap();
+    std::fs::write(
+        temp.path().join("flameshot/flameshot.ini"),
+        "[General]\ncheckForUpdates=false\nshowDesktopNotification=false\n",
+    )
+    .unwrap();
     let mut daemon = ChildGuard(
         Command::new(env!("CARGO_BIN_EXE_flameshot"))
             .env("XDG_CONFIG_HOME", temp.path())
@@ -66,6 +104,11 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         .await
         .unwrap()
         .unwrap();
+    let startup = tokio::time::timeout(Duration::from_secs(5), notifications.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(startup.contains("Hello, I'm here!"));
     let connection = Connection::session().await.unwrap();
     let bus = zbus::fdo::DBusProxy::new(&connection).await.unwrap();
     let service = zbus::names::BusName::try_from("org.flameshot.Flameshot").unwrap();
@@ -170,6 +213,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     }
     assert!(labels.contains(&"Take Screenshot".into()));
     assert!(labels.contains(&"Configuration".into()));
+    assert!(labels.contains(&"Open Launcher".into()));
     menu.call::<_, _, ()>(
         "Event",
         &(quit.unwrap(), "clicked", Value::from(0_i32), 0_u32),
@@ -187,4 +231,30 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     .await
     .unwrap();
     assert!(status.success());
+    assert!(
+        notifications.try_recv().is_err(),
+        "Duplicate daemon repeated startup notification"
+    );
+    std::fs::write(
+        temp.path().join("flameshot/flameshot.ini"),
+        "[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\n",
+    )
+    .unwrap();
+    let _quiet = ChildGuard(
+        Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("XDG_CONFIG_HOME", temp.path())
+            .env("LANG", "C")
+            .spawn()
+            .unwrap(),
+    );
+    tokio::time::timeout(Duration::from_secs(5), registered.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), notifications.recv())
+            .await
+            .is_err(),
+        "Disabled startup message was delivered"
+    );
 }

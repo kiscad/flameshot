@@ -5,7 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[features]
+default = []
+update-check = ["dep:reqwest", "dep:serde", "dep:serde_json", "dep:semver"]
+imgur = ["dep:reqwest", "dep:serde", "dep:serde_json"]
+
 [dependencies]
+wl-clipboard-rs = "0.9.5"
 anyhow = "1.0"
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 x11rb = { version = "0.13.2", features = ["randr"] }
@@ -22,5 +28,16 @@ wayland-client = "0.31"
 
 tempfile = "3"
 
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "multipart"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+semver = { version = "1", optional = true }
+
+freedesktop-desktop-entry = { version = "0.8.4", default-features = false }
+
 [lints]
 workspace = true
+
+[dev-dependencies]
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }

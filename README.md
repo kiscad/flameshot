@@ -1,3 +1,8 @@
+> **Rust migration branch:** build the new implementation with `cargo build --locked --release`.
+> See [Rust build and verification instructions](docs/rust/BUILD.md) and the
+> [migration status](docs/rust/MIGRATION.md). Linux feature parity is still in progress;
+> the original documentation below describes the C++ release.
+
 <div align="center">
   <p>
     <h1>

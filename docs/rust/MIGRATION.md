@@ -11,29 +11,29 @@ CLI, D-Bus and INI compatibility remain requirements.
 
 Cargo workspace: platform-independent core, Linux platform adapters, desktop UI,
 and application entrypoint. Use egui/winit/wgpu for UI, image/tiny-skia/cosmic-text
-for composition, ashpd/zbus for portals and IPC, x11rb for direct X11 capture,
+for composition, zbus for portals and IPC, x11rb for direct X11 capture/clipboard,
 and ksni for the tray. Platform interfaces keep future OS support separate.
 
 ## Acceptance matrix
 
 | Area | Required evidence | Status |
 | --- | --- | --- |
-| Core geometry | Negative origin, fractional scale, clipped selection tests | 5 tests passed; fmt and Clippy passed |
-| Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | X11 root capture implemented; Portal and application integration pending |
-| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Partial: native editor and basic tools; advanced tools/options pending |
-| Rasterization | Shared preview/export, text shaping, secure pixelation tests | Pending |
-| Clipboard | Image/text transfer after editor closes on X11 and Wayland | X11 image transfer verified; native Wayland pending |
-| Daemon | Single instance, pins, tray, idle lifetime | Partial: service, pin windows and tray code; lifecycle/parity tests pending |
-| CLI | Existing commands/options, stdout PNG, exit codes | Partial: full/gui/screen/config; remaining options and launcher pending |
-| D-Bus | Existing service/path/methods and QDataStream payload fixtures | Pending |
-| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | Pending |
+| Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
+| Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb and Sway cases pass; other compositor acceptance remains |
+| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, selection, previews and options implemented/tested; complete object-editing parity remains |
+| Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
+| Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text, X11 INCR and ownership lifecycle verified on Xvfb/Sway; other compositor paths remain |
+| Daemon | Single instance, pins, tray, idle lifetime | Implemented and tested, including idle ownership/pin retention; full explicit-shutdown child audit remains |
+| CLI | Existing commands/options, stdout PNG, exit codes | Commands and configuration flags implemented; final syntax/exit-code audit and completions remain |
+| D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
+| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures/atomic updates tested; live-reload/semantic gaps remain |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
-| Desktop | Notifications, autostart, launcher, configuration windows | Pending |
-| Network | Optional Imgur and history, configurable update checking; mock tests | Pending |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Pending |
-| CI | fmt, Clippy, tests, default/optional builds, release build | Pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Pending |
-| Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending |
+| Desktop | Notifications, autostart, launcher, configuration windows | Implemented with isolated service/window tests; full desktop integration acceptance remains |
+| Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Cargo staging exists; distribution-specific recipes still pending |
+| CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb and native Sway/mixed-DPI suites pass; full GNOME/KDE and IME coverage pending |
+| Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
 
@@ -444,3 +444,722 @@ Validation passed: 40 unit tests, two config CLI tests and four isolated D-Bus
 tests, fmt/Clippy and the full real X11 smoke including save retry/cancel. Real
 login/session autostart and notifications across all target desktops remain
 acceptance items, not inferred from filesystem/protocol tests.
+
+Region CLI implemented: gui/screen --region accepts legacy numeric separators,
+negative coordinates/dimensions, all, and (for gui) screen<N>. Negative dimensions
+normalize like Qt; screen command rejects --region screen<N> as before. Explicit
+region takes precedence over gui --last-region. GUI begins with the requested
+selection; noninteractive screen capture crops before output. Out-of-image regions
+are reported instead of producing an empty image.
+
+Actual Qt 6.4.2 was used to confirm cache location
+$XDG_CACHE_HOME/flameshot/flameshot/region.txt and negative-width normalization.
+Rust reads/writes the existing 16-byte big-endian QRect endpoints atomically.
+Successful GUI captures update the cache; missing caches simply start unselected.
+Malformed cache data is reported. No user's real cache was changed in tests.
+
+Two new unit tests cover parser validation, negative dimensions, clipping and
+roundtrip against the existing actual-Qt fixture. Extended X11 smoke verifies
+screen --region exports 40x30 pixels, preset GUI selection outputs
+80x60+20+30, --last-region restores it, and cache bytes exactly match Qt endpoints.
+42 unit tests, six integration cases and full X11 smoke passed; fmt/Clippy passed.
+Global logical coordinates vs local captured-image pixels on mixed-DPI/multiple
+outputs remain a compatibility gap requiring dedicated platform validation.
+
+Capture launcher implemented and exposed via `flameshot launcher` and tray menu.
+It offers region/full capture, output selection, initial rectangle (loaded from
+legacy region cache), countdown delay, clipboard and optional save path. It builds
+argument vectors without a shell, hides before capture with the legacy 600 ms
+settling delay, reaps its capture child and returns after completion/cancellation.
+The launcher refreshes the last accepted rectangle when the child finishes.
+
+Argument construction has a unit test including a path containing spaces and
+literal shell metacharacters. Extended real X11 smoke opens the launcher, starts
+an editor, cancels that capture and verifies launcher restoration and closure.
+Tray protocol test now checks the new menu entry. 43 unit tests, six integration
+cases, fmt/Clippy and full X11 smoke passed. Countdown timing on real desktop
+compositors, monitor hotplug/default-active-monitor selection, full translation
+coverage and other platform acceptance remain outstanding.
+
+Optional Imgur transport added behind the default-disabled `imgur` feature on the
+application/platform crates. It sends PNG multipart uploads with anonymous Client-ID
+authentication, validates returned image links/IDs/deletion tokens, and implements
+confirmed API deletion. TLS uses rustls; requests have connection/overall timeouts,
+redirects are disabled and response parsing is capped. Reqwest errors have URLs
+removed to avoid exposing deletion tokens through error messages.
+API behavior was checked against the [official Imgur documentation](https://apidocs.imgur.com/).
+
+Three localhost HTTP mock tests verify PNG/authentication/multipart contents,
+anonymous deletion tokens, DELETE requests and failure handling (HTTP 429, API
+failure and malformed JSON). No images were uploaded to an external service.
+Both default and all-feature workspace tests and Clippy pass; check-rust.sh now
+includes the optional-feature matrix. The all-feature unit count is 46 (default
+43), with six existing integration cases. Upload UI, confirmation, progress,
+history and deletion interactions are NOT connected yet and remain required work.
+
+Optional upload UI now connects selected-image preview, explicit confirmation,
+asynchronous request status and success/error display to Imgur transport. Upload
+success is retained even if writing history fails. Copy-link actions use the daemon
+text-clipboard method so ownership survives the dialog. The imgur feature adds a
+history command/tray entry with links, thumbnail previews and confirmed remote
+deletion; local history is removed only after successful API deletion.
+
+History uses the legacy $XDG_CACHE_HOME/flameshot/history directory and
+imgur-<deletehash>-<image-id>.png filenames. It reads older entries without tokens,
+creates at-most-250x100 thumbnails, writes atomically and enforces uploadHistoryMax
+without deleting unrelated files. uploadClientSecret is read as the existing
+anonymous Client-ID setting. Default builds still contain no upload controls.
+
+All-feature tests passed (47 unit cases), including history/thumbnail/retention
+compatibility and localhost upload/delete HTTP tests. Optional-feature X11 smoke
+opened a legacy synthetic history record and closed without modifying it; existing
+capture/clipboard/launcher/save tests passed. Thumbnail UI addition then passed
+all-feature Clippy. No real uploads/deletions were performed. Mock-driven end-to-end
+upload UI success/retry/deletion flows, auto-copy/close preferences, interruption
+handling and full history UI parity remain required acceptance work.
+
+Update checking migrated behind the default-enabled `update-check` Cargo feature;
+--no-default-features excludes it. The client reads the existing upstream GitHub
+latest-release endpoint, compares semantic versions numerically, skips drafts and
+prereleases, honors ignoreUpdateToVersion and validates release links. Requests
+are bounded by timeout/response size and do not download or install updates.
+The service checks at startup and every 24 hours when checkForUpdates is enabled.
+A manual updates window/tray entry displays results and can persist an ignored
+version; configuration exposes the automatic-check switch.
+
+Tests use localhost release JSON, not live GitHub data. All daemon/desktop test
+configurations explicitly disable automatic checks. Tests cover numeric version
+ordering, installed/ignored/prerelease handling and HTTP retrieval. Default and
+all-feature tests/Clippy pass (45/49 unit cases respectively), six integration
+cases pass, and the full X11 desktop smoke passes. --no-default-features checks
+pass and are now included in check-rust.sh. Manual update-window interaction and
+24-hour scheduling behavior still need dedicated acceptance coverage. The endpoint
+remains upstream Flameshot's release feed, matching the original implementation;
+this migration branch has not published Rust release packages.
+
+Native Wayland smoke test added in tests/rust/wayland_smoke.py. It starts a fully
+isolated headless Sway/wlroots session with XWayland disabled and DISPLAY removed,
+private D-Bus, temporary XDG runtime/config/cache/data directories, PipeWire,
+portal-wlr, GTK Access backend and private permission store. Only the synthetic
+session is granted screenshot permission. The existing user GNOME session and
+permission data are not touched. Test tools were extracted under ignored target/
+from distribution packages rather than installed globally.
+
+Validated real Portal full/screen capture at 1024x768, native data-control clipboard
+ownership after capture-process exit, native wgpu editor display, preset-region
+Enter export and Ctrl+C transfer of a 100x80 image after editor closure. No X11
+clipboard fallback was possible. Focus establishment requires a short delay after
+creating the virtual keyboard; service startup waits for PipeWire and D-Bus owners.
+
+The frontend requires an Access backend to expose Screenshot; configuring only
+wlr was insufficient. This was verified against the official portal source:
+https://raw.githubusercontent.com/flatpak/xdg-desktop-portal/1.18.4/src/screenshot.c
+The isolated bus logs nonfatal old-backend UnknownMethod cleanup reply rejections;
+all asserted capture/editor/clipboard results pass. This proves Sway/wlroots only,
+not GNOME native clipboard without XWayland, KDE, real IMEs or mixed-DPI layouts.
+
+Reproduction: `python3 tests/rust/wayland_smoke.py target/wayland-test-tools/root target/debug/flameshot`.
+Required extracted packages: sway, swaybg, libwlroots12t64, libseat1,
+libdisplay-info1, libliftoff0, libxcb-composite0, xdg-desktop-portal-wlr, grim,
+wl-clipboard, wtype. Host xdg-desktop-portal, portal-gtk, permission-store and
+PipeWire are used, each with the isolated environment.
+
+Multi-monitor editor selection implemented. GUI captures without a preselected
+monitor show frozen screen thumbnails and numbered choices; selecting a screen
+rebuilds the document from that crop and targets its borderless fullscreen output.
+Explicit screen --edit and gui --region screen<N> target the requested output at
+window creation. Single-monitor behavior remains direct. The implementation uses
+egui/winit monitor indices, which match protocol enumeration in the tested Sway
+session; other backends/order changes still require validation.
+
+Native Wayland smoke now hotplugs a second headless output at logical x=-640,
+using 1x and 2x scales with distinct blue/red backgrounds. It verifies a 3328x1536
+full image, 2048x1536 and 1280x960 monitor crops, and their actual center RGB pixels
+using Pillow. Explicit and interactive editor selection both place the window on
+HEADLESS-2 (verified via Sway tree) and export the expected red 100x80 region.
+The test explicitly focuses the window for virtual-keyboard input; this does not
+prove activation-token handling for arbitrary real desktop launch contexts.
+
+Default/all-feature tests, Clippy and disabled-feature checks passed. Remaining
+coordinate work includes global print-geometry/pin origins, fractional/rotated
+outputs and backend-specific image-layout assumptions. GNOME/KDE/native IME
+acceptance is still required; this successful mixed-scale case is specific to
+Sway/wlr Portal composition. Wayland smoke now also requires Python Pillow.
+
+Image export expanded after querying actual Qt 6.4.2 encoders. All baseline formats
+are now supported: bmp, cur, ico, jpeg/jpg, pbm, pgm, png, ppm, xbm and xpm. Rust
+also supports tiff/tif, webp and gif. Raster codecs use image; PNM/XBM/XPM writers
+and CUR headers are implemented in Rust. Format selection is exposed in both
+configuration and the save dialog, updating the selected file suffix. Empty
+images are rejected. savePathFixed now bypasses the dialog for a configured fixed
+destination, while write errors still return to the retry dialog.
+
+A new test encodes every supported extension, decodes available Rust raster
+formats and checks exact pixels for lossless RGB formats. Synthetic files were
+also decoded using actual Qt: every baseline format passed 16x12 size validation,
+with BMP/CUR/ICO/PNG/PPM/XPM sample colors verified exactly. Qt remains a one-time
+compatibility check tool, not a Rust build/runtime dependency. Fixtures are under
+ignored target/format-fixtures (generated with FLAMESHOT_FORMAT_ARTIFACT_DIR).
+
+Default/all-feature suites pass (46/50 unit cases), six integrations pass, and full
+X11 smoke includes Ctrl+S saving directly to configured fixed.png. Palette/mono
+quantization may differ from Qt, and optional third-party Qt encoder plugins are
+not a preserved plugin ABI. Large-icon limits and Portal save-dialog integration
+remain acceptance work alongside other migration gaps.
+
+Qt QSettings QList<int> compatibility implemented using an actual Qt-generated
+INI fixture. Rust now handles the control escapes used in QVariant byte payloads,
+decodes/encodes the serialized integer list and preserves unrelated settings.
+Qt independently read a Rust-written list containing positive, negative and 255
+values. This is the concrete tool-button QVariant format used by Flameshot, not
+a claim of supporting arbitrary QVariant types.
+
+Editor tool visibility and configured order now use the legacy button ID list;
+malformed list data is preserved and falls back to default visibility. Drawing
+now distinguishes outline rectangle (ID 3) from filled rectangle (ID 4), with R
+selecting filled rectangle. Crop-region and object-manipulation utilities remain
+available separately. Remaining compatibility includes the original S shortcut
+semantics, full configurable shortcut mapping, tool customization UI and all
+recognized-config validation; these are not considered complete yet.
+
+Default/all-feature checks passed (47/51 unit cases), six integrations passed and
+full X11 smoke passed. Fixture generation/Qt verification remain temporary tools
+under target/, while the committed tests require only Rust and the fixture data.
+
+Shortcut configuration is now loaded from the legacy [Shortcuts] section and
+used by editor actions, drawing tools, selection movement/resizing, undo/redo,
+copy/save/pin, color sampling, size adjustments and an object/property panel.
+Portable Return/Esc/direction aliases, Ctrl/Alt/Shift, literal plus, empty disabled
+bindings and up-to-four-stroke sequences are parsed. Press-event modifiers are
+used rather than final frame state. S now selects the legacy outline rectangle;
+selection resize handles remain usable while a drawing tool is selected.
+
+Configuration exposes editable shortcut strings and validates conflicts before
+saving. Existing ambiguous bindings execute neither action. Pin-window close
+bindings use their own context so Ctrl+Q does not conflict with editor exit.
+Space opens the basic object/property panel; full property editing is still pending.
+
+Tests cover overrides, disabled defaults, sequences, aliases, conflicts and pin
+scope. Real X11 smoke verifies TYPE_ACCEPT=F8 replaces Enter without losing the
+selection. Full suites/desktop smoke passed before the final conflict validation
+follow-up, which passed targeted tests and all-feature Clippy. Linux Meta/Super,
+localized Qt key names, live binding reload and shortcuts for still-unimplemented
+operations remain compatibility gaps; this is not full shortcut parity yet.
+
+Meta/Super/Win modifier aliases added to shortcut parsing. Left/right Super key
+state is tracked independently, cleared on window focus loss and reset when
+entering save/upload dialogs. Text-widget focus resets sequence progress while
+continuing to observe physical modifier transitions. Sequence parsing now accepts
+commas with or without following spaces while preserving literal comma/plus keys.
+Prefix-conflicting bindings are rejected when saving; existing ambiguous/prefix
+bindings do not prematurely execute a shorter action. Upload shortcut dispatch is
+connected when the imgur feature is enabled.
+
+Targeted tests cover Meta binding, focus reset, comma/plus sequences, duplicate and
+prefix conflicts, pin scope and disabled bindings. All-feature Clippy passed.
+Expanded real X11 smoke verifies Meta+F8 does not activate with plain F8 and does
+activate with Super_L+F8; the complete smoke passed. One first run hit an Xvfb
+process/log-pipe stall; Xvfb stderr is now directed to a temporary file instead of
+an unread pipe, with bounded terminate/kill cleanup. No orphan Xvfb remained.
+Native Wayland Meta/IME and localized Qt key spelling still require acceptance.
+
+Open With added to the editor and TYPE_OPEN_APP/Ctrl+O. Applications are scanned
+on a worker thread from XDG desktop-entry locations with user override precedence,
+hidden/NoDisplay filtering, localized names and PNG-capable apps sorted first.
+The Rust picker supports search and the legacy keepOpenAppLauncher setting. GIO's
+system launcher handles Desktop Entry field codes, D-Bus activation and declared
+terminal behavior via argument vectors (no shell). A bounded launcher wait reports
+failure without discarding the capture. Successful opening completes the capture
+without an unwanted implicit save, while explicit CLI output tasks still apply.
+
+Temporary PNG files are private and retained after successful handoff so viewers
+can read asynchronously, matching the old autoRemove(false) behavior. Failed or
+cancelled attempts clean up when no launch is in flight. Packaging must supply
+the `gio` executable; category tabs, icons, force-terminal override and sandboxed
+Portal AppChooser integration remain pending.
+
+Tests verify user override/hidden entries and actually launch a synthetic Python
+receiver via GIO, proving spaced/literal-metacharacter image paths remain one
+argument. Full default/all-feature suites, Clippy and disabled-feature checks pass.
+X11 smoke verifies Ctrl+O cancellation returns to an intact exportable selection.
+Final successful-handoff action routing passed all-feature Clippy; complete picker
+launch/failure GUI automation still needs acceptance coverage.
+
+Pinned images now preserve aspect ratio, support wheel/pinch zoom, double-click
+original-size reset, rotation via context menu, opacity controls and legacy 0–9
+opacity keys. Transparent-window rendering is requested, and the original
+antialiasingPinZoom setting selects linear vs nearest texture sampling. Source
+pixels are retained so repeated zooming does not resample an already-scaled image.
+Window sizing validates finite device scale and bounds maximum dimensions.
+
+A unit test verifies aspect ratio, DPR conversion and size limits. Extended real
+X11 smoke checks wheel enlargement, proportional geometry, double-click reset and
+closure. Default/all-feature suites and Clippy pass. Rotation-menu interaction,
+compositor-level opacity blending, native pinch gestures and mixed-DPI/global pin
+placement still require acceptance; Xvfb does not prove composited transparency.
+
+Native Wayland pin rendering acceptance expanded with a synthetic red/green image
+sent through the Qt-compatible pin wire format. Sway compositor screenshots verify
+opaque pixels, expected 50% blending over the blue desktop and restoration to full
+opacity. A real context-menu rotation is invoked and the resulting 300x400 window
+and top/bottom red/green pixels are checked. Existing capture, clipboard and
+mixed-DPI monitor scenarios continue to pass.
+
+A persistent Rust virtual-pointer example was added for isolated tests. Earlier
+Sway IPC/transient-pointer attempts did not deliver usable pointer events to the
+client; holding the virtual device open resolves capability/event timing. The
+helper requires explicit FLAMESHOT_TEST_WAYLAND_INPUT=1 and is launched only in the
+private test runtime. Build with `cargo build -p flameshot-platform --example wayland_pointer`
+before running wayland_smoke.py. No user desktop input was injected.
+
+All-feature Clippy and Python syntax checks passed. This establishes rendered pin
+opacity/rotation under Sway; very small pin-menu layout, other compositors, native
+pinch hardware and global mixed-DPI pin positioning remain acceptance items.
+
+Rust CI workflow added for Ubuntu 24.04. It installs native runtime/test tools
+without requesting Qt development packages, runs default/all-feature/no-default
+checks, isolated service tests, real X11/Wayland smoke and a locked release build.
+The workflow also checks the executable's version/linkage and staged desktop/
+AppStream metadata. YAML parses locally; the hosted GitHub workflow has NOT yet
+been run, so remote runner success is not claimed.
+
+Actual `cargo build --locked --release --all-features` succeeded in 1m36s. The
+42 MB optimized executable reports 15.0.0 and ldd lists only libc, libm and libgcc_s
+(plus loader/vDSO), with no direct Qt dependency. Runtime graphics libraries may
+still be loaded dynamically. The optimized executable passed full X11 smoke,
+including optional history, clipboard, pin zoom, launcher, save retry and custom
+shortcuts. Rust build instructions now appear at the top of the branch README.
+
+scripts/stage-rust.sh assembles an explicit DESTDIR payload without installing to
+the live system: binary, desktop entry, D-Bus service, embedded-catalog-compatible
+AppStream metadata, icons and licenses. Actual staging passed desktop-file-validate,
+appstreamcli validate --no-net and activation-path checks; the staged binary runs.
+Distribution-specific recipes, old-C++ removal and complete feature acceptance
+remain unfinished. This is not a release/publication or a system installation.
+
+The optimized executable also passed the complete native Wayland smoke, including
+clipboard persistence, composited pin opacity/rotation and mixed-DPI monitor
+pixels/placement. An initial optimized run selected Rotate Left rather than Right:
+the test sent both menu navigation presses within one frame. Explicit inter-key
+frame waits corrected the test, after which expected rotation pixels passed.
+CI now includes both debug and optimized desktop regressions. Package staging
+permissions are normalized to 0644 for metadata and 0755 for the executable.
+
+Default single-editor behavior implemented for gui and screen --edit using a
+kernel file lock in XDG_RUNTIME_DIR/flameshot/gui.lock (cache fallback). The
+allowMultipleGuiInstances setting bypasses the lock and is exposed in configuration.
+The lock is acquired before capture/delay and held through output processing;
+noninteractive captures and pinned windows are not blocked. A stale lock file
+is harmless because ownership is held by the kernel, not inferred from existence.
+
+A parallel unit run exposed transient fork/exec descriptor inheritance retaining
+the lock after a normal handle drop. The guard now explicitly unlocks on Drop,
+then closes its descriptor. Unit coverage confirms exclusivity and stale-file
+reuse. Expanded real X11 tests verify duplicate rejection, opt-in simultaneous
+editors, normal release and reopening after killing an editor. The test's window
+lookup was corrected to combine PID and title using xdotool --all. Test runtime
+directories are now isolated as well as config/cache/bus state.
+
+Full default/all-feature checks, Clippy and disabled-feature checks passed. Full
+X11 smoke passed after the guard change. This lock coordinates Rust editors;
+interoperability with the old Qt shared-memory mutex is not implemented.
+
+Arrow rendering now uses a filled head instead of an open V. Legacy arrowStyle=1
+selects the concave curved head (the shaft stays straight), and reverseArrow
+swaps endpoints. The editor exposes both options and persists changes. Filled
+rectangles read drawRectangleSize and expose a persisted corner-radius control.
+Preview and exported pixels continue to share the same renderer. Pixel tests
+cover filled/reversed/curved arrows, zero-length arrows and clipped rounded
+corners; configuration tests cover legacy shape preferences and invalid values.
+Full default/all-feature/disabled-feature checks and Clippy passed. These changes
+do not claim exact Qt raster parity: short-arrow rounding and rounded-rectangle
+stroke expansion still differ from Qt geometry.
+The rebuilt all-feature executable passed the complete isolated X11 desktop smoke
+after these shape changes. Existing Wayland/release results above predate this
+renderer change; they have not been rerun for this revision.
+
+`config --check` now runs without a display, reads the legacy configuration path,
+prints the success message or collected diagnostics, and returns 0/1. Like the
+old command, --check takes priority over mutation flags. It never creates or
+rewrites configuration. The validator enumerates the Linux legacy schema,
+checks booleans, integer bounds, existing save directories, output extensions,
+colors/palettes, serialized button IDs and shortcut syntax/conflicts. Unknown
+General and Shortcuts keys are reported; unrelated groups are preserved/ignored.
+QSettings comma-separated string-list decoding now handles quoted commas and
+malformed quoting. Unit/CLI tests cover multiple simultaneous errors, no display,
+missing files, read-only behavior, palette/button values and legacy settings.
+Default/all-feature/no-default checks and Clippy passed for the initial validator;
+focused checks passed after aligning filename/extension validation with runtime.
+Validation does not imply that every recognized preference is implemented in the
+GUI. Rust's shortcut validation currently also rejects collisions with implicit
+defaults and sequence prefixes; the old checker only compares explicit bindings.
+Filename validation follows Rust's existing stricter filename rules. Those
+compatibility differences remain pending; no complete config parity is claimed.
+
+Shortcut precedence now follows ConfigHandler::shortcut: a valid explicit binding
+suppresses an identical implicit default. For example TYPE_ACCEPT=Ctrl+S accepts
+the screenshot and disables the unconfigured Save binding; it no longer leaves
+both actions ambiguous. Validation compares explicit bindings rather than adding
+implicit defaults to its conflict set. Explicit duplicates still fail validation
+and do not execute ambiguously. Prefix conflicts between explicit sequences remain
+stricter than Qt's old configuration checker. Pin/editor action scopes remain
+separate. Merely opening the shortcuts configuration section no longer inserts
+all defaults into the override map; only edited fields become explicit settings.
+Unit tests cover precedence and restoration of defaults, with a CLI check case
+for a valid override of an implicit default. Full workspace checks passed.
+The rebuilt all-feature executable passed the expanded isolated X11 desktop smoke,
+including TYPE_ACCEPT=Ctrl+S overriding the default Save action and exporting the
+selection directly. Configuration CLI integration tests also passed after adding
+the precedence case. git diff --check reports no whitespace errors.
+
+Editor history now reads undoLimit (0..999) both for initial capture and after
+monitor selection; the config window can edit it. Zero now means unlimited, as
+in QUndoStack, instead of disabling undo. Core tests undo/redo 105 edits with zero
+limit and retain the existing bounded-history checks. Marker, pixelate and counter
+sizes now read separate legacy keys; text and rounded-rectangle sizes also use
+the shared tool-size control without changing other tools' sizes. Size shortcuts
+and controls persist the active tool's setting. Text uses point units in settings
+and pixel units in rendering. Pixelation block width follows 2*(configured size+1).
+Settings tests cover independent values and invalid ranges. Full workspace checks
+passed. Exact legacy pixelation appearance and unlimited-history memory usage are
+not optimized by this change.
+Tool controls respect the renderer's current bounds (counter size <=985, font
+size <=750 points, other sizes <=10000); larger stored values are clamped for
+rendering rather than rewritten on load. The first desktop size test reached
+persisted values but its Python parser treated valid quoted INI integers as
+literal integers. The test now removes QSettings string quotes before comparing.
+Expanded full X11 smoke passed on the rebuilt all-feature binary: selecting six
+tools and increasing their sizes writes six independent legacy values, while
+undoLimit remains unchanged. A pixel regression with undoLimit=1 draws two filled
+rectangles, sends Undo twice, and verifies only the first rectangle remains.
+Clippy and whitespace checks also passed after the renderer-bound adjustment.
+
+Canvas wheel events now adjust the active tool's independent size and persist its
+legacy setting. Discrete wheel events change by one step; point-based touchpad
+events are rate-limited to one step per 200 ms, with zero/nonfinite deltas ignored.
+The handler requires canvas hover and no text-input focus, so popup/panel controls
+keep their own input. Ctrl+wheel with Circle Counter adjusts the next number
+(clamped 1..999), then explicit numbering increments after committing a counter.
+Tool-size changes also invalidate the transient preview. Unit tests cover wheel
+steps and touchpad timing, and the full Rust verification script passed. Physical
+touchpad hardware and exact Qt event conversion are not yet acceptance-tested.
+The first desktop wheel test exposed duplicate input: temporary event tracing
+showed two identical Line(+1) events in the same frame for a single Xvfb/xdotool
+wheel notch. The trace has been removed. The editor now coalesces wheel events
+within a frame and guards against egui replaying input on subsequent layout passes.
+The test checks each upward/downward step separately instead of only the final
+value. This also means multiple physical notches delivered within one rendered
+frame are coalesced to one adjustment.
+The rebuilt all-feature binary passed full X11 smoke after event coalescing,
+including per-notch size persistence (up/up/down), Ctrl+wheel leaving counter
+size unchanged, independent tool sizes and the bounded-undo pixel regression.
+Clippy and focused wheel tests passed again. Counter-number glyphs after Ctrl+
+wheel have not yet received a separate pixel assertion.
+
+saveAfterCopy and copyPathAfterSave now affect output processing and are exposed
+in configuration. Copy actions attempt an automatic save before placing the image
+on the persistent clipboard; automatic-save failure is reported but does not
+prevent image copy. An unset savePath uses an existing Pictures/Home directory
+or the temporary directory. Explicit save destinations retain failure behavior.
+Save actions can copy the actual saved filename, including collision suffixes;
+GUI outcomes now carry that filename rather than only a saved boolean. If copy
+and save are both requested, the image remains the final clipboard content.
+The output settings are reloaded after editing, so changes made while the editor
+is open take effect for its eventual output. This does not provide general live
+reload for toolbar/other capture preferences. Full Rust checks passed before the
+default-directory/output-reload follow-ups; final desktop regressions are pending.
+Final full Rust checks and expanded X11 smoke passed. Real clipboard tests verify
+CLI copy creates a PNG, save publishes the pathname, combined preferences retain
+the image, missing configured directory still permits copy, and unset savePath
+falls back to an isolated test home. GUI Ctrl+C saves the selected 200x200 image
+using preferences changed while editing; GUI Save copies the actual suffixed
+filename for a 40x30 preset region. Existing desktop regressions also passed.
+
+drawColor and fontFamily now initialize the editor rather than always using red
+and the default font. The text tool exposes a persisted family-name field; text
+annotations pass the configured family into the existing cosmic-text renderer.
+Color picker changes and G color sampling persist drawColor. A shared Rust color
+parser supports legacy #RRGGBB/#RRGGBBAA and all 148 named QColor colors. Actual
+Qt 6.4.2 output was compared successfully and stored as qt6-colors.txt; normal
+Rust tests need no Qt. Config validation uses the same named-color parser.
+An alpha bug was corrected: egui Color32 channels are premultiplied, whereas the
+annotation renderer expects straight RGBA. Annotations now receive unmultiplied
+channels, preventing a second application of opacity. Full workspace checks and
+color fixture tests passed; desktop pixel regression is pending. User palette,
+UI theme colors and exhaustive font/IME acceptance remain separate work.
+Expanded full X11 smoke passed on the rebuilt all-feature executable. A filled
+rectangle drawn with configured #00ff0080 exports as approximately (0,128,0,255)
+over the black capture background, proving opacity is applied once through the
+actual editor/export path. Existing save/clipboard, wheel, undo and shortcut
+regressions also passed. The selected font-family path is covered by settings
+and renderer integration code; exhaustive per-family glyph comparison is pending.
+
+Selection preferences are now connected to behavior. saveLastRegion restores the
+cached selection for gui when no explicit --region is supplied; explicit regions
+still take priority. copyOnDoubleClick copies from a primary double-click inside
+the selected area and ignores clicks outside it or over existing annotations,
+reserving object clicks for editing behavior. Full text-object double-click editing
+is still pending. contrastOpacity controls the outside-selection shade (0..255,
+legacy default 190 rather than the previously hardcoded 150). All three settings
+are exposed in configuration. Settings validation and full Rust checks passed.
+Expanded desktop tests cover enabled/disabled double-click, cached-region defaults,
+explicit-region precedence, and opaque shading over a white test background.
+The first shade check failed because Xvfb reset its root background after the last
+client (xsetroot) disconnected, so the intended white source was black. The isolated
+server now uses -noreset. A focused repeat passed: full opacity makes pixels outside
+the selection black while selected pixels remain white. The CI test dependencies
+now explicitly include x11-xserver-utils for xsetroot. Initial double-click and
+cached/explicit-region cases passed before this test-environment correction.
+The full expanded X11 suite passed with -noreset, including disabled and enabled
+copy-on-double-click, outside-selection rejection, persistent clipboard contents,
+saveLastRegion restoration, explicit --region precedence and opaque-shade pixels.
+The complete Rust verification script and whitespace checks also passed.
+
+Legacy config -m/--maincolor and -k/--contrastcolor now update uiColor and
+contrastUiColor without opening a window. Values use the shared named/RGBA parser;
+invalid colors reject the entire settings write, including simultaneous unrelated
+updates. Integration tests verify both flags, unknown-value preservation and
+unchanged files on invalid input. Settings read the legacy purple defaults.
+Editor selected/hovered/active controls use the configured theme, with dark/light
+foreground contrast; selection borders and handles use uiColor. Configuration has
+color controls with a local preview and saves both values. The theme is applied to
+both egui dark/light styles. It currently covers editor/configuration windows;
+other utility-window theme consistency and live editor theme reload remain open.
+Full Rust checks passed; desktop selection-color pixel regression is pending.
+The rebuilt all-feature executable passed the full expanded X11 suite. A real
+window capture verifies configured cyan uiColor at the selection handle while
+opaque outside shading remains black and selected source pixels remain white.
+Previously added clipboard/save, region, wheel, undo and RGBA drawing checks
+also passed. CLI usage for the legacy color options is documented in BUILD.md.
+
+Existing text annotations can now be double-clicked to edit their text, family,
+size and RGBA color in a focused dialog. Drafts do not mutate the document; Apply
+replaces the original annotation in one undo entry, while Escape/Cancel leaves it
+unchanged. Empty replacement text removes the annotation; unchanged Apply creates
+no extra history entry. Position and other annotation properties are preserved.
+Stale annotation indices are rejected. Text editing takes priority over double-
+click copy. With an empty repeated-label field, the Text tool now also opens this
+dialog after clicking a placement point, so new text can be typed at that point.
+The configured commit-tool shortcut commits the dialog; default Ctrl+Enter is
+consumed before the text field can insert a newline. Font/size/color edits here
+change this annotation rather than global defaults. A focused X11 regression
+verified creation, cancellation, replacement, undo and redo using captured pixels.
+Full Rust checks passed, including empty commit/history and isolated-draft tests.
+Full desktop regression is pending. In-place live text preview, full IME hardware
+acceptance and precise glyph-based hit testing remain outstanding.
+The rebuilt all-feature executable passed the full expanded X11 suite, including
+the text-edit flow with copyOnDoubleClick enabled. It proves text double-click
+edits rather than copies, Escape retains the capture, applied text changes pixels,
+one Undo restores the original pixels, Redo restores the edited pixels, and final
+export retains the 400x200 selected region. Earlier desktop cases also passed.
+
+Text drafts now render live on the capture canvas before Apply. The core exposes
+non-mutating replacement/removal previews that preserve annotation layer order;
+new text uses the existing transient-add preview. Text editing caches the preview
+texture until the draft changes, and uses the same renderer as final export.
+The editor window is movable rather than fixed at screen center so it can be moved
+away from the edited text. Cancel drops the preview and refreshes the unchanged
+document; Apply refreshes the single committed replacement. Same-frame keyboard
+replay after closing the text dialog is suppressed to prevent Escape also closing
+the capture during an egui layout retry. Core layer-order/history tests and full
+Rust checks passed; expanded live-preview desktop pixel assertions are pending.
+The full X11 suite passed after the preview changes. The text case now captures
+pixels while a changed draft is still open, confirms they differ from the original,
+then verifies Cancel restores the original and Apply produces exactly the previewed
+pixels. Undo/redo and selected-region export assertions continue to pass. Final
+all-feature Clippy and whitespace checks also passed.
+
+userColors now drives editor swatches and the canvas right-click palette. Entries
+retain their order, the picker sentinel opens the color chooser, and selecting a
+swatch persists drawColor. The config window edits comma-separated entries and
+provides small/large default resets; predefinedColorPaletteLarge selects the legacy
+default when no custom list is present. Default Qt global-color values are stored
+explicitly (Qt::green differs from the SVG name green). Atomic INI updates now
+serialize userColors as a real QSettings string list and validate 3..17 entries.
+Palette parsing deliberately differs from drawColor: eight hex digits are Qt ARGB,
+and short/12-bit/16-bit RGB entries are accepted. Actual Qt 6 fixtures verify these
+forms; exhaustive local comparison of all 12-bit/16-bit channel values confirmed
+rounding. Rust unit/CLI/service checks passed. Focused X11 testing selected a custom
+green swatch via right-click, verified persisted RGBA and exported green pixels.
+Full X11 regression is pending; the picker is an egui menu rather than a radial
+Qt widget, and palette-specific interaction on other compositors remains to verify.
+The rebuilt all-feature executable passed the full expanded X11 suite with the
+palette row and right-click menu, including exported swatch pixels and all prior
+text preview/edit, theme, opacity, region, save/clipboard and shortcut cases.
+Whitespace checks passed as well.
+
+Configuration now exposes toolbar visibility checkboxes and Restore defaults.
+Opening the section alone does not rewrite buttons; edits serialize a real Qt
+QList<int> variant atomically. Unknown requested IDs fail without modifying the
+file; valid lists are deduplicated and sorted by legacy CaptureToolButton priority.
+The editor now applies that priority for drawing tools and action buttons rather
+than depending on list storage order. Optional increase/decrease-size buttons are
+implemented, hidden by default as in Qt. Missing feature-specific tools remain
+hidden but their stored IDs survive other edits. Base selection/object-move controls
+remain available independently of the configurable legacy buttons.
+Tests cover QVariant serialization, empty/custom/default lists, invalid IDs,
+normalization and optional upload availability. Full Rust checks passed. An actual
+X11 screenshot with only Accept/+/- enabled verified the reduced toolbar; expanded
+full desktop checks now also click +/- and verify persisted drawThickness.
+The first complete desktop run reached the final toolbar case but its test assumed
+a black desktop when measuring toolbar width; an earlier opacity test had left a
+white background. The measurement now compares against the actual background.
+A focused white-background repeat passed, including +/- persistence.
+
+A fresh source inventory found these Linux legacy option keys are still not read
+by Rust Settings (recognition by config --check is not implementation):
+showSidePanelButton, showAbortNotification, historyConfirmationToDelete,
+autoCloseIdleDaemon, showStartupLaunchMessage, showQuitPrompt, copyURLAfterUpload,
+useJpgForClipboard, uploadWithoutConfirmation, showSelectionGeometry,
+showSelectionGeometryHideTime, insecurePixelate, captureActiveMonitor and
+useX11LegacyScreenshot. This is a configuration-read inventory only, not a full
+feature/desktop/distribution completion audit. Other acceptance gaps recorded
+above, including legacy C++ removal and distro recipe migration, remain open.
+The final full X11 run passed with the corrected toolbar measurement, including
+visibility, optional size buttons, default priority ordering and all previously
+added editor/output regressions. Full Rust checks and whitespace checks passed.
+
+useX11LegacyScreenshot now bypasses the portal on X11 and uses direct root capture;
+on Wayland it is ignored, preserving portal capture. captureActiveMonitor selects
+the X11 monitor under the pointer for graphical captures with multiple monitors,
+while explicit monitor requests take precedence. Failed pointer lookup retains the
+manual chooser. As in the Qt implementation, this preference reports unsupported
+on multi-monitor Wayland rather than attempting to inspect an XWayland pointer;
+single-monitor and explicit-monitor captures still work. Both options are exposed
+in configuration. Monitor selection currently uses the pointer position determined
+before the requested capture delay, as the existing screen command did.
+Full Rust checks passed. A private portal mock verifies forced X11 makes no portal
+request (and fails honestly without DISPLAY), while Wayland still requests/decodes
+the portal PNG with the same flag. Focused Xvfb/RandR tests use blue and red monitors
+to verify pointer-selected red pixels and explicit left-monitor blue pixels, both
+at 512x768. Full X11 and native Wayland regressions are pending.
+Full expanded X11 and native Wayland suites passed, including X11 forced capture,
+pointer-selected colored monitors, Wayland portal operation with the X11 flag set,
+unsupported active-monitor rejection, and explicit/interactive mixed-scale output
+selection. A follow-up moved captureActiveMonitor pointer lookup until after the
+requested delay, correcting the earlier timing note above. Full Rust checks passed
+again; a focused delayed-pointer-movement regression is running. The pre-existing
+implicit `screen` command pointer timing is unchanged by this follow-up.
+The final focused X11 run passed all three monitor cases: automatic right monitor,
+explicit left monitor, and moving from left to right during an 800 ms delay. The
+delayed capture exported the right monitor's red pixels at 512x768.
+
+showSelectionGeometry now supports None, four corners and Center with pixel
+width/height/x/y text. showSelectionGeometryHideTime restarts only when the region
+changes, not on normal repaint; zero remains visible indefinitely. Repaint is
+scheduled at expiry so the overlay hides without further input. Labels are clamped
+to the canvas and painted separately from the document/export. showSidePanelButton
+now controls an Objects toggle beside the magnifier control, while the existing
+Space shortcut remains available. All options are exposed in configuration.
+Full Rust checks passed. Deterministic timer tests verify change/repaint/expiry
+semantics. Focused X11 pixels verify appearance, timed hiding, reappearance after
+keyboard movement, and an unchanged white export. Other pixel tests explicitly
+turn off geometry overlays when measuring unrelated text/shading behavior. Full
+expanded X11 regression is pending.
+The complete expanded X11 suite passed with geometry timing enabled and the new
+panel toggle present, including prior toolbar, palette, text, clipboard/save and
+multi-monitor cases. Whitespace checks passed.
+
+insecurePixelate now selects a separate annotation rendering mode and is exposed
+in configuration with its retained-image-information meaning. Default annotations
+still use only outside-fringe pixels (neutral fill for an all-image selection).
+Explicit insecure mode samples the selected image: smallest size uses blur, larger
+sizes downsample smoothly then enlarge with nearest-neighbor blocks. Each annotation
+retains its chosen mode for stable previews/history. The shared renderer handles
+clipping, preview, export and undo for both paths. The blur approximates the Qt
+visual behavior using Rust image filters; exact Qt blur-kernel parity is not claimed.
+Full Rust checks passed, including the existing interior-independence tests and
+new sampled-mode/blur/clip/undo tests. Focused X11 tests draw red on white, verify
+the secure mode replaces it from white fringe while insecure mode preserves red,
+and compare drag-preview pixels with exported pixels. Full X11 regression pending.
+The full expanded X11 suite passed on the rebuilt all-feature binary, including
+both pixelation modes and all prior editor, clipboard/output and multi-monitor
+regressions. Whitespace checks passed.
+
+Optional Imgur preferences now affect the application: uploadWithoutConfirmation
+starts one upload when the upload dialog opens (not repeated after failure),
+copyURLAfterUpload controls automatic persistent-link clipboard transfer, and
+historyConfirmationToDelete controls the extra confirmation after a Delete click.
+All three appear in feature-enabled configuration. Manual upload retry remains
+available after failure. Clipboard status is separate from upload/history warnings,
+and normal dialog closing waits for pending link transfer; disconnected worker
+channels now become errors rather than permanently pending state.
+Upload/deletion work was factored for dependency injection. A loopback-only HTTP
+constructor is available to tests; production UI still constructs the standard
+Imgur API and has no endpoint environment override. Local HTTP tests verify PNG
+multipart upload, automatic-start-once, auto-copy intent for both preference values,
+history persistence, API failure/retry, history-write warnings, deletion confirmation
+policy and retaining local history until remote deletion succeeds. A rendered egui
+confirmation test verifies no request starts by default. Full Rust checks passed;
+final all-feature Clippy/focused tests passed after worker-close handling. No real
+Imgur uploads or deletions occurred. Expanded X11 confirmation-cancel regression
+is pending; complete interactive mocked upload/delete window coverage remains open.
+The full expanded X11 suite passed, including opening upload confirmation via its
+shortcut, cancelling it without closing the capture, then exporting the image.
+All other desktop regressions passed. Local upload/deletion tests passed again
+with proxy use explicitly disabled for the loopback-only test client.
+
+showAbortNotification now controls a best-effort screenshot-cancel notification,
+also gated by showDesktopNotification. Cancellation still exits with status 2 and
+never writes notification text to PNG stdout; notification transport errors do not
+change the result. showStartupLaunchMessage now sends the legacy tray greeting only
+after tray creation succeeds. Like Qt's tray greeting, its switch is independent
+of the capture-notification switch. Duplicate daemon launches do not repeat it.
+Both options are exposed in configuration. Private D-Bus integration tests verify
+all abort-notification flag combinations, notification-server failure, startup on,
+startup off and singleton behavior. The check script runs the new isolated test.
+Full Rust checks passed; focused startup/abort tests passed after expanding cases.
+The complete X11 regression is running; no test notification reached the real bus.
+The first desktop attempt was invalidated by a concurrent default-feature Cargo
+integration-test build replacing target/debug/flameshot after the script had
+observed all-feature help. The later upload-cancel case therefore ran a binary
+without upload support. This was a test orchestration issue, not evidence of a
+modal-close bug; no speculative GUI change was made. The all-feature binary was
+rebuilt and the complete desktop suite restarted with no concurrent Cargo builds.
+The uncontended full X11 run passed, including upload-confirmation cancellation,
+normal capture cancellation without a notification server, and every prior desktop
+case. Final all-feature Clippy and whitespace checks passed. All notification
+behavior tests used isolated mock services.
+
+showQuitPrompt now controls capture-exit confirmation (not daemon/tray exit).
+Escape first leaves the active tool/object selection/panel; actual exit requests,
+Ctrl+Q and the toolbar Cancel action then use the prompt. No is the default.
+Do not show again persists the legacy setting immediately. Accepted/saved captures
+close without a prompt. Native window-close input is consumed once at the raw-input
+hook and converted into the same application request; confirmed/programmatic close
+is allowed through. Keyboard events after a quit request cannot accept the capture
+in the same action batch. A unit test verifies one-shot native-close consumption.
+Focused X11 tests passed default No/resume, explicit confirmation, and preference
+persistence. Full X11 passed before the final native-input guard refinement.
+Native Wayland initially timed out on keyboard confirmation: diagnostic captures
+showed the dialog unchanged. Giving the test virtual keyboard a settling interval,
+as used by other wtype cases, resolved it. The complete native Wayland suite then
+passed compositor close, default No and confirmed cancellation with status 2.
+Final Rust checks and X11 verification are in progress; this is not full migration
+completion.
+Final full Rust checks and the rebuilt all-feature X11 suite passed after the
+native-close refinement. The native Wayland suite also passed compositor close,
+No/resume and Yes/cancel. X11 additionally verifies Ctrl+Q, Escape/tool deselection,
+normal acceptance without a prompt, and the persisted Do not show again option.
+
+Clipboard ownership is now explicit. A Rust X11 provider serves PNG/JPEG/text,
+TARGETS/TIMESTAMP and bounded INCR transfers; a native Wayland data-control provider
+runs until its source is replaced, with X11 fallback when available. Each provider
+exposes a live lease. The daemon retains all active leases, including older INCR
+pastes that outlive selection ownership, and tracks children launched by its service
+or tray. autoCloseIdleDaemon exits after hosted activity ends only when no clipboard
+provider/transfer or child remains. Initial service activation stays alive to receive
+its first request. Explicit daemon shutdown behavior still needs the broader audit.
+useJpgForClipboard now publishes actual image/jpeg data instead of PNG. arboard
+remains enabled for egui text-widget clipboard support, not screenshot ownership.
+
+Full Rust checks passed. Full X11 tests verify JPEG, exact large PNG INCR transfer,
+retaining ownership, pin lifetime and idle exit. A gated X11 probe holds an old INCR
+paste open while newer clipboard contents are installed and replaced: the daemon
+stays alive, delivers every original PNG byte, then exits. The helper is now built
+alongside the Wayland pointer helper in CI. Native Sway verifies PNG/JPEG/text MIME,
+text replacing an image, and idle exit after another application takes ownership;
+the complete native suite passed. A wl-copy test invocation was changed to avoid
+waiting on output pipes inherited by its background provider. No test touches the
+real desktop clipboard. All Linux legacy option keys now appear in Settings, which
+is read-path coverage rather than proof of full feature acceptance.

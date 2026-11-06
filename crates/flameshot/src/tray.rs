@@ -1,21 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-use std::{
-    process::{Command, Stdio},
-    sync::Arc,
-};
+use std::sync::Arc;
 pub struct Tray {
     pub quit: Arc<tokio::sync::Notify>,
+    pub activity: Arc<crate::daemon::Activity>,
 }
-fn launch(command: &str) {
-    if let Ok(executable) = std::env::current_exe()
-        && let Ok(mut child) = Command::new(executable)
-            .arg(command)
-            .stdout(Stdio::null())
-            .spawn()
-    {
-        std::thread::spawn(move || {
-            let _ = child.wait();
-        });
+impl Tray {
+    fn launch(&self, command: &str) {
+        let _ = self.activity.launch(command);
     }
 }
 impl ksni::Tray for Tray {
@@ -49,20 +40,40 @@ impl ksni::Tray for Tray {
         }]
     }
     fn activate(&mut self, _x: i32, _y: i32) {
-        launch("gui");
+        self.launch("gui");
     }
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
         use ksni::menu::StandardItem;
         vec![
             StandardItem {
                 label: "Take Screenshot".into(),
-                activate: Box::new(|_| launch("gui")),
+                activate: Box::new(|tray: &mut Self| tray.launch("gui")),
+                ..Default::default()
+            }
+            .into(),
+            StandardItem {
+                label: "Open Launcher".into(),
+                activate: Box::new(|tray: &mut Self| tray.launch("launcher")),
                 ..Default::default()
             }
             .into(),
             StandardItem {
                 label: "Configuration".into(),
-                activate: Box::new(|_| launch("config")),
+                activate: Box::new(|tray: &mut Self| tray.launch("config")),
+                ..Default::default()
+            }
+            .into(),
+            #[cfg(feature = "imgur")]
+            StandardItem {
+                label: "Upload History".into(),
+                activate: Box::new(|tray: &mut Self| tray.launch("history")),
+                ..Default::default()
+            }
+            .into(),
+            #[cfg(feature = "update-check")]
+            StandardItem {
+                label: "Check for updates".into(),
+                activate: Box::new(|tray: &mut Self| tray.launch("updates")),
                 ..Default::default()
             }
             .into(),

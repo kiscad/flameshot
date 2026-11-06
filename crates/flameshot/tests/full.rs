@@ -6,7 +6,7 @@ use zbus::{
     zvariant::{OwnedObjectPath, OwnedValue, Value},
 };
 
-struct Portal(String);
+struct Portal(String, std::sync::Arc<std::sync::atomic::AtomicUsize>);
 #[zbus::interface(name = "org.freedesktop.portal.Screenshot")]
 impl Portal {
     async fn screenshot(
@@ -16,6 +16,7 @@ impl Portal {
         #[zbus(header)] header: Header<'_>,
         #[zbus(connection)] connection: &Connection,
     ) -> OwnedObjectPath {
+        self.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let sender = header
             .sender()
             .unwrap()
@@ -57,13 +58,14 @@ async fn full_outputs_only_png_on_stdout_and_saves_without_overwrite() {
         image::Rgba([x as u8 * 20, y as u8 * 30, 150, 255])
     });
     expected.save(&source).unwrap();
+    let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let _service = zbus::connection::Builder::session()
         .unwrap()
         .name("org.freedesktop.portal.Desktop")
         .unwrap()
         .serve_at(
             "/org/freedesktop/portal/desktop",
-            Portal(format!("file://{}", source.display())),
+            Portal(format!("file://{}", source.display()), calls.clone()),
         )
         .unwrap()
         .build()
@@ -93,6 +95,46 @@ async fn full_outputs_only_png_on_stdout_and_saves_without_overwrite() {
             expected
         );
     }
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
+    let config = temp.path().join("config/flameshot");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        config.join("flameshot.ini"),
+        "[General]\nuseX11LegacyScreenshot=true\n",
+    )
+    .unwrap();
+    let native = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+        .env("XDG_CONFIG_HOME", temp.path().join("config"))
+        .env("XDG_SESSION_TYPE", "x11")
+        .env_remove("DISPLAY")
+        .env_remove("WAYLAND_DISPLAY")
+        .args(["full", "--raw"])
+        .output()
+        .unwrap();
+    assert_eq!(native.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&native.stderr).contains("Cannot connect to X11"));
+    assert_eq!(
+        calls.load(std::sync::atomic::Ordering::SeqCst),
+        2,
+        "Forced X11 contacted the portal"
+    );
+    let wayland = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+        .env("XDG_CONFIG_HOME", temp.path().join("config"))
+        .env("XDG_SESSION_TYPE", "wayland")
+        .env_remove("DISPLAY")
+        .args(["full", "--raw"])
+        .output()
+        .unwrap();
+    assert!(wayland.status.success(), "{:?}", wayland);
+    assert_eq!(
+        image::load_from_memory(&wayland.stdout).unwrap().to_rgba8(),
+        expected
+    );
+    assert_eq!(
+        calls.load(std::sync::atomic::Ordering::SeqCst),
+        3,
+        "Wayland did not use the portal"
+    );
     assert!(
         source.exists(),
         "Portal-provided file must not be blindly deleted"

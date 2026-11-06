@@ -3,58 +3,106 @@ use anyhow::{Context, Result};
 use flameshot_core::qt_wire;
 use futures_util::StreamExt;
 use std::{
-    borrow::Cow,
     io::Write,
     process::{Command, Stdio},
-    sync::Mutex,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
     time::Duration,
 };
 use zbus::{Connection, Proxy};
 const SERVICE: &str = "org.flameshot.Flameshot";
 #[derive(Default)]
+pub(crate) struct Activity {
+    clipboard: Mutex<Vec<flameshot_platform::clipboard::Lease>>,
+    children: AtomicUsize,
+    used: AtomicBool,
+}
+impl Activity {
+    pub(crate) fn launch(self: &Arc<Self>, command: &str) -> Result<()> {
+        let executable = std::env::current_exe()?;
+        self.children.fetch_add(1, Ordering::AcqRel);
+        let child = Command::new(executable)
+            .arg(command)
+            .stdout(Stdio::null())
+            .spawn();
+        match child {
+            Ok(child) => {
+                self.used.store(true, Ordering::Release);
+                self.reap(child, None);
+                Ok(())
+            }
+            Err(error) => {
+                self.children.fetch_sub(1, Ordering::AcqRel);
+                Err(error.into())
+            }
+        }
+    }
+    fn reap(
+        self: &Arc<Self>,
+        mut child: std::process::Child,
+        input: Option<(std::process::ChildStdin, Vec<u8>)>,
+    ) {
+        let state = self.clone();
+        std::thread::spawn(move || {
+            if let Some((mut pipe, data)) = input {
+                let _ = pipe.write_all(&data);
+            }
+            let _ = child.wait();
+            state.children.fetch_sub(1, Ordering::AcqRel);
+        });
+    }
+    fn idle(&self) -> bool {
+        self.used.load(Ordering::Acquire)
+            && self.children.load(Ordering::Acquire) == 0
+            && self.clipboard.try_lock().is_ok_and(|mut leases| {
+                leases.retain(|lease| lease.active());
+                leases.is_empty()
+            })
+    }
+}
 struct Service {
-    clipboard: Mutex<Option<arboard::Clipboard>>,
+    activity: Arc<Activity>,
 }
 fn failure(error: impl std::fmt::Display) -> zbus::fdo::Error {
     zbus::fdo::Error::Failed(error.to_string())
 }
 impl Service {
-    fn clipboard(
-        &self,
-        action: impl FnOnce(&mut arboard::Clipboard) -> Result<(), arboard::Error>,
-    ) -> zbus::fdo::Result<()> {
-        let mut guard = self.clipboard.lock().map_err(failure)?;
-        if guard.is_none() {
-            *guard = Some(arboard::Clipboard::new().map_err(failure)?);
-        }
-        action(guard.as_mut().unwrap()).map_err(failure)
+    fn clipboard(&self, data: Vec<u8>, mime: &str) -> zbus::fdo::Result<()> {
+        let mut lease = self.activity.clipboard.lock().map_err(failure)?;
+        let wayland = std::env::var("XDG_SESSION_TYPE").as_deref() == Ok("wayland")
+            || std::env::var_os("WAYLAND_DISPLAY").is_some();
+        let provider = flameshot_platform::clipboard::copy(data, mime, wayland).map_err(failure)?;
+        lease.retain(|provider| provider.active());
+        lease.push(provider);
+        self.activity.used.store(true, Ordering::Release);
+        Ok(())
     }
 }
 #[zbus::interface(name = "org.flameshot.Flameshot")]
 impl Service {
     #[zbus(name = "captureScreen")]
     fn capture_screen(&self) -> zbus::fdo::Result<()> {
-        let mut child = Command::new(std::env::current_exe().map_err(failure)?)
-            .arg("gui")
-            .stdout(Stdio::null())
-            .spawn()
-            .map_err(failure)?;
-        std::thread::spawn(move || {
-            let _ = child.wait();
-        });
-        Ok(())
+        self.activity.launch("gui").map_err(failure)
     }
     #[zbus(name = "attachScreenshotToClipboard")]
     fn attach_screenshot_to_clipboard(&self, data: Vec<u8>) -> zbus::fdo::Result<()> {
         let image = qt_wire::decode_clipboard(&data)
             .map_err(|e| zbus::fdo::Error::InvalidArgs(e.to_string()))?;
-        self.clipboard(|clipboard| {
-            clipboard.set_image(arboard::ImageData {
-                width: image.width() as usize,
-                height: image.height() as usize,
-                bytes: Cow::Owned(image.into_raw()),
-            })
-        })
+        let jpeg = crate::settings::Settings::load()
+            .map_err(failure)?
+            .jpeg_clipboard;
+        let data = crate::output::encode(
+            &image,
+            if jpeg {
+                image::ImageFormat::Jpeg
+            } else {
+                image::ImageFormat::Png
+            },
+        )
+        .map_err(failure)?;
+        self.clipboard(data, if jpeg { "image/jpeg" } else { "image/png" })
     }
     #[zbus(name = "attachTextToClipboard")]
     async fn attach_text_to_clipboard(
@@ -63,7 +111,7 @@ impl Service {
         notification: &str,
         #[zbus(connection)] connection: &Connection,
     ) -> zbus::fdo::Result<()> {
-        self.clipboard(|clipboard| clipboard.set_text(text))?;
+        self.clipboard(text.as_bytes().to_vec(), "text/plain;charset=utf-8")?;
         if !notification.is_empty()
             && crate::settings::Settings::load()
                 .map(|settings| settings.notifications)
@@ -100,27 +148,40 @@ impl Service {
     #[zbus(name = "attachPin")]
     fn attach_pin(&self, data: Vec<u8>) -> zbus::fdo::Result<()> {
         qt_wire::decode_pin(&data).map_err(|e| zbus::fdo::Error::InvalidArgs(e.to_string()))?;
-        let mut child = Command::new(std::env::current_exe().map_err(failure)?)
+        let executable = std::env::current_exe().map_err(failure)?;
+        self.activity.children.fetch_add(1, Ordering::AcqRel);
+        let mut child = match Command::new(executable)
             .arg("internal-pin")
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
             .spawn()
-            .map_err(failure)?;
-        let mut input = child
-            .stdin
-            .take()
-            .ok_or_else(|| failure("Missing pin input pipe"))?;
-        std::thread::spawn(move || {
-            let _ = input.write_all(&data);
-            drop(input);
+        {
+            Ok(child) => child,
+            Err(error) => {
+                self.activity.children.fetch_sub(1, Ordering::AcqRel);
+                return Err(failure(error));
+            }
+        };
+        let Some(input) = child.stdin.take() else {
+            let _ = child.kill();
             let _ = child.wait();
-        });
+            self.activity.children.fetch_sub(1, Ordering::AcqRel);
+            return Err(failure("Missing pin input pipe"));
+        };
+        self.activity.used.store(true, Ordering::Release);
+        self.activity.reap(child, Some((input, data)));
         Ok(())
     }
 }
 pub async fn run() -> Result<()> {
+    let activity = Arc::new(Activity::default());
     let connection = zbus::connection::Builder::session()?
-        .serve_at("/", Service::default())?
+        .serve_at(
+            "/",
+            Service {
+                activity: activity.clone(),
+            },
+        )?
         .build()
         .await?;
     let reply = match connection
@@ -134,6 +195,36 @@ pub async fn run() -> Result<()> {
     if reply != zbus::fdo::RequestNameReply::PrimaryOwner {
         return Ok(());
     }
+    #[cfg(feature = "update-check")]
+    {
+        let connection = connection.clone();
+        tokio::spawn(async move {
+            loop {
+                if let Ok(settings) = crate::settings::Settings::load()
+                    && settings.check_updates
+                {
+                    match flameshot_platform::updates::check(
+                        env!("CARGO_PKG_VERSION"),
+                        &settings.ignored_update,
+                    )
+                    .await
+                    {
+                        Ok(Some(update)) if settings.notifications => {
+                            let _ = flameshot_platform::desktop::notify(
+                                &connection,
+                                "Flameshot",
+                                &format!("Version {} is available: {}", update.version, update.url),
+                            )
+                            .await;
+                        }
+                        Err(error) => eprintln!("flameshot: Update check failed: {error}"),
+                        _ => {}
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(24 * 60 * 60)).await;
+            }
+        });
+    }
     use ksni::TrayMethods;
     let quit = std::sync::Arc::new(tokio::sync::Notify::new());
     let mut tray_handle = None;
@@ -145,8 +236,17 @@ pub async fn run() -> Result<()> {
             _=quit.notified()=>break,
             _=refresh.tick()=>{
                 if let Ok(settings)=crate::settings::Settings::load() {
+                    if settings.auto_close_idle && activity.idle() {break;}
                     if settings.disabled_tray {if let Some(handle)=tray_handle.take() {let handle:ksni::Handle<crate::tray::Tray>=handle;handle.shutdown().await;}}
-                    else if tray_handle.is_none() {tray_handle=crate::tray::Tray{quit:quit.clone()}.spawn().await.ok();}
+                    else if tray_handle.is_none() {
+                        tray_handle=crate::tray::Tray{quit:quit.clone(),activity:activity.clone()}.spawn().await.ok();
+                        if tray_handle.is_some() && settings.startup_message {
+                            let connection=connection.clone();
+                            tokio::spawn(async move {
+                                let _=flameshot_platform::desktop::notify(&connection,"Flameshot","Hello, I'm here! Click icon in the tray to take a screenshot or click with a right button to see more options.").await;
+                            });
+                        }
+                    }
                 }
             },
             _=tokio::signal::ctrl_c()=>break,
@@ -212,6 +312,15 @@ pub async fn pin(
     };
     proxy
         .call::<_, _, ()>("attachPin", &(qt_wire::encode_pin(&pin)?,))
+        .await?;
+    Ok(())
+}
+
+pub async fn copy_text(text: &str) -> Result<()> {
+    let connection = connect_service().await?;
+    let proxy = Proxy::new(&connection, SERVICE, "/", SERVICE).await?;
+    proxy
+        .call::<_, _, ()>("attachTextToClipboard", &(text, ""))
         .await?;
     Ok(())
 }

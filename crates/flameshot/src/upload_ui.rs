@@ -1,0 +1,589 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+use eframe::egui;
+use flameshot_platform::imgur::{Imgur, UploadedImage};
+use std::{sync::mpsc, time::Duration};
+#[derive(Default)]
+struct LinkClipboard {
+    job: Option<mpsc::Receiver<Result<(), String>>>,
+}
+impl LinkClipboard {
+    fn copy(&mut self, ctx: &egui::Context, text: &str) {
+        let (sender, receiver) = mpsc::channel();
+        self.job = Some(receiver);
+        let text = text.to_owned();
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            let _ = sender.send(
+                crate::daemon::copy_text(&text)
+                    .await
+                    .map_err(|e| e.to_string()),
+            );
+            ctx.request_repaint();
+        });
+    }
+    fn poll(&mut self, ctx: &egui::Context) -> Option<String> {
+        let result = match self.job.as_ref()?.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(Duration::from_millis(100));
+                return None;
+            }
+            Err(mpsc::TryRecvError::Disconnected) => Err("Clipboard worker stopped".into()),
+        };
+        self.job = None;
+        Some(match result {
+            Ok(()) => "Link copied".into(),
+            Err(error) => error,
+        })
+    }
+}
+pub struct UploadDialog {
+    clipboard: LinkClipboard,
+    clipboard_message: String,
+    image: image::RgbaImage,
+    texture: Option<egui::TextureHandle>,
+    job: Option<mpsc::Receiver<Result<(UploadedImage, String), String>>>,
+    uploaded: Option<UploadedImage>,
+    message: String,
+    auto_start_pending: bool,
+    copy_after_upload: bool,
+}
+impl UploadDialog {
+    pub fn new(image: image::RgbaImage) -> Self {
+        let settings = crate::settings::Settings::load();
+        let mut dialog = Self::with_settings(image, settings.as_ref().ok());
+        if let Err(error) = settings {
+            dialog.message = error.to_string();
+        }
+        dialog
+    }
+    fn with_settings(
+        image: image::RgbaImage,
+        settings: Option<&crate::settings::Settings>,
+    ) -> Self {
+        Self {
+            clipboard: LinkClipboard::default(),
+            clipboard_message: String::new(),
+            image,
+            texture: None,
+            job: None,
+            uploaded: None,
+            message: String::new(),
+            auto_start_pending: settings.is_some_and(|s| s.upload_without_confirmation),
+            copy_after_upload: settings.is_some_and(|s| s.copy_url_after_upload),
+        }
+    }
+    fn take_auto_start(&mut self) -> bool {
+        std::mem::take(&mut self.auto_start_pending)
+    }
+    fn begin(&mut self, ctx: &egui::Context) {
+        let setup = (|| {
+            let settings = crate::settings::Settings::load()?;
+            let api = Imgur::new(&settings.upload_client_id)?;
+            Ok::<_, anyhow::Error>((settings, api))
+        })();
+        match setup {
+            Ok((settings, api)) => {
+                self.start(ctx, settings, api, crate::upload_history::directory())
+            }
+            Err(error) => self.message = error.to_string(),
+        }
+    }
+    fn start(
+        &mut self,
+        ctx: &egui::Context,
+        settings: crate::settings::Settings,
+        api: Imgur,
+        history: anyhow::Result<std::path::PathBuf>,
+    ) {
+        if self.job.is_some() || self.uploaded.is_some() {
+            return;
+        }
+        self.auto_start_pending = false;
+        self.copy_after_upload = settings.copy_url_after_upload;
+        let image = self.image.clone();
+        let ctx = ctx.clone();
+        let (sender, receiver) = mpsc::channel();
+        self.job = Some(receiver);
+        self.message.clear();
+        self.clipboard_message.clear();
+        tokio::spawn(async move {
+            let result = async {
+                let png = crate::output::encode(&image, image::ImageFormat::Png)?;
+                let uploaded = api
+                    .upload(
+                        png,
+                        &chrono::Local::now()
+                            .format(&settings.filename_pattern)
+                            .to_string(),
+                    )
+                    .await?;
+                let warning = match history.and_then(|path| {
+                    crate::upload_history::save(
+                        &path,
+                        &uploaded,
+                        &image,
+                        settings.upload_history_max,
+                    )
+                }) {
+                    Ok(()) => String::new(),
+                    Err(error) => format!("Uploaded, but history could not be saved: {error}"),
+                };
+                Ok::<_, anyhow::Error>((uploaded, warning))
+            }
+            .await
+            .map_err(|error| error.to_string());
+            let _ = sender.send(result);
+            ctx.request_repaint();
+        });
+    }
+    fn poll_upload(&mut self) -> Option<String> {
+        let result = match self.job.as_ref()?.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => return None,
+            Err(mpsc::TryRecvError::Disconnected) => Err("Upload worker stopped".into()),
+        };
+        self.job = None;
+        match result {
+            Ok((image, message)) => {
+                let copy = self.copy_after_upload.then(|| image.link.clone());
+                self.uploaded = Some(image);
+                self.message = message;
+                copy
+            }
+            Err(error) => {
+                self.message = error;
+                None
+            }
+        }
+    }
+    pub fn show(&mut self, ctx: &egui::Context) -> bool {
+        if self.take_auto_start() {
+            self.begin(ctx);
+        }
+        if let Some(message) = self.clipboard.poll(ctx) {
+            self.clipboard_message = message;
+        }
+        if let Some(link) = self.poll_upload() {
+            self.clipboard.copy(ctx, &link);
+        }
+        let mut keep = true;
+        egui::Window::new("Upload to Imgur")
+            .collapsible(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                if self.texture.is_none() {
+                    let thumbnail = image::imageops::thumbnail(&self.image, 400, 250);
+                    self.texture = Some(ctx.load_texture(
+                        "upload-preview",
+                        egui::ColorImage::from_rgba_unmultiplied(
+                            [thumbnail.width() as usize, thumbnail.height() as usize],
+                            thumbnail.as_raw(),
+                        ),
+                        Default::default(),
+                    ));
+                }
+                ui.image(self.texture.as_ref().unwrap());
+                if let Some(uploaded) = &self.uploaded {
+                    ui.hyperlink(&uploaded.link);
+                    if ui.button("Copy link").clicked() {
+                        self.clipboard.copy(ctx, &uploaded.link);
+                    }
+                } else if self.job.is_some() {
+                    ui.spinner();
+                    ui.label("Uploading…");
+                    ctx.request_repaint_after(Duration::from_millis(100));
+                } else {
+                    ui.label("Upload this selected image to Imgur?");
+                    if ui.button("Upload").clicked() {
+                        self.begin(ctx);
+                    }
+                }
+                if !self.message.is_empty() {
+                    ui.label(&self.message);
+                }
+                if !self.clipboard_message.is_empty() {
+                    ui.label(&self.clipboard_message);
+                }
+                if self.job.is_none()
+                    && self.clipboard.job.is_none()
+                    && (ui.button("Close").clicked()
+                        || ctx.input(|i| i.key_pressed(egui::Key::Escape)))
+                {
+                    keep = false;
+                }
+            });
+        keep
+    }
+}
+pub fn history() -> anyhow::Result<()> {
+    let confirmation_required = crate::settings::Settings::load()?.history_confirmation_to_delete;
+    let entries = crate::upload_history::list(&crate::upload_history::directory()?)?;
+    eframe::run_native(
+        "Flameshot Upload History",
+        eframe::NativeOptions::default(),
+        Box::new(move |cc| {
+            crate::i18n::install_fonts(&cc.egui_ctx);
+            Ok(Box::new(History {
+                confirmation_required,
+                textures: Default::default(),
+                clipboard: LinkClipboard::default(),
+                entries,
+                confirm: None,
+                job: None,
+                message: String::new(),
+            }))
+        }),
+    )
+    .map_err(|e| anyhow::anyhow!("Upload history: {e}"))
+}
+struct History {
+    confirmation_required: bool,
+    textures: std::collections::HashMap<std::path::PathBuf, Option<egui::TextureHandle>>,
+    clipboard: LinkClipboard,
+    entries: Vec<crate::upload_history::Entry>,
+    confirm: Option<usize>,
+    job: Option<mpsc::Receiver<Result<usize, String>>>,
+    message: String,
+}
+impl History {
+    fn poll_delete(&mut self) {
+        let Some(job) = &self.job else {
+            return;
+        };
+        let result = match job.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => Err("Deletion worker stopped".into()),
+        };
+        self.job = None;
+        match result {
+            Ok(index) => {
+                self.textures.remove(&self.entries[index].path);
+                self.entries.remove(index);
+                self.confirm = None;
+            }
+            Err(error) => self.message = error,
+        }
+    }
+    fn request_delete(&mut self, index: usize) -> bool {
+        if self.confirmation_required {
+            self.confirm = Some(index);
+            false
+        } else {
+            self.confirm = None;
+            true
+        }
+    }
+    fn start_delete(&mut self, ctx: &egui::Context, index: usize) {
+        match crate::settings::Settings::load()
+            .and_then(|settings| Imgur::new(&settings.upload_client_id))
+        {
+            Ok(api) => self.begin_delete(ctx, index, api),
+            Err(error) => self.message = error.to_string(),
+        }
+    }
+    fn begin_delete(&mut self, ctx: &egui::Context, index: usize, api: Imgur) {
+        if self.job.is_some() {
+            return;
+        }
+        self.message.clear();
+        let entry = self.entries[index].clone();
+        let (sender, receiver) = mpsc::channel();
+        self.job = Some(receiver);
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            let result = async {
+                api.delete(entry.deletehash.as_deref().unwrap()).await?;
+                std::fs::remove_file(&entry.path)?;
+                Ok::<_, anyhow::Error>(index)
+            }
+            .await
+            .map_err(|e| e.to_string());
+            let _ = sender.send(result);
+            ctx.request_repaint();
+        });
+    }
+}
+impl eframe::App for History {
+    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        self.poll_delete();
+        if let Some(message) = self.clipboard.poll(ui.ctx()) {
+            self.message = message;
+        }
+        ui.heading("Upload History");
+        if self.entries.is_empty() {
+            ui.label("No uploaded images");
+        }
+        let mut requested_delete = None;
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for (index, entry) in self.entries.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    let texture = self.textures.entry(entry.path.clone()).or_insert_with(|| {
+                        let reader = image::ImageReader::open(&entry.path)
+                            .ok()?
+                            .with_guessed_format()
+                            .ok()?;
+                        let image = reader.decode().ok()?.thumbnail(250, 100).to_rgba8();
+                        Some(ui.ctx().load_texture(
+                            entry.path.to_string_lossy(),
+                            egui::ColorImage::from_rgba_unmultiplied(
+                                [image.width() as usize, image.height() as usize],
+                                image.as_raw(),
+                            ),
+                            Default::default(),
+                        ))
+                    });
+                    if let Some(texture) = texture {
+                        ui.add(egui::Image::new(&*texture).max_size(egui::vec2(125.0, 50.0)));
+                    }
+                    ui.hyperlink(&entry.link);
+                    if ui.button("Copy link").clicked() {
+                        self.clipboard.copy(ui.ctx(), &entry.link);
+                    }
+                    if entry.deletehash.is_some()
+                        && ui
+                            .add_enabled(self.job.is_none(), egui::Button::new("Delete"))
+                            .clicked()
+                    {
+                        requested_delete = Some(index);
+                    }
+                });
+            }
+        });
+        if let Some(index) = requested_delete
+            && self.request_delete(index)
+        {
+            self.start_delete(ui.ctx(), index);
+        }
+        if let Some(index) = self.confirm {
+            ui.label("Delete this image from Imgur?");
+            if self.job.is_none() {
+                ui.horizontal(|ui| {
+                    if ui.button("Confirm deletion").clicked() {
+                        self.start_delete(ui.ctx(), index);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.confirm = None;
+                    }
+                });
+            }
+        }
+        if self.job.is_some() {
+            ui.spinner();
+            ui.ctx().request_repaint_after(Duration::from_millis(100));
+        }
+        if !self.message.is_empty() {
+            ui.label(&self.message);
+        }
+        if self.job.is_none()
+            && self.clipboard.job.is_none()
+            && ui.input(|i| i.key_pressed(egui::Key::Escape))
+        {
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    fn mock_server(success: bool) -> (Imgur, std::thread::JoinHandle<Vec<u8>>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/3/image", listener.local_addr().unwrap());
+        let task = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut bytes = Vec::new();
+            let mut buffer = [0; 4096];
+            loop {
+                let count = stream.read(&mut buffer).unwrap();
+                assert_ne!(count, 0);
+                bytes.extend_from_slice(&buffer[..count]);
+                if let Some(header_end) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let header = String::from_utf8_lossy(&bytes[..header_end]);
+                    let length = header
+                        .lines()
+                        .find_map(|line| {
+                            line.to_ascii_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|value| value.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if bytes.len() >= header_end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let body = if success && bytes.starts_with(b"DELETE") {
+                r#"{"success":true,"data":true}"#
+            } else if success {
+                r#"{"success":true,"data":{"id":"abc123","link":"https://i.imgur.com/abc123.png","deletehash":"secret123"}}"#
+            } else {
+                r#"{"success":false}"#
+            };
+            write!(stream,"HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+            bytes
+        });
+        (
+            Imgur::local_test_server("test-client", &endpoint).unwrap(),
+            task,
+        )
+    }
+    async fn finish(dialog: &mut UploadDialog) -> Option<String> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let mut copied = None;
+        while dialog.job.is_some() {
+            copied = dialog.poll_upload().or(copied);
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Upload test timed out"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        copied
+    }
+    #[test]
+    fn stopped_clipboard_worker_releases_pending_state() {
+        let (sender, receiver) = mpsc::channel();
+        drop(sender);
+        let mut clipboard = LinkClipboard {
+            job: Some(receiver),
+        };
+        assert_eq!(
+            clipboard.poll(&egui::Context::default()).as_deref(),
+            Some("Clipboard worker stopped")
+        );
+        assert!(clipboard.job.is_none());
+        for endpoint in [
+            "https://api.imgur.com/3/image",
+            "http://192.0.2.1:1234/3/image",
+            "http://user@127.0.0.1:1234/3/image",
+        ] {
+            assert!(Imgur::local_test_server("test", endpoint).is_err());
+        }
+    }
+    #[test]
+    fn default_confirmation_window_does_not_start_a_request() {
+        let settings = crate::settings::Settings::default();
+        let mut dialog = UploadDialog::with_settings(image::RgbaImage::new(4, 3), Some(&settings));
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            assert!(dialog.show(ui.ctx()));
+        });
+        output.textures_delta.clear();
+        assert!(dialog.job.is_none());
+        assert!(dialog.uploaded.is_none());
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn automatic_upload_runs_once_and_auto_copy_follows_preference() {
+        for copy in [false, true] {
+            let settings = crate::settings::Settings {
+                upload_without_confirmation: true,
+                copy_url_after_upload: copy,
+                ..Default::default()
+            };
+            let mut dialog = UploadDialog::with_settings(
+                image::RgbaImage::from_pixel(4, 3, image::Rgba([1, 2, 3, 255])),
+                Some(&settings),
+            );
+            assert!(dialog.take_auto_start());
+            assert!(!dialog.take_auto_start());
+            let temp = tempfile::tempdir().unwrap();
+            let history = temp.path().join("history");
+            let (api, server) = mock_server(true);
+            dialog.start(
+                &egui::Context::default(),
+                settings,
+                api,
+                Ok(history.clone()),
+            );
+            assert_eq!(
+                finish(&mut dialog).await,
+                copy.then(|| "https://i.imgur.com/abc123.png".into())
+            );
+            assert!(dialog.uploaded.is_some());
+            assert!(!dialog.take_auto_start());
+            assert!(dialog.poll_upload().is_none());
+            let request = server.join().unwrap();
+            assert!(request.starts_with(b"POST /3/image HTTP/1.1"));
+            assert!(request.windows(8).any(|part| part == b"\x89PNG\r\n\x1a\n"));
+            assert_eq!(crate::upload_history::list(&history).unwrap().len(), 1);
+        }
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn confirmation_failure_retry_and_history_warning_remain_distinct() {
+        let settings = crate::settings::Settings::default();
+        let mut dialog = UploadDialog::with_settings(image::RgbaImage::new(4, 3), Some(&settings));
+        assert!(!dialog.take_auto_start());
+        assert!(dialog.job.is_none());
+        let (api, server) = mock_server(false);
+        dialog.start(
+            &egui::Context::default(),
+            settings.clone(),
+            api,
+            Err(anyhow::anyhow!("missing history")),
+        );
+        assert!(finish(&mut dialog).await.is_none());
+        server.join().unwrap();
+        assert!(dialog.uploaded.is_none());
+        assert!(!dialog.message.is_empty());
+        assert!(!dialog.take_auto_start());
+        let (api, server) = mock_server(true);
+        dialog.start(
+            &egui::Context::default(),
+            settings,
+            api,
+            Err(anyhow::anyhow!("missing history")),
+        );
+        assert!(finish(&mut dialog).await.is_some());
+        server.join().unwrap();
+        assert!(dialog.message.contains("history could not be saved"));
+        assert!(dialog.uploaded.is_some());
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn deletion_preference_and_failures_preserve_history_until_remote_success() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("image.png");
+        std::fs::write(&path, b"synthetic").unwrap();
+        let mut history = History {
+            confirmation_required: true,
+            textures: Default::default(),
+            clipboard: Default::default(),
+            entries: vec![crate::upload_history::Entry {
+                path: path.clone(),
+                link: "https://i.imgur.com/abc123.png".into(),
+                deletehash: Some("secret123".into()),
+            }],
+            confirm: None,
+            job: None,
+            message: String::new(),
+        };
+        assert!(!history.request_delete(0));
+        assert_eq!(history.confirm, Some(0));
+        assert!(history.job.is_none());
+        history.confirmation_required = false;
+        assert!(history.request_delete(0));
+        assert!(history.confirm.is_none());
+        for success in [false, true] {
+            let (api, task) = mock_server(success);
+            history.begin_delete(&egui::Context::default(), 0, api);
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while history.job.is_some() {
+                history.poll_delete();
+                assert!(std::time::Instant::now() < deadline);
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(
+                task.join()
+                    .unwrap()
+                    .starts_with(b"DELETE /3/image/secret123 HTTP/1.1")
+            );
+            assert_eq!(path.exists(), !success);
+            assert_eq!(history.entries.is_empty(), success);
+        }
+    }
+}

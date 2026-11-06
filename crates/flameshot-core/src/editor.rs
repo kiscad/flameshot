@@ -49,12 +49,15 @@ pub enum Annotation {
         start: Point,
         end: Point,
         style: Style,
+        curved: bool,
+        reversed: bool,
     },
     Rectangle {
         start: Point,
         end: Point,
         style: Style,
         filled: bool,
+        radius: f32,
     },
     Ellipse {
         start: Point,
@@ -63,11 +66,12 @@ pub enum Annotation {
         filled: bool,
     },
     Invert(PixelRect),
-    /// Replacement depends only on pixels OUTSIDE the rectangle. A full-image
-    /// rectangle uses a neutral fill; no original interior samples survive.
+    /// By default replacement uses only pixels OUTSIDE the rectangle. Explicit
+    /// insecure mode instead samples the selected content for a visual effect.
     Pixelate {
         region: PixelRect,
         block_size: u32,
+        insecure: bool,
     },
 }
 #[derive(Debug, thiserror::Error)]
@@ -136,13 +140,13 @@ impl Document {
     fn commit(&mut self, after: Vec<Annotation>) {
         let before = std::mem::replace(&mut self.annotations, after.clone());
         self.redo.clear();
-        if self.undo_limit > 0 {
-            self.undo.push(Change { before, after });
-            if self.undo.len() > self.undo_limit {
-                self.undo.remove(0);
-            }
+        self.undo.push(Change { before, after });
+        // QUndoStack's zero limit means unlimited history.
+        if self.undo_limit > 0 && self.undo.len() > self.undo_limit {
+            self.undo.remove(0);
         }
     }
+
     pub fn next_counter(&self) -> u16 {
         self.annotations
             .iter()
@@ -197,8 +201,36 @@ impl Document {
         if let Some(annotation) = pending {
             validate(annotation)?;
         }
+        self.render_annotations(self.annotations.iter().chain(pending))
+    }
+    /// Preview replacement/removal at its existing layer without changing history.
+    pub fn preview_replacement(
+        &self,
+        index: usize,
+        replacement: Option<&Annotation>,
+    ) -> Result<RgbaImage, EditError> {
+        if index >= self.annotations.len() {
+            return Err(EditError::InvalidIndex);
+        }
+        if let Some(annotation) = replacement {
+            validate(annotation)?;
+        }
+        self.render_annotations(self.annotations.iter().enumerate().filter_map(
+            |(position, annotation)| {
+                if position == index {
+                    replacement
+                } else {
+                    Some(annotation)
+                }
+            },
+        ))
+    }
+    fn render_annotations<'a>(
+        &self,
+        annotations: impl Iterator<Item = &'a Annotation>,
+    ) -> Result<RgbaImage, EditError> {
         let mut image = self.base.clone();
-        for annotation in self.annotations.iter().chain(pending) {
+        for annotation in annotations {
             match annotation {
                 Annotation::Counter {
                     center,
@@ -244,8 +276,16 @@ impl Document {
                         }
                     }
                 }
-                Annotation::Pixelate { region, block_size } => {
-                    pixelate(&mut image, *region, *block_size)
+                Annotation::Pixelate {
+                    region,
+                    block_size,
+                    insecure,
+                } => {
+                    if *insecure {
+                        pixelate_selected(&mut image, *region, *block_size);
+                    } else {
+                        pixelate(&mut image, *region, *block_size);
+                    }
                 }
                 _ => draw(&mut image, annotation)?,
             }
@@ -305,17 +345,29 @@ fn validate(a: &Annotation) -> Result<(), EditError> {
         }
         Annotation::Line { start, end, style }
         | Annotation::Marker { start, end, style }
-        | Annotation::Arrow { start, end, style }
+        | Annotation::Arrow {
+            start, end, style, ..
+        }
         | Annotation::Rectangle {
             start, end, style, ..
         }
         | Annotation::Ellipse {
             start, end, style, ..
-        } => valid_point(start) && valid_point(end) && valid_style(style),
-        Annotation::Invert(r) => r.width > 0 && r.height > 0,
-        Annotation::Pixelate { region, block_size } => {
-            region.width > 0 && region.height > 0 && *block_size > 0
+        } => {
+            valid_point(start)
+                && valid_point(end)
+                && valid_style(style)
+                && match a {
+                    Annotation::Rectangle { radius, .. } => {
+                        radius.is_finite() && *radius >= 0.0 && *radius <= 10000.0
+                    }
+                    _ => true,
+                }
         }
+        Annotation::Invert(r) => r.width > 0 && r.height > 0,
+        Annotation::Pixelate {
+            region, block_size, ..
+        } => region.width > 0 && region.height > 0 && *block_size > 0,
     };
     if valid {
         Ok(())
@@ -333,22 +385,24 @@ fn draw(image: &mut RgbaImage, a: &Annotation) -> Result<(), EditError> {
             }
             (*style, false)
         }
-        Annotation::Line { start, end, style }
-        | Annotation::Marker { start, end, style }
-        | Annotation::Arrow { start, end, style } => {
+        Annotation::Arrow {
+            start,
+            end,
+            style,
+            curved,
+            reversed,
+        } => {
+            return draw_arrow(
+                image,
+                if *reversed { *end } else { *start },
+                if *reversed { *start } else { *end },
+                *style,
+                *curved,
+            );
+        }
+        Annotation::Line { start, end, style } | Annotation::Marker { start, end, style } => {
             builder.move_to(start.x, start.y);
             builder.line_to(end.x, end.y);
-            if matches!(a, Annotation::Arrow { .. }) {
-                let angle = (end.y - start.y).atan2(end.x - start.x);
-                let length = (style.width * 4.0).max(10.0);
-                for delta in [-0.5_f32, 0.5] {
-                    builder.move_to(end.x, end.y);
-                    builder.line_to(
-                        end.x - length * (angle + delta).cos(),
-                        end.y - length * (angle + delta).sin(),
-                    );
-                }
-            }
             (*style, false)
         }
         Annotation::Rectangle {
@@ -356,6 +410,7 @@ fn draw(image: &mut RgbaImage, a: &Annotation) -> Result<(), EditError> {
             end,
             style,
             filled,
+            ..
         }
         | Annotation::Ellipse {
             start,
@@ -373,8 +428,8 @@ fn draw(image: &mut RgbaImage, a: &Annotation) -> Result<(), EditError> {
             };
             if matches!(a, Annotation::Ellipse { .. }) {
                 builder.push_oval(rect);
-            } else {
-                builder.push_rect(rect);
+            } else if let Annotation::Rectangle { radius, .. } = a {
+                rounded_rect(&mut builder, rect, *radius);
             }
             (*style, *filled)
         }
@@ -421,6 +476,10 @@ fn draw(image: &mut RgbaImage, a: &Annotation) -> Result<(), EditError> {
         };
         layer.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
     }
+    composite(image, &layer, marker);
+    Ok(())
+}
+fn composite(image: &mut RgbaImage, layer: &Pixmap, marker: bool) {
     for (destination, source) in image.pixels_mut().zip(layer.pixels()) {
         let alpha = u32::from(source.alpha());
         if alpha == 0 {
@@ -444,7 +503,139 @@ fn draw(image: &mut RgbaImage, a: &Annotation) -> Result<(), EditError> {
         }
         destination[3] = out_alpha as u8;
     }
+}
+fn rounded_rect(path: &mut PathBuilder, rect: tiny_skia::Rect, radius: f32) {
+    let r = radius.min(rect.width() / 2.0).min(rect.height() / 2.0);
+    if r == 0.0 {
+        path.push_rect(rect);
+        return;
+    }
+    let (l, t, b, right) = (rect.left(), rect.top(), rect.bottom(), rect.right());
+    path.move_to(l + r, t);
+    path.line_to(right - r, t);
+    path.quad_to(right, t, right, t + r);
+    path.line_to(right, b - r);
+    path.quad_to(right, b, right - r, b);
+    path.line_to(l + r, b);
+    path.quad_to(l, b, l, b - r);
+    path.line_to(l, t + r);
+    path.quad_to(l, t, l + r, t);
+    path.close();
+}
+fn draw_arrow(
+    image: &mut RgbaImage,
+    start: Point,
+    end: Point,
+    style: Style,
+    curved: bool,
+) -> Result<(), EditError> {
+    let length = (end.x - start.x).hypot(end.y - start.y);
+    if length <= f32::EPSILON {
+        return Ok(());
+    }
+    let (dx, dy) = ((end.x - start.x) / length, (end.y - start.y) / length);
+    let distance = (18.0 + style.width * 2.0).min(length);
+    let half = 5.0 + style.width;
+    let base = Point {
+        x: end.x - dx * distance,
+        y: end.y - dy * distance,
+    };
+    let left = Point {
+        x: base.x - dy * half,
+        y: base.y + dx * half,
+    };
+    let right = Point {
+        x: base.x + dy * half,
+        y: base.y - dx * half,
+    };
+    let notch = (distance * 0.45).min(half);
+    let mut shaft = PathBuilder::new();
+    shaft.move_to(start.x, start.y);
+    shaft.line_to(
+        base.x + if curved { dx * (notch + 1.0) } else { 0.0 },
+        base.y + if curved { dy * (notch + 1.0) } else { 0.0 },
+    );
+    let mut head = PathBuilder::new();
+    head.move_to(end.x, end.y);
+    head.line_to(left.x, left.y);
+    if curved {
+        head.quad_to(
+            base.x - dy * half * 0.25,
+            base.y + dx * half * 0.25,
+            base.x + dx * notch,
+            base.y + dy * notch,
+        );
+        head.quad_to(
+            base.x + dy * half * 0.25,
+            base.y - dx * half * 0.25,
+            right.x,
+            right.y,
+        );
+    } else {
+        head.line_to(right.x, right.y);
+    }
+    head.close();
+    let mut layer = Pixmap::new(image.width(), image.height()).ok_or(EditError::InvalidImage)?;
+    let mut paint = Paint::default();
+    paint.set_color_rgba8(
+        style.color[0],
+        style.color[1],
+        style.color[2],
+        style.color[3],
+    );
+    paint.anti_alias = true;
+    if let Some(path) = shaft.finish() {
+        layer.stroke_path(
+            &path,
+            &paint,
+            &Stroke {
+                width: style.width,
+                line_cap: if curved {
+                    LineCap::Butt
+                } else {
+                    LineCap::Square
+                },
+                ..Default::default()
+            },
+            Transform::identity(),
+            None,
+        );
+    }
+    if let Some(path) = head.finish() {
+        layer.fill_path(
+            &path,
+            &paint,
+            FillRule::Winding,
+            Transform::identity(),
+            None,
+        );
+    }
+    composite(image, &layer, false);
     Ok(())
+}
+fn pixelate_selected(image: &mut RgbaImage, region: PixelRect, block_size: u32) {
+    let Some(region) = clip(region, image) else {
+        return;
+    };
+    let source = image::imageops::crop_imm(image, region.x, region.y, region.width, region.height)
+        .to_image();
+    let effect = if block_size <= 4 {
+        image::imageops::blur(&image::imageops::blur(&source, 10.0), 12.0)
+    } else {
+        let reduced = image::imageops::resize(
+            &source,
+            (region.width / block_size).max(1),
+            (region.height / block_size).max(1),
+            image::imageops::FilterType::Triangle,
+        );
+        image::imageops::resize(
+            &reduced,
+            region.width,
+            region.height,
+            image::imageops::FilterType::Nearest,
+        )
+    };
+    image::imageops::replace(image, &effect, i64::from(region.x), i64::from(region.y));
 }
 fn pixelate(image: &mut RgbaImage, region: PixelRect, block_size: u32) {
     let Some(r) = clip(region, image) else {
@@ -532,9 +723,9 @@ impl Annotation {
             Self::Marker { start, end, style } => {
                 (vec![*start, *end], (style.width + 14.0) / 2.0 + 3.0)
             }
-            Self::Arrow { start, end, style } => {
-                (vec![*start, *end], (style.width * 4.0).max(10.0))
-            }
+            Self::Arrow {
+                start, end, style, ..
+            } => (vec![*start, *end], (style.width * 4.0).max(10.0)),
             Self::Invert(r) | Self::Pixelate { region: r, .. } => {
                 return (
                     Point {
@@ -633,7 +824,60 @@ mod tests {
                 width: 2.0,
             },
             filled: true,
+            radius: 0.0,
         }
+    }
+    #[test]
+    fn filled_arrowheads_reverse_and_curved_style_changes_the_head() {
+        let base = RgbaImage::from_pixel(100, 100, Rgba([255; 4]));
+        let style = Style {
+            color: [255, 0, 0, 255],
+            width: 3.0,
+        };
+        let arrow = |curved, reversed| Annotation::Arrow {
+            start: Point { x: 10.0, y: 50.0 },
+            end: Point { x: 90.0, y: 50.0 },
+            style,
+            curved,
+            reversed,
+        };
+        let doc = Document::new(base.clone(), 10).unwrap();
+        let normal = doc.preview(Some(&arrow(false, false))).unwrap();
+        assert_eq!(*normal.get_pixel(72, 54), Rgba([255, 0, 0, 255]));
+        assert_eq!(*normal.get_pixel(28, 54), Rgba([255; 4]));
+        let reversed = doc.preview(Some(&arrow(false, true))).unwrap();
+        assert_eq!(*reversed.get_pixel(28, 54), Rgba([255, 0, 0, 255]));
+        let curved = doc.preview(Some(&arrow(true, false))).unwrap();
+        assert_ne!(curved, normal);
+        assert_eq!(*curved.get_pixel(85, 50), Rgba([255, 0, 0, 255]));
+        assert_eq!(
+            doc.preview(Some(&Annotation::Arrow {
+                start: Point { x: 10.0, y: 10.0 },
+                end: Point { x: 10.0, y: 10.0 },
+                style,
+                curved: true,
+                reversed: false
+            }))
+            .unwrap(),
+            base
+        );
+    }
+    #[test]
+    fn rounded_rectangle_clips_corner_but_preserves_fill() {
+        let doc = Document::new(RgbaImage::from_pixel(60, 60, Rgba([255; 4])), 10).unwrap();
+        let shape = Annotation::Rectangle {
+            start: Point { x: 10.0, y: 10.0 },
+            end: Point { x: 50.0, y: 50.0 },
+            style: Style {
+                color: [0, 0, 255, 255],
+                width: 1.0,
+            },
+            filled: true,
+            radius: 10.0,
+        };
+        let image = doc.preview(Some(&shape)).unwrap();
+        assert_eq!(*image.get_pixel(11, 11), Rgba([255; 4]));
+        assert_eq!(*image.get_pixel(30, 30), Rgba([0, 0, 255, 255]));
     }
     #[test]
     fn counters_render_pointer_and_renumber_after_undo() {
@@ -708,6 +952,35 @@ mod tests {
         assert_eq!(doc.render().unwrap(), before);
         assert!(doc.move_annotation(1, f32::NAN, 0.0).is_err());
         assert_eq!(doc.render().unwrap(), before);
+    }
+    #[test]
+    fn replacement_preview_preserves_layer_order_and_history() {
+        let mut doc = Document::new(base(), 10).unwrap();
+        doc.add(mark()).unwrap();
+        doc.add(Annotation::Invert(PixelRect {
+            x: 5,
+            y: 5,
+            width: 3,
+            height: 3,
+        }))
+        .unwrap();
+        let before = doc.render().unwrap();
+        let mut replacement = mark();
+        if let Annotation::Rectangle { style, .. } = &mut replacement {
+            style.color = [0, 0, 255, 255];
+        }
+        let preview = doc.preview_replacement(0, Some(&replacement)).unwrap();
+        assert_eq!(doc.render().unwrap(), before);
+        doc.replace(0, replacement).unwrap();
+        assert_eq!(doc.render().unwrap(), preview);
+        doc.undo();
+        assert_eq!(doc.render().unwrap(), before);
+        let removed = doc.preview_replacement(0, None).unwrap();
+        doc.remove(0).unwrap();
+        assert_eq!(doc.render().unwrap(), removed);
+        doc.undo();
+        assert_eq!(doc.render().unwrap(), before);
+        assert!(doc.preview_replacement(99, None).is_err());
     }
     #[test]
     fn transient_preview_matches_commit_without_touching_history() {
@@ -800,11 +1073,62 @@ mod tests {
             let annotation = Annotation::Pixelate {
                 region,
                 block_size: 3,
+                insecure: false,
             };
             da.add(annotation.clone()).unwrap();
             db.add(annotation).unwrap();
             assert_eq!(da.render().unwrap(), db.render().unwrap());
         }
+    }
+    #[test]
+    fn insecure_pixelation_samples_content_clips_bounds_and_remains_undoable() {
+        let source = RgbaImage::from_fn(40, 40, |x, y| {
+            Rgba([if (x + y) % 2 == 0 { 255 } else { 0 }, 0, 0, 255])
+        });
+        for block_size in [4, 8] {
+            let mut doc = Document::new(source.clone(), 10).unwrap();
+            let annotation = Annotation::Pixelate {
+                region: PixelRect {
+                    x: 5,
+                    y: 5,
+                    width: 20,
+                    height: 20,
+                },
+                block_size,
+                insecure: true,
+            };
+            let preview = doc.preview(Some(&annotation)).unwrap();
+            assert_ne!(preview, source);
+            assert_eq!(preview.get_pixel(4, 4), source.get_pixel(4, 4));
+            assert!(preview.get_pixel(10, 10)[0] > 0 && preview.get_pixel(10, 10)[0] < 255);
+            doc.add(annotation).unwrap();
+            assert_eq!(doc.render().unwrap(), preview);
+            doc.undo();
+            assert_eq!(doc.render().unwrap(), source);
+        }
+        let doc = Document::new(RgbaImage::from_pixel(10, 10, Rgba([255, 0, 0, 255])), 10).unwrap();
+        let region = PixelRect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 20,
+        };
+        let safe = doc
+            .preview(Some(&Annotation::Pixelate {
+                region,
+                block_size: 8,
+                insecure: false,
+            }))
+            .unwrap();
+        let sampled = doc
+            .preview(Some(&Annotation::Pixelate {
+                region,
+                block_size: 8,
+                insecure: true,
+            }))
+            .unwrap();
+        assert_eq!(*safe.get_pixel(5, 5), Rgba([128, 128, 128, 255]));
+        assert_eq!(*sampled.get_pixel(5, 5), Rgba([255, 0, 0, 255]));
     }
     #[test]
     fn transparent_composition_and_inversion_preserve_alpha() {
@@ -827,6 +1151,23 @@ mod tests {
             *doc.render().unwrap().get_pixel(6, 6),
             Rgba([0, 255, 255, 128])
         );
+    }
+    #[test]
+    fn zero_history_limit_retains_all_edits_and_redo() {
+        let mut doc = Document::new(base(), 0).unwrap();
+        for _ in 0..105 {
+            doc.add(mark()).unwrap();
+        }
+        for _ in 0..105 {
+            assert!(doc.undo());
+        }
+        assert!(!doc.undo());
+        assert_eq!(doc.render().unwrap(), base());
+        for _ in 0..105 {
+            assert!(doc.redo());
+        }
+        assert!(!doc.redo());
+        assert_eq!(doc.annotations().len(), 105);
     }
     #[test]
     fn history_limit_and_invalid_strokes() {
@@ -857,7 +1198,8 @@ mod tests {
                     width: 1,
                     height: 1
                 },
-                block_size: 0
+                block_size: 0,
+                insecure: false,
             })
             .is_err()
         );

@@ -1,0 +1,81 @@
+name: Rust migration
+
+on:
+  push:
+    branches: [master, rewrite/rust]
+    paths:
+      - 'Cargo.*'
+      - 'rust-toolchain.toml'
+      - 'crates/**'
+      - 'data/**'
+      - 'scripts/check-rust.sh'
+      - 'scripts/stage-rust.sh'
+      - 'tests/rust/**'
+      - '.github/workflows/rust.yml'
+  pull_request:
+    paths:
+      - 'Cargo.*'
+      - 'rust-toolchain.toml'
+      - 'crates/**'
+      - 'data/**'
+      - 'scripts/check-rust.sh'
+      - 'scripts/stage-rust.sh'
+      - 'tests/rust/**'
+      - '.github/workflows/rust.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: always
+      LIBGL_ALWAYS_SOFTWARE: '1'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install native runtime and desktop test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config ripgrep desktop-file-utils appstream libx11-dev libxkbcommon-dev libwayland-dev \
+            libegl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
+            libglib2.0-bin dbus dbus-x11 fonts-noto-core fonts-noto-cjk \
+            xvfb xdotool xclip x11-xserver-utils python3-pil sway swaybg grim wtype \
+            wl-clipboard pipewire xdg-desktop-portal xdg-desktop-portal-gtk \
+            xdg-desktop-portal-wlr
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - name: Format, lint, unit and isolated service tests
+        run: scripts/check-rust.sh
+      - name: Build with optional upload support
+        run: |
+          cargo build --locked -p flameshot --all-features
+          cargo build --locked -p flameshot-platform --examples
+      - name: Real X11 smoke
+        run: python3 tests/rust/desktop_smoke.py / target/debug/flameshot
+      - name: Native Wayland and mixed-scale smoke
+        run: python3 tests/rust/wayland_smoke.py / target/debug/flameshot
+      - name: Release build
+        run: |
+          cargo build --locked --release --all-features
+          cargo build --locked --release -p flameshot-platform --examples
+      - name: Optimized desktop regressions
+        run: |
+          python3 tests/rust/desktop_smoke.py / target/release/flameshot
+          python3 tests/rust/wayland_smoke.py / target/release/flameshot
+      - name: Verify executable and absence of Qt linkage
+        run: |
+          target/release/flameshot --version
+          if ldd target/release/flameshot | rg 'libQt[56]'; then
+            echo 'Rust executable unexpectedly links Qt' >&2
+            exit 1
+          fi
+      - name: Validate staged package payload
+        run: |
+          DESTDIR="$PWD/target/rust-stage" PREFIX=/usr scripts/stage-rust.sh
+          desktop-file-validate target/rust-stage/usr/share/applications/org.flameshot.Flameshot.desktop
+          appstreamcli validate --no-net target/rust-stage/usr/share/metainfo/org.flameshot.Flameshot.metainfo.xml
+          target/rust-stage/usr/bin/flameshot --version
