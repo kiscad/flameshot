@@ -398,7 +398,7 @@ print('PASS: capture lock is released after a killed editor')
                 flags=['--raw','--region','400x200+500+450']
                 data=struct.pack('>II',127,11)+b'QList<int>\0'+struct.pack('>I',0)
                 variant='@Variant('+''.join(chr(92)+'x'+format(byte,'02x') for byte in data)+')'
-                test_config.write_text('[General]\ncheckForUpdates=false\nlanguage=en\nshowSelectionGeometry=0\nbuttons='+variant+'\n')
+                test_config.write_text('[General]\ncheckForUpdates=false\nlanguage=en\nuserColors=#00ff00, #0000ff, #ff0000\nshowSelectionGeometry=0\nbuttons='+variant+'\n')
             if mode=='textedit':
                 flags=['--raw','--region','400x200+500+450']
                 test_config.write_text('[General]\ncheckForUpdates=false\ncopyOnDoubleClick=true\ndrawFontSize=18\nshowSelectionGeometry=0\n')
@@ -573,6 +573,28 @@ print('PASS: capture lock is released after a killed editor')
                 assert move_pixels()==original,'Cancelling a move changed the document'
                 tool('key','ctrl+shift+z')
                 assert move_pixels()==preview,'Cancelled drag erased redo history'
+                tool('mousemove','--window',window,'180','37')
+                tool('click','1')
+                time.sleep(.2)
+                tool('mousemove','--window',window,'650','550')
+                tool('click','1')
+                time.sleep(.2)
+                tool('mousemove','--window',window,'40','60')
+                tool('click','1') # Green in the configured three-color palette.
+                recolored=move_pixels()
+                assert recolored[0]==preview[0] and recolored[1]==(0,255,0),recolored
+                tool('key','ctrl+z')
+                assert move_pixels()==preview,'Recoloring did not undo in one step'
+                tool('key','ctrl+shift+z')
+                assert move_pixels()==recolored,'Recoloring redo failed'
+                tool('mousemove','--window',window,'650','550')
+                tool('click','1')
+                time.sleep(.2)
+                tool('key','p')
+                time.sleep(.2)
+                tool('mousemove','--window',window,'77','60')
+                tool('click','1') # Blue becomes the drawing default, not an object edit.
+                assert move_pixels()==recolored,'Drawing color changed a previously selected object'
                 tool('key','Return')
             elif mode=='textedit':
                 import io

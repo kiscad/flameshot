@@ -800,6 +800,32 @@ fn pixelate(image: &mut RgbaImage, region: PixelRect, block_size: u32) {
 }
 
 impl Annotation {
+    pub fn color(&self) -> Option<[u8; 4]> {
+        match self {
+            Self::Counter { color, .. } | Self::Text { color, .. } => Some(*color),
+            Self::Pencil { style, .. }
+            | Self::Line { style, .. }
+            | Self::Marker { style, .. }
+            | Self::Arrow { style, .. }
+            | Self::Rectangle { style, .. }
+            | Self::Ellipse { style, .. } => Some(style.color),
+            Self::Invert(_) | Self::Pixelate { .. } => None,
+        }
+    }
+    /// Change drawing color without altering geometry or effect parameters.
+    /// Invert and pixelate have no drawing color.
+    pub fn set_color(&mut self, value: [u8; 4]) {
+        match self {
+            Self::Counter { color, .. } | Self::Text { color, .. } => *color = value,
+            Self::Pencil { style, .. }
+            | Self::Line { style, .. }
+            | Self::Marker { style, .. }
+            | Self::Arrow { style, .. }
+            | Self::Rectangle { style, .. }
+            | Self::Ellipse { style, .. } => style.color = value,
+            Self::Invert(_) | Self::Pixelate { .. } => {}
+        }
+    }
     pub fn bounds(&self) -> (Point, Point) {
         let (points, padding) = match self {
             Self::Counter {
@@ -953,6 +979,38 @@ mod tests {
             filled: true,
             radius: 0.0,
         }
+    }
+    #[test]
+    fn recoloring_preserves_geometry_and_is_one_reversible_edit() {
+        let mut doc = Document::new(base(), 10).unwrap();
+        doc.add(mark()).unwrap();
+        let before = doc.render().unwrap();
+        let mut recolored = doc.annotations()[0].clone();
+        let bounds = recolored.bounds();
+        recolored.set_color([0, 255, 0, 128]);
+        assert_eq!(recolored.color(), Some([0, 255, 0, 128]));
+        assert_eq!(recolored.bounds(), bounds);
+        doc.replace(0, recolored.clone()).unwrap();
+        let after = doc.render().unwrap();
+        assert_ne!(after, before);
+        assert!(doc.undo());
+        assert_eq!(doc.render().unwrap(), before);
+        assert!(doc.redo());
+        assert_eq!(doc.annotations(), &[recolored]);
+        let mut effect = Annotation::Pixelate {
+            region: PixelRect {
+                x: 1,
+                y: 1,
+                width: 4,
+                height: 4,
+            },
+            block_size: 8,
+            insecure: false,
+        };
+        let original = effect.clone();
+        effect.set_color([0; 4]);
+        assert_eq!(effect, original);
+        assert_eq!(effect.color(), None);
     }
     #[test]
     fn picking_uses_visible_geometry_and_near_hits_before_far_hits() {

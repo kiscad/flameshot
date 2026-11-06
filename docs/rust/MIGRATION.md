@@ -1377,3 +1377,25 @@ Validation passed: 44 core tests, `cargo test --locked --workspace --all-feature
 all-target/all-feature Clippy with warnings denied, formatting, and the complete
 isolated Xvfb suite including overlapping-object movement and double-click text
 editing. No GNOME/KDE or mixed-DPI picking parity is claimed by these checks.
+
+### Selected-object color editing
+
+The Move object tool now displays the selected annotation's own color and applies
+palette/color-control changes to that annotation as undoable replacements. The
+replacement keeps its geometry, layer and other tool properties. Drawing tools
+continue to change the drawing default without recoloring a stale selected object.
+Counter/text colors and stroke/fill colors share the same core accessor; invert
+and pixelate do not acquire artificial color properties or undo entries.
+
+The core test checks alpha-aware recoloring, unchanged bounds, undo/redo, and
+unmodified pixelation parameters. The X11 object-editing case changes a moved
+rectangle to green, undoes/redoes the color change, then switches to drawing with
+blue while checking that the existing rectangle stays green. A palette choice
+is one undoable operation. Continuous color-picker gesture history grouping,
+tool-specific size editing, and resizing are still pending; this change does not
+claim complete object-properties parity.
+
+Validation passed: `cargo test --locked --workspace --all-features`, all-target
+all-feature Clippy with warnings denied, formatting, and the complete isolated
+Xvfb suite with the added recolor/undo/redo/drawing-default assertions. The test
+palette respects the existing minimum of three configured color entries.

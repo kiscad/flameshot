@@ -726,6 +726,16 @@ impl Editor {
     }
     fn persist_color(&mut self) {
         self.dirty = true;
+        if self.tool == Tool::Move
+            && let Some(index) = self.selected_object
+            && let Some(original) = self.document.annotations().get(index)
+        {
+            let mut annotation = original.clone();
+            annotation.set_color(self.color.to_srgba_unmultiplied());
+            if let Err(error) = self.document.replace(index, annotation) {
+                self.error = error.to_string();
+            }
+        }
         if let Err(error) = crate::settings::Settings::update(&[(
             "drawColor",
             flameshot_core::color::encode(self.color.to_srgba_unmultiplied()),
@@ -1084,6 +1094,14 @@ impl eframe::App for Editor {
         }
         if self.quit_prompt {
             return;
+        }
+        if self.tool == Tool::Move
+            && let Some(color) = self
+                .selected_object
+                .and_then(|index| self.document.annotations().get(index))
+                .and_then(Annotation::color)
+        {
+            self.color = Color32::from_rgba_unmultiplied(color[0], color[1], color[2], color[3]);
         }
         if self.panel_visible {
             egui::Window::new("Objects and properties")
