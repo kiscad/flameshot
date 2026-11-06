@@ -1,0 +1,18 @@
+[package]
+name = "flameshot-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+tiny-skia = "0.11.4"
+thiserror = "2"
+cosmic-text = "0.19.0"
+
+[lints]
+workspace = true
+
+[build-dependencies]
+roxmltree = "0.20"

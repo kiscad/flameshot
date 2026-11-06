@@ -82,3 +82,6 @@ result-*
 
 # direnv
 .direnv
+
+# Rust
+/target/

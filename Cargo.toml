@@ -1,0 +1,15 @@
+[workspace]
+members = ["crates/flameshot-core", "crates/flameshot-platform", "crates/flameshot"]
+resolver = "3"
+
+[workspace.package]
+version = "15.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "GPL-3.0-or-later"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
