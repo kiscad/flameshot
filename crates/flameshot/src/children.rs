@@ -10,6 +10,29 @@ use std::{
     },
     time::Duration,
 };
+/// Only explicitly owned Flameshot windows receive this argument. Background
+/// service activation and external applications must remain independent.
+/// Linux links parent death to the spawning thread; callers use their long-lived
+/// UI or runtime threads, not short-lived worker threads.
+pub fn owned_command() -> Result<Command> {
+    let mut command = Command::new(std::env::current_exe()?);
+    command.args(["--internal-parent", &std::process::id().to_string()]);
+    Ok(command)
+}
+
+pub fn bind_owner(expected: u32) -> Result<bool> {
+    let is_owner = || {
+        rustix::process::getppid().is_some_and(|pid| pid.as_raw_nonzero().get() as u32 == expected)
+    };
+    if !is_owner() {
+        return Ok(false);
+    }
+    rustix::process::set_parent_process_death_signal(Some(rustix::process::Signal::KILL))
+        .context("Cannot track the owning Flameshot process")?;
+    // The parent may have exited before the kernel notification was installed.
+    Ok(is_owner())
+}
+
 type Slot = Arc<Mutex<Option<Child>>>;
 #[derive(Default)]
 struct State {

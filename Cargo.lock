@@ -1025,6 +1025,7 @@ dependencies = [
  "futures-util",
  "image",
  "ksni",
+ "rustix 1.1.6",
  "tempfile",
  "tokio",
  "zbus",

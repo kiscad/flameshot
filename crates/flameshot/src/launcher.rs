@@ -5,7 +5,7 @@ use flameshot_core::region::Region;
 use std::{
     ffi::OsString,
     path::PathBuf,
-    process::{Command, Stdio},
+    process::Stdio,
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -134,18 +134,14 @@ impl Launcher {
                 return;
             }
         };
-        let executable = match std::env::current_exe() {
-            Ok(exe) => exe,
+        let mut command = match crate::children::owned_command() {
+            Ok(command) => command,
             Err(e) => {
                 self.error = e.to_string();
                 return;
             }
         };
-        match Command::new(executable)
-            .args(args)
-            .stdout(Stdio::null())
-            .spawn()
-        {
+        match command.args(args).stdout(Stdio::null()).spawn() {
             Ok(mut child) => {
                 let (sender, receiver) = mpsc::channel();
                 self.job = Some(receiver);

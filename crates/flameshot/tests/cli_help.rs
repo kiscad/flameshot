@@ -103,3 +103,22 @@ fn configuration_failure_is_not_a_bus_connection_failure() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("undoLimit"));
     assert_eq!(std::fs::read_to_string(path).unwrap(), content);
 }
+
+#[test]
+fn vanished_internal_owner_exits_before_starting_capture() {
+    let temp = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+        .env("XDG_CONFIG_HOME", temp.path())
+        .env("DBUS_SESSION_BUS_ADDRESS", "not-a-valid-dbus-address")
+        .args(["--internal-parent", "0", "full", "--raw"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(output.stdout.is_empty() && output.stderr.is_empty());
+    assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+    let help = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+        .arg("--help")
+        .output()
+        .unwrap();
+    assert!(!String::from_utf8_lossy(&help.stdout).contains("internal-parent"));
+}

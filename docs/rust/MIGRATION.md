@@ -23,7 +23,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; remaining object-editing parity pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text, X11 INCR and ownership lifecycle verified on Xvfb/Sway; other compositor paths remain |
-| Daemon | Single instance, pins, tray, idle lifetime | Idle ownership/pin retention and direct-child shutdown implemented/tested; descendant shutdown audit remains |
+| Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, direct-child shutdown and launcher descendants tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, configuration flags, completions and manual implemented/tested; final syntax/exit-code and shell acceptance remain |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures/atomic updates tested; live-reload/semantic gaps remain |
@@ -1659,3 +1659,33 @@ as do workspace tests, private-bus daemon/signal tests, Clippy and formatting.
 This registry covers directly owned children. Windows subsequently launched by a
 launcher child and other descendant/independent CLI ownership cases still need the
 remaining lifecycle audit. This is not a claim that the full shutdown gate is closed.
+
+### Ownership across launcher descendants
+
+Owned Flameshot window commands now receive a hidden internal parent identifier.
+Before doing work, the child checks its actual parent, installs Linux parent-death
+termination through rustix's safe API, then checks the parent again to cover exit
+before registration. This is applied both to daemon-owned windows and captures
+created by a launcher. It is deliberately an argument, not an inherited environment
+setting: independently activated clipboard services and external applications do
+not acquire an accidental lifetime dependency.
+
+Linux associates this notification with the spawning thread, not an arbitrary
+process-wide lease; these call sites use the long-lived UI/runtime threads. See the
+[Linux parent-death signal contract](https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html).
+The application keeps its unsafe-code prohibition. Rustix 1.1.6 was already locked
+transitively; the direct process-feature dependency adds no new package version.
+
+The X11 test now starts a real owner/launcher/capture chain, kills the owner, and
+waits for both descendant processes and windows to disappear. Existing normal
+launcher cancellation/return behavior remains tested. Another case copies from an
+owned capture and checks that the independent clipboard service survives its exit.
+The no-longer-present owner path is tested headlessly with an invalid bus address:
+it exits before capture or configuration writes, and the internal flag stays out
+of public help. Sandbox execution and independently invoked CLI window ownership
+remain in final lifecycle/packaging acceptance; those are not implied by this test.
+
+Validation passed: the complete isolated Xvfb suite, including two-level owner
+termination and independent clipboard survival; the native Sway/Wayland suite;
+all-feature workspace tests; private-bus signal/disconnection tests; all-target
+Clippy and formatting. No host process policy or installed application was changed.

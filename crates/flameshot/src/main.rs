@@ -42,6 +42,8 @@ use std::{
     about = "Powerful yet simple-to-use screenshot software"
 )]
 struct Cli {
+    #[arg(long, hide = true)]
+    internal_parent: Option<u32>,
     #[arg(short = 'v', long = "version", visible_short_alias = 'V', action = clap::ArgAction::Version, help = "Display version information")]
     _version: Option<bool>,
     #[command(subcommand)]
@@ -132,6 +134,16 @@ enum Command {
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
     let cli = Cli::parse();
+    if let Some(parent) = cli.internal_parent {
+        match children::bind_owner(parent) {
+            Ok(true) => {}
+            Ok(false) => return std::process::ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("flameshot: {error:#}");
+                return std::process::ExitCode::FAILURE;
+            }
+        }
+    }
     match run(cli).await {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {

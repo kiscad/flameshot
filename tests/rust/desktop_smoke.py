@@ -60,14 +60,14 @@ try:
 import subprocess,sys,struct,time,os
 from pathlib import Path
 binary,xclip,xdotool=sys.argv[1:]
-result=subprocess.run([binary,'full','--clipboard'],capture_output=True,timeout=20)
+result=subprocess.run([binary,'--internal-parent',str(os.getpid()),'full','--clipboard'],capture_output=True,timeout=20)
 assert result.returncode==0,result.stderr.decode()
 assert not result.stdout
 copied=subprocess.run([xclip,'-selection','clipboard','-t','image/png','-o'],capture_output=True,timeout=5)
 assert copied.returncode==0,copied.stderr.decode()
 assert copied.stdout[:8]==b'\x89PNG\r\n\x1a\n'
 assert struct.unpack('>II',copied.stdout[16:24])==(1024,768)
-print('PASS: clipboard image survives capture process exit')
+print('PASS: clipboard service survives owned capture process exit')
 def tool(*args):
     return subprocess.run([xdotool,*args],capture_output=True,timeout=5)
 def wait_window(title):
@@ -319,6 +319,26 @@ try:
 finally:
     if launcher.poll() is None:launcher.kill();launcher.wait()
 print('PASS: launcher hides for capture and returns after cancellation')
+owner=subprocess.Popen(['sh','-c','"$1" --internal-parent "$$" launcher & wait','flameshot-owner-test',binary],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+try:
+    launcher_window=wait_window('^Flameshot Launcher$')
+    launcher_pid=int(tool('getwindowpid',launcher_window).stdout)
+    tool('windowfocus','--sync',launcher_window)
+    time.sleep(.3)
+    tool('key','Return')
+    capture_window=wait_window('^Flameshot$')
+    capture_pid=int(tool('getwindowpid',capture_window).stdout)
+    owner.kill()
+    owner.communicate(timeout=5)
+    deadline=time.monotonic()+5
+    while Path(f'/proc/{launcher_pid}').exists() or Path(f'/proc/{capture_pid}').exists():
+        assert time.monotonic()<deadline,'Owned launcher/capture descendants survived owner death'
+        time.sleep(.05)
+    assert tool('search','--onlyvisible','--name','^Flameshot$').returncode!=0
+    assert tool('search','--onlyvisible','--name','^Flameshot Launcher$').returncode!=0
+finally:
+    if owner.poll() is None:owner.kill();owner.wait()
+print('PASS: abrupt owner death closes owned launcher and capture descendants')
 crashed=subprocess.Popen([binary,'gui','--raw'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 try:
     wait_window('^Flameshot$')
@@ -333,7 +353,7 @@ finally:
     if reopened.poll() is None:reopened.kill();reopened.wait()
 print('PASS: capture lock is released after a killed editor')
 """
-        copied = subprocess.run(bus_command + [sys.executable, '-c', clipboard_check, str(binary), str(root / 'usr/bin/xclip'), str(root / 'usr/bin/xdotool')], env=env, capture_output=True, timeout=50)
+        copied = subprocess.run(bus_command + [sys.executable, '-c', clipboard_check, str(binary), str(root / 'usr/bin/xclip'), str(root / 'usr/bin/xdotool')], env=env, capture_output=True, timeout=65)
         assert copied.returncode == 0, copied.stderr.decode()
         print(copied.stdout.decode().strip())
         help_text=subprocess.run([str(binary),'--help'],env=env,capture_output=True,timeout=5).stdout

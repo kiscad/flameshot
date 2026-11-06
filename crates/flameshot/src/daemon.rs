@@ -51,7 +51,7 @@ pub(crate) struct Activity {
 impl Activity {
     pub(crate) fn launch(self: &Arc<Self>, command: &str) -> Result<()> {
         self.children.spawn(
-            Command::new(std::env::current_exe()?)
+            crate::children::owned_command()?
                 .arg(command)
                 .stdout(Stdio::null()),
             None,
@@ -157,7 +157,8 @@ impl Service {
         self.activity
             .children
             .spawn(
-                Command::new(std::env::current_exe().map_err(failure)?)
+                crate::children::owned_command()
+                    .map_err(failure)?
                     .arg("internal-pin")
                     .stdout(Stdio::null()),
                 Some(data),
