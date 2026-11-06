@@ -1731,3 +1731,28 @@ and an oversized drawing setting is rejected by both `config --check` and `full
 the all-feature workspace/CLI tests, all-target/all-feature Clippy and formatting.
 Legacy fallback/error presentation, inactive optional settings and live-reload
 semantics remain in the broader configuration audit.
+
+### Concurrent configuration updates
+
+Rust settings writers now hold an exclusive sibling-file lock across reading,
+merging, validation and atomic replacement. The stable `flameshot.ini.rust-lock`
+file is separate from the replaced INI inode and is not unlinked after use, so
+queued writers continue to coordinate on the same file. The OS lock is released
+with the file handle; see [Rust File locking](https://doc.rust-lang.org/std/fs/struct.File.html#method.lock).
+General settings and shortcut updates use the same path. Shortcut changes also
+validate the complete merged shortcut map while locked, preventing individually
+valid partial updates from creating a conflict with existing bindings.
+
+Integration tests launch six CLI writers with disjoint settings and verify every
+value plus comments/opaque data survives. A controlled-lock test waits until the
+child opens the lock, changes the file while holding it, then releases the child
+and confirms it reads the new content rather than a stale snapshot. A shortcut
+merge test checks conflict rejection without modifying the configuration and a
+successful nonconflicting update. All-feature workspace tests, all-target Clippy
+with warnings denied and formatting pass.
+
+The auxiliary lock file may persist after updates, including rejected updates;
+read-only configuration checks do not create it. This coordinates cooperating Rust
+writers, not arbitrary external editors or a legacy Qt process using a different
+locking protocol. GUI form/live-reload conflict handling remains in the remaining
+configuration acceptance work.

@@ -202,6 +202,26 @@ impl Settings {
         values: &[(&str, String)],
     ) -> Result<()> {
         use std::io::Write;
+        let parent = path.parent().context("Invalid configuration path")?;
+        std::fs::create_dir_all(parent)?;
+        let mut lock_name = path
+            .file_name()
+            .context("Missing configuration filename")?
+            .to_os_string();
+        lock_name.push(".rust-lock");
+        // Keep this separate from the atomically replaced INI inode. Never
+        // unlink it: queued writers must continue locking the same file.
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let lock = options
+            .open(path.with_file_name(lock_name))
+            .context("Cannot open configuration lock")?;
+        lock.lock().context("Cannot lock configuration")?;
         let source = match std::fs::read_to_string(path) {
             Ok(source) => source,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -236,9 +256,10 @@ impl Settings {
                 ini.set_string(section, key, value)?;
             }
         }
-        Self::parse(ini.source())?;
-        let parent = path.parent().context("Invalid configuration path")?;
-        std::fs::create_dir_all(parent)?;
+        let merged = Self::parse(ini.source())?;
+        if section == "Shortcuts" {
+            crate::shortcuts::validate_overrides(&merged.shortcuts).map_err(anyhow::Error::msg)?;
+        }
         let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
         if let Ok(metadata) = std::fs::metadata(path) {
             temporary
@@ -462,6 +483,27 @@ pub fn default_palette(large: bool) -> Vec<Option<[u8; 4]>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shortcut_updates_validate_the_merged_configuration() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("flameshot.ini");
+        let original = "[General]\ndrawThickness=3\n[Shortcuts]\nTYPE_COPY=F9\n";
+        std::fs::write(&path, original).unwrap();
+        assert!(
+            Settings::update_section_at(&path, "Shortcuts", &[("TYPE_SAVE", "F9".into())]).is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        Settings::update_section_at(&path, "Shortcuts", &[("TYPE_SAVE", "F10".into())]).unwrap();
+        let ini = IniDocument::parse(std::fs::read_to_string(&path).unwrap());
+        assert_eq!(
+            ini.string("Shortcuts", "TYPE_COPY").unwrap().as_deref(),
+            Some("F9")
+        );
+        assert_eq!(
+            ini.string("Shortcuts", "TYPE_SAVE").unwrap().as_deref(),
+            Some("F10")
+        );
+    }
     #[test]
     fn numeric_loading_and_configuration_check_agree_on_legacy_ranges() {
         let keys = [

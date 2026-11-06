@@ -181,3 +181,133 @@ fn capture_and_config_check_reject_the_same_oversized_setting_before_bus_access(
         assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
     }
 }
+
+#[test]
+fn concurrent_cli_updates_preserve_disjoint_settings() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path().join("flameshot");
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("flameshot.ini");
+    let opaque = "[Other]\nopaque=@Variant(\\0keep)\n";
+    std::fs::write(&path, format!("; retained\n[General]\n{opaque}")).unwrap();
+    let updates = [
+        ("--filename", "%F-concurrent"),
+        ("--maincolor", "#123456"),
+        ("--contrastcolor", "#654321"),
+        ("--notifications", "false"),
+        ("--trayicon", "false"),
+        ("--showhelp", "false"),
+    ];
+    let barrier = std::sync::Barrier::new(updates.len());
+    std::thread::scope(|scope| {
+        for (flag, value) in updates {
+            let barrier = &barrier;
+            let config = temp.path();
+            scope.spawn(move || {
+                barrier.wait();
+                let output = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+                    .env("XDG_CONFIG_HOME", config)
+                    .args(["config", flag, value])
+                    .output()
+                    .unwrap();
+                assert!(output.status.success(), "{flag}: {:?}", output.stderr);
+            });
+        }
+    });
+    let saved = std::fs::read_to_string(path).unwrap();
+    assert!(saved.starts_with("; retained\n") && saved.ends_with(opaque));
+    assert_eq!(saved.matches("[General]").count(), 1);
+    let ini = flameshot_core::config::IniDocument::parse(saved);
+    for (key, value) in [
+        ("filenamePattern", "%F-concurrent"),
+        ("uiColor", "#123456"),
+        ("contrastUiColor", "#654321"),
+        ("showDesktopNotification", "false"),
+        ("disabledTrayIcon", "true"),
+        ("showHelp", "false"),
+    ] {
+        assert_eq!(
+            ini.string("General", key).unwrap().as_deref(),
+            Some(value),
+            "{key}"
+        );
+    }
+}
+
+#[test]
+fn waiting_writer_reads_configuration_after_acquiring_the_lock() {
+    use std::time::{Duration, Instant};
+    struct ChildGuard(std::process::Child);
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path().join("flameshot");
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("flameshot.ini");
+    let lock_path = directory.join("flameshot.ini.rust-lock");
+    std::fs::write(&path, "[General]\nshowHelp=true\n").unwrap();
+    let lock = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .unwrap();
+    lock.lock().unwrap();
+    let mut writer = ChildGuard(
+        Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("XDG_CONFIG_HOME", temp.path())
+            .args(["config", "--filename", "from-writer"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        assert!(
+            writer.0.try_wait().unwrap().is_none(),
+            "Writer bypassed the held lock"
+        );
+        let descriptors = std::fs::read_dir(format!("/proc/{}/fd", writer.0.id())).unwrap();
+        if descriptors
+            .filter_map(Result::ok)
+            .any(|entry| std::fs::read_link(entry.path()).is_ok_and(|p| p == lock_path))
+        {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Writer did not open the configuration lock"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::fs::write(&path, "[General]\nshowHelp=false\n; latest change\n").unwrap();
+    drop(lock);
+    loop {
+        if let Some(status) = writer.0.try_wait().unwrap() {
+            assert!(status.success());
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Writer did not finish after lock release"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let source = std::fs::read_to_string(path).unwrap();
+    let ini = flameshot_core::config::IniDocument::parse(source.clone());
+    assert_eq!(
+        ini.string("General", "showHelp").unwrap().as_deref(),
+        Some("false")
+    );
+    assert_eq!(
+        ini.string("General", "filenamePattern").unwrap().as_deref(),
+        Some("from-writer")
+    );
+    assert!(source.contains("; latest change\n"));
+}
