@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Implemented with isolated service/window tests; full desktop integration acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak/Nix definitions migrated with local environment build blockers; Snap and clean-distro installs pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak/Nix/Snap definitions migrated; sandbox/provider builds and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb and native Sway/mixed-DPI suites pass; full GNOME/KDE and IME coverage pending |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -1292,3 +1292,32 @@ make canonical `/nix/store/.../bin/bash` builder paths executable, including wit
 unrun hosted workflow for normal-store builds and installed executable checks.
 Nix package compilation/runtime acceptance and clean-distro installs remain open;
 Snap still needs migration.
+
+### Snap Cargo migration
+
+The canonical core24 manifest now builds the current Rust workspace with
+Snapcraft's Rust plugin and pinned Rust 1.99.1, enables Imgur, disables the app
+update checker, and runs workspace tests before installing the shared package
+payload. The obsolete core18/Qt copy is a symlink to the canonical manifest.
+The GPU extension replaces KDE, while explicit native libraries, fonts, XKB data
+and MIME data supply the remaining runtime resources. A small launcher preserves
+GPU library order and literal arguments and connects a parent-directory Wayland
+socket into Snap's per-app runtime directory without overwriting existing entries.
+D-Bus activation calls `/snap/bin/flameshot`; the tray uses its unique connection
+name in both Flatpak and Snap. The private-bus test covers both cases.
+
+Validation completed locally: Snapcraft 9.2.1 extension expansion (GPU wrapper
+precedes the app wrapper), locked release `cargo install` with package features,
+manifest installation commands and resulting version/desktop/service payload,
+workspace tests with no default features plus Imgur, private-bus daemon test,
+Clippy with all features, and isolated launcher tests covering sockets, existing
+files/broken symlinks, absolute Wayland socket paths and literal arguments. The
+full Xvfb suite and the staged release binary’s native Sway/Wayland suite pass
+with the Snap environment simulated. The vendored archive contains the canonical
+manifest, valid compatibility symlink and executable launcher. These native checks
+are not evidence of installed strict confinement. There is no LXD/Multipass build
+provider on this workstation; no host snap installation was performed. A dedicated
+unrun CI workflow now builds the vendored source and inspects its payload, replacing
+the old Snap job that read its version from CMake. Provider build, installed desktop
+acceptance, arm64 compilation, portal file/host-app access and confined autostart
+remain open.

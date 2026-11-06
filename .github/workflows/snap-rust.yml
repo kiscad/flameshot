@@ -1,0 +1,51 @@
+name: Rust Snap
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Cargo.*'
+      - 'rust-toolchain.toml'
+      - 'crates/**'
+      - 'data/**'
+      - 'scripts/package-rust-source.sh'
+      - 'scripts/stage-rust.sh'
+      - 'snapcraft.yaml'
+      - '.github/workflows/snap-rust.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Prepare locked source
+        run: |
+          python3 tests/rust/snap_launcher.py
+          rustup toolchain install 1.99.1 --profile minimal
+          mkdir -p target/snap-project
+          scripts/package-rust-source.sh target/flameshot-15.0.0-rust.tar.gz
+          tar -xzf target/flameshot-15.0.0-rust.tar.gz --strip-components=1 -C target/snap-project
+      - name: Build in the Snapcraft environment
+        uses: snapcore/action-build@v1
+        id: snapcraft
+        with:
+          path: target/snap-project
+      - name: Inspect package payload
+        env:
+          SNAP_ARTIFACT: ${{ steps.snapcraft.outputs.snap }}
+        run: |
+          unsquashfs -d target/snap-payload "$SNAP_ARTIFACT"
+          test -x target/snap-payload/usr/bin/flameshot
+          test -x target/snap-payload/usr/libexec/flameshot-snap-launch
+          test -f target/snap-payload/meta/snap.yaml
+          if find target/snap-payload -name 'libQt*.so*' -print -quit | grep -q .; then
+            echo 'Unexpected Qt runtime in Rust package' >&2
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: flameshot-rust-snap-amd64
+          path: ${{ steps.snapcraft.outputs.snap }}

@@ -3,11 +3,9 @@ version: '15.0.0'
 base: core24
 summary: Powerful yet simple to use screenshot software
 description: |
-  A powerful open source screenshot and annotation tool for Linux, Flameshot
-  has a varied set of markup tools available, which include Freehand drawing,
-  Lines, Arrows, Boxes, Circles, Highlighting, Blur. Additionally, you can
-  customise the color, size and/or thickness of many of these image annotation
-  tools.
+  Flameshot is a screenshot and annotation tool implemented in Rust. Capture
+  regions or monitors, draw annotations, copy and save images, and pin images
+  above other windows. Supports X11 and Wayland screenshot portals.
 grade: stable
 confinement: strict
 compression: lzo
@@ -15,48 +13,84 @@ platforms:
   amd64:
     build-on: [amd64]
     build-for: [amd64]
-#  arm64:
-#    build-on: [arm64]
-#    build-for: [arm64]
+  arm64:
+    build-on: [arm64]
+    build-for: [arm64]
 
 apps:
   flameshot:
     command: usr/bin/flameshot
+    command-chain: [usr/libexec/flameshot-snap-launch]
     desktop: usr/share/applications/org.flameshot.Flameshot.desktop
     common-id: org.flameshot.Flameshot
-    extensions: [kde-neon-6]
+    extensions: [gpu]
     slots: [dbus-flameshot]
     plugs:
       - home
-      - gsettings
       - removable-media
+      - network
+      - desktop
+      - desktop-legacy
+      - opengl
+      - wayland
+      - x11
+      - unity7
 
 parts:
   flameshot:
-    plugin: cmake
-    source: https://github.com/flameshot-org/flameshot.git
-    source-tag: v$SNAPCRAFT_PROJECT_VERSION
+    plugin: rust
+    source: .
+    rust-channel: '1.99.1'
+    rust-path: [crates/flameshot]
+    rust-no-default-features: true
+    rust-features: [imgur]
     build-packages:
+      - pkg-config
       - libxkbcommon-dev
-      - libproxy-dev
-    cmake-parameters:
-      - -DFLAMESHOT_ICON=/snap/flameshot/current/usr/share/icons/hicolor/scalable/apps/flameshot.svg
-      - -DCMAKE_INSTALL_PREFIX=/usr
-      - -DUSE_WAYLAND_CLIPBOARD=1
+      - libwayland-dev
+      - libgl-dev
+      - python3
+      - libglib2.0-bin
+      - fonts-dejavu-core
+    stage-packages:
+      - libx11-6
+      - libx11-xcb1
+      - libxcursor1
+      - libxi6
+      - libxrandr2
+      - libxkbcommon0
+      - libxkbcommon-x11-0
+      - libwayland-client0
+      - libwayland-egl1
+      - libglib2.0-bin
+      - fonts-dejavu-core
+      - fontconfig-config
+      - hicolor-icon-theme
+      - shared-mime-info
+      - xkb-data
     override-build: |
       craftctl default
-      sed -i 's|^Icon=.*|Icon=${SNAP}/usr/share/icons/hicolor/scalable/apps/org.flameshot.Flameshot.svg|' ${CRAFT_PART_INSTALL}/usr/share/applications/org.flameshot.Flameshot.desktop
-      sed -i 's/^\(Name\(\[.\+\]\)\?=.*\)$/\1 [Snap]/g' ${CRAFT_PART_INSTALL}/usr/share/applications/org.flameshot.Flameshot.desktop
+      cargo test --locked --workspace --no-default-features --features imgur
+      DESTDIR="$CRAFT_PART_INSTALL" PREFIX=/usr \
+        FLAMESHOT_BINARY="$CRAFT_PART_INSTALL/bin/flameshot" \
+        sh scripts/stage-rust.sh
+      rm "$CRAFT_PART_INSTALL/bin/flameshot"
+      rm -f "$CRAFT_PART_INSTALL/.crates.toml" "$CRAFT_PART_INSTALL/.crates2.json"
+      install -Dm755 data/snap/launch "$CRAFT_PART_INSTALL/usr/libexec/flameshot-snap-launch"
+      sed -i 's|^Icon=.*|Icon=${SNAP}/usr/share/icons/hicolor/scalable/apps/org.flameshot.Flameshot.svg|' "$CRAFT_PART_INSTALL/usr/share/applications/org.flameshot.Flameshot.desktop"
+      # Activation must enter snap confinement, not the host's /usr/bin.
+      sed -i 's|^Exec=.*|Exec=/snap/bin/flameshot|' "$CRAFT_PART_INSTALL/usr/share/dbus-1/services/org.flameshot.Flameshot.service"
 
 slots:
-  # Depending on in which environment we're running we either need
-  # to use the system or session DBus so we also need to have one
-  # slot for each.
   dbus-flameshot:
     interface: dbus
     bus: session
     name: org.flameshot.Flameshot
 
 layout:
-  /usr/share/flameshot/translations:
-    symlink: $SNAP/usr/share/flameshot/translations
+  /etc/fonts:
+    bind: $SNAP/etc/fonts
+  /usr/share/fonts:
+    bind: $SNAP/usr/share/fonts
+  /usr/share/mime:
+    bind: $SNAP/usr/share/mime

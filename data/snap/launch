@@ -1,0 +1,31 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# GPU libraries are provided by the preceding Snapcraft GPU command chain.
+set -eu
+: "${SNAP:?This launcher must run inside the snap}"
+for snap_library in "$SNAP"/usr/lib/*-linux-gnu; do
+    if [ -d "$snap_library" ]; then
+        LD_LIBRARY_PATH="${LD_LIBRARY_PATH:+$LD_LIBRARY_PATH:}$snap_library"
+    fi
+done
+export LD_LIBRARY_PATH
+export PATH="$SNAP/usr/bin:$PATH"
+export XDG_DATA_DIRS="$SNAP/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+export FONTCONFIG_PATH="$SNAP/etc/fonts"
+export XKB_CONFIG_ROOT="$SNAP/usr/share/X11/xkb"
+# Snap uses a per-application runtime directory. Connect the compositor socket
+# from its parent, as desktop launchers do, without replacing existing entries.
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+    snap_wayland_display=${WAYLAND_DISPLAY:-wayland-0}
+    case "$snap_wayland_display" in
+        */*) ;; # Absolute/custom paths are handled directly by the Wayland client.
+        *)
+            snap_wayland_source="$XDG_RUNTIME_DIR/../$snap_wayland_display"
+            snap_wayland_target="$XDG_RUNTIME_DIR/$snap_wayland_display"
+            if [ -S "$snap_wayland_source" ] && [ ! -e "$snap_wayland_target" ] && [ ! -L "$snap_wayland_target" ]; then
+                ln -s "$snap_wayland_source" "$snap_wayland_target" || [ -S "$snap_wayland_target" ]
+            fi
+            ;;
+    esac
+fi
+exec "$@"

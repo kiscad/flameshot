@@ -4,6 +4,9 @@ use std::sync::{Arc, OnceLock};
 pub fn flatpak() -> bool {
     std::env::var_os("FLATPAK_ID").is_some() || std::path::Path::new("/.flatpak-info").exists()
 }
+pub fn restricted_bus_names() -> bool {
+    flatpak() || std::env::var_os("SNAP").is_some()
+}
 fn application_id(wayland: bool, sandboxed: bool) -> &'static str {
     if wayland || sandboxed {
         "org.flameshot.Flameshot"

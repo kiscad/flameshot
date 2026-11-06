@@ -213,3 +213,41 @@ the canonical `/nix/store` paths in this environment. Enabling its sandbox optio
 does not resolve that mapping. The `Rust Nix` workflow uses a normal Nix store to
 build and test the native package; that hosted workflow has not run yet. Evaluation
 of aarch64 does not constitute an aarch64 compilation or desktop test.
+
+## Snap
+
+The root `snapcraft.yaml` is the canonical configuration; `data/snap/snapcraft.yaml`
+is a compatibility symlink. It uses core24, the Rust plugin pinned to 1.99.1, and
+[Snapcraft's GPU extension](https://ubuntu.com/docs/snapcraft/9/reference/extensions/gpu-extension/)
+to obtain the graphics driver stack without a KDE/Qt runtime. Use Snapcraft 9.x
+(the configuration is locally expanded with 9.2.1). Build on the target architecture;
+amd64 and arm64 are declared, but local native compilation covers amd64 only.
+
+Prepare a small, vendored source tree rather than copying local build artifacts
+into Snapcraft's source part:
+
+```sh
+mkdir -p target/snap-project
+scripts/package-rust-source.sh target/flameshot-15.0.0-rust.tar.gz
+tar -xzf target/flameshot-15.0.0-rust.tar.gz --strip-components=1 -C target/snap-project
+cd target/snap-project
+snapcraft expand-extensions
+snapcraft
+```
+
+The Rust plugin installs the locked app with Imgur enabled and update checking
+disabled. The build override runs workspace tests, stages desktop/D-Bus/icon files,
+and removes Cargo installation bookkeeping. Rust crates in the prepared archive
+are offline; acquiring the compiler, base, stage packages and graphics provider
+still needs network access. The launcher keeps the GPU wrapper's library precedence
+and supplies app libraries, fonts, XKB data and `gio`. D-Bus activation enters through
+`/snap/bin/flameshot`. The tray uses a unique connection name under Snap confinement.
+
+A full Snapcraft provider build and installed strict-confinement desktop run are
+still required. This workstation has no LXD or Multipass build provider; no Snap
+was installed into the host for testing. Configuration expansion, direct Cargo
+installation, staging and simulated Snap environment checks do not establish
+confinement compatibility. The dedicated `Rust Snap` workflow builds the prepared
+source and inspects the package for unexpected Qt libraries; it has not run remotely.
+Portal file access, host application launching and autostart under confinement
+remain part of the final sandbox acceptance work.
