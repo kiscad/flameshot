@@ -450,6 +450,11 @@ print('PASS: capture lock is released after a killed editor')
                     break
                 time.sleep(0.1)
             assert window, 'Editor did not display a visible window'
+            window_pid=tool('getwindowpid',window).stdout.decode().strip()
+            expected_class='org.flameshot.Flameshot' if env.get('FLATPAK_ID') or Path('/.flatpak-info').exists() else 'flameshot'
+            identity=tool('search','--all','--pid',window_pid,'--class','^'+expected_class.replace('.','[.]')+'$')
+            assert identity.returncode==0,'Editor WM_CLASS does not match desktop entry'
+
             # Xvfb has no window manager to honor fullscreen requests.
             assert tool('windowsize', '--sync', window, '1024', '768').returncode == 0
             assert tool('windowfocus', '--sync', window).returncode == 0

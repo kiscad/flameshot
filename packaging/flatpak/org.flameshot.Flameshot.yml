@@ -1,50 +1,53 @@
 app-id: org.flameshot.Flameshot
-runtime: org.kde.Platform
-runtime-version: '6.10'
-sdk: org.kde.Sdk
+runtime: org.freedesktop.Platform
+runtime-version: '26.08'
+sdk: org.freedesktop.Sdk
 command: flameshot
 finish-args:
-  # X11 + XShm access
   - --share=ipc
-  - --socket=fallback-x11
-  # Wayland access
+  # Keep X11 available for clipboard fallback on compositors without data-control.
+  - --socket=x11
   - --socket=wayland
   - --device=dri
-  # Connectivity
   - --share=network
-  # QtSingleApplication, allow other instances to see log files
-  - --env=TMPDIR=/var/tmp
-  # Allow loading/saving files from anywhere
   - --filesystem=xdg-pictures
-  # Notification access
   - --talk-name=org.freedesktop.Notifications
-  # System Tray Icon
   - --talk-name=org.kde.StatusNotifierWatcher
 modules:
-  - name: flameshot
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DCMAKE_BUILD_TYPE=Release 
-      - -DUSE_WAYLAND_CLIPBOARD=1
+  # The currently published 26.08 rust-stable extension is older than our MSRV.
+  # Build tools are pinned and removed from the resulting application payload.
+  - name: rust-toolchain
+    buildsystem: simple
+    build-options:
+      no-debuginfo: true
+      strip: false
+    build-commands:
+      - ./install.sh --prefix=/app/lib/rust --disable-ldconfig --components="$(grep -E '^(rustc|cargo|rust-std-.*)$' components | paste -sd, -)"
     sources:
-      - type: git
-        url: https://gitlab.com/mattbas/Qt-Color-Widgets.git
-        commit: 5d52e907e50dc88cf969b41cea44665ff6c475b1
-        dest: external/Qt-Color-Widgets
-
-      - type: git
-        url: https://github.com/KDAB/KDSingleApplication.git
-        tag: v1.2.0
-        commit: 3186a158f8e6565e89f5983b4028c892737844ff
-        dest: external/KDSingleApplication
-        
-      - type: git
-        url: https://github.com/flameshot-org/flameshot.git
-        branch: master
-        # tag: v14.0.0
-        # commit: e408812d77ff1835957f85796c4cf737466bd69d
-
+      - type: archive
+        only-arches: [x86_64]
+        url: https://static.rust-lang.org/dist/rust-1.99.1-x86_64-unknown-linux-gnu.tar.xz
+        sha256: 231fcae47ee950621374725b5fc3b5441d2fbda2955ac45dd7dc816d8876cfe7
+      - type: archive
+        only-arches: [aarch64]
+        url: https://static.rust-lang.org/dist/rust-1.99.1-aarch64-unknown-linux-gnu.tar.xz
+        sha256: a48fb1e853be56ce9b8e2751f5464dbd5e16440cd81e237920f3a5e7e806333e
     cleanup:
-      - /share/bash-completion
-      - /share/man
-      - /share/zsh
+      - /lib/rust
+  - name: flameshot
+    buildsystem: simple
+    build-options:
+      prepend-path: /app/lib/rust/bin
+      env:
+        CARGO_HOME: /run/build/flameshot/cargo-home
+        CARGO_NET_OFFLINE: 'true'
+        CARGO_INCREMENTAL: '0'
+    build-commands:
+      - cargo build --locked --offline --release -p flameshot --no-default-features --features imgur
+      - DESTDIR="$PWD/package-stage" PREFIX=/app scripts/stage-rust.sh
+      - cp -a package-stage/app/. "$FLATPAK_DEST/"
+      - sed -i 's/^StartupWMClass=.*/StartupWMClass=org.flameshot.Flameshot/' "$FLATPAK_DEST/share/applications/org.flameshot.Flameshot.desktop"
+    sources:
+      # Generate with scripts/package-rust-source.sh beside a copy of this manifest.
+      - type: archive
+        path: flameshot-15.0.0-rust.tar.gz

@@ -35,7 +35,7 @@ pub struct Options {
     pub save_path: Option<std::path::PathBuf>,
 }
 pub fn edit(image: RgbaImage, options: Options) -> Result<Option<Outcome>> {
-    let mut viewport = egui::ViewportBuilder::default()
+    let mut viewport = crate::app_ui::viewport()
         .with_fullscreen(true)
         .with_decorations(false);
     if let Some(index) = options.target_monitor {

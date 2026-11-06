@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Implemented with isolated service/window tests; full desktop integration acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch Cargo package builds and packaged-binary desktop suites validated locally; Flatpak/Snap/Nix and clean-distro installs pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak Cargo manifest migrated but sandbox validation blocked by UID-map setup; Snap/Nix and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb and native Sway/mixed-DPI suites pass; full GNOME/KDE and IME coverage pending |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -1248,3 +1248,28 @@ and RPM metadata rebuilds also contain the Wayland EGL runtime dependency. The
 workflow YAML and shell recipes parse successfully. These validations used extracted
 tools on the development host; clean Arch installation and non-x86 execution are
 still not claimed. Flatpak, Snap and Nix migration remains pending.
+
+Flatpak manifest migrated from KDE/Qt/CMake to Freedesktop 26.08, a pinned Rust
+1.99.1 build-only toolchain, vendored offline Cargo and the shared /app staging
+layout. The published 26.08 rust-stable extension was inspected and still contains
+Rust 1.98.0, so it is not silently assumed to satisfy the MSRV. Official 1.99.1
+archive checksums are pinned for x86_64/aarch64; flatpak-builder downloaded and
+verified the x86_64 source, and its selected compiler/Cargo/std components installed
+successfully into a local test prefix. Manifest parsing passed with flatpak-builder.
+
+Application windows now use the packaged icon and Wayland desktop app ID, while
+standalone X11 keeps the flameshot WM_CLASS. Flatpak X11 uses the app ID and the
+manifest adjusts StartupWMClass accordingly. The tray uses ksni's unique-name mode
+under Flatpak instead of requesting a sandbox-forbidden dynamic well-known name.
+Private D-Bus tests verify this path; full X11 and native Sway suites pass with
+new identity assertions. All Rust checks passed. The local bubblewrap UID-map
+probe fails with Permission denied, so actual sandbox build/run acceptance remains
+unproven. A dedicated CI build workflow was added but not executed remotely.
+The pinned official toolchain also built the vendored app offline in a separate
+host test prefix. /app staging, D-Bus activation path, desktop/AppStream metadata
+and executable startup passed. A full X11 suite with FLATPAK_ID set passed against
+that staged release executable, exercising the sandbox identity branch without
+claiming filesystem or bus confinement. Normal X11/native Sway suites passed too.
+Actual SDK-sandbox compilation, cleanup/bundle execution and sandbox file/app-chooser
+flows remain unverified because user-namespace setup is denied here. The goal stays
+open; this environment limitation is not treated as complete Flatpak acceptance.

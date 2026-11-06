@@ -20,7 +20,7 @@ mkdir -p "$package_root"/{.cargo,docs,scripts,packaging,tests}
 # Export only repository files; exclude local build artifacts and untracked data.
 {
     git ls-files -z -- Cargo.toml Cargo.lock rust-toolchain.toml LICENSE README.md PKGBUILD \
-        crates data docs/rust tests/rust packaging/debian packaging/rpm \
+        crates data docs/rust tests/rust packaging/debian packaging/rpm packaging/flatpak \
         scripts/check-rust.sh scripts/stage-rust.sh scripts/package-rust-source.sh
     printf '%s\0' scripts/package-rust-source.sh
 } | sort -zu | tar --null -T - -cf - | tar -xf - -C "$package_root"

@@ -89,3 +89,5 @@ result-*
 # Python test bytecode
 __pycache__/
 *.pyc
+
+.flatpak-builder/

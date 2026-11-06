@@ -204,7 +204,9 @@ try:
             result=call(str(root/'usr/bin/swaymsg'),'-t','get_tree',timeout=5)
             def locate(node,output=None):
                 if node.get('type')=='output':output=node.get('name')
-                if node.get('pid')==editor.pid:return output
+                if node.get('pid')==editor.pid:
+                    assert node.get('app_id')=='org.flameshot.Flameshot',node.get('app_id')
+                    return output
                 for key in ['nodes','floating_nodes']:
                     for child in node.get(key,[]):
                         found=locate(child,output)

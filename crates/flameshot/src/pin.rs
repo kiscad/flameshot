@@ -27,7 +27,7 @@ pub fn show(pin: Pin) -> anyhow::Result<()> {
     eframe::run_native(
         "flameshot-pin",
         eframe::NativeOptions {
-            viewport: egui::ViewportBuilder::default()
+            viewport: crate::app_ui::viewport()
                 .with_decorations(false)
                 .with_resizable(false)
                 .with_transparent(true)

@@ -1,3 +1,4 @@
+mod app_ui;
 mod buttons;
 mod geometry_overlay;
 mod text_edit;

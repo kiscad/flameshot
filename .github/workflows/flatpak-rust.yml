@@ -1,0 +1,42 @@
+name: Rust Flatpak
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Cargo.*'
+      - 'rust-toolchain.toml'
+      - 'crates/**'
+      - 'data/**'
+      - 'scripts/package-rust-source.sh'
+      - 'scripts/stage-rust.sh'
+      - 'packaging/flatpak/**'
+      - '.github/workflows/flatpak-rust.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak-builder
+          rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy
+      - name: Prepare locked offline source
+        run: |
+          mkdir -p target/flatpak-manifest
+          scripts/package-rust-source.sh target/flatpak-manifest/flameshot-15.0.0-rust.tar.gz
+          cp packaging/flatpak/org.flameshot.Flameshot.yml target/flatpak-manifest/
+      - name: Build in the SDK sandbox
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak-builder --user --assumeyes --install-deps-from=flathub --force-clean --repo=target/flatpak-repo target/flatpak-app target/flatpak-manifest/org.flameshot.Flameshot.yml
+      - name: Verify packaged executable and bundle
+        run: |
+          flatpak-builder --run target/flatpak-app target/flatpak-manifest/org.flameshot.Flameshot.yml flameshot --version
+          test ! -e target/flatpak-app/files/lib/rust
+          flatpak build-bundle target/flatpak-repo target/flameshot.flatpak org.flameshot.Flameshot

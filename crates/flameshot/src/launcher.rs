@@ -95,7 +95,7 @@ pub fn show() -> Result<()> {
     eframe::run_native(
         "Flameshot Launcher",
         eframe::NativeOptions {
-            viewport: egui::ViewportBuilder::default().with_inner_size([500.0, 400.0]),
+            viewport: crate::app_ui::viewport().with_inner_size([500.0, 400.0]),
             ..Default::default()
         },
         Box::new(move |cc| {

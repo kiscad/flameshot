@@ -221,7 +221,10 @@ pub fn history() -> anyhow::Result<()> {
     let entries = crate::upload_history::list(&crate::upload_history::directory()?)?;
     eframe::run_native(
         "Flameshot Upload History",
-        eframe::NativeOptions::default(),
+        eframe::NativeOptions {
+            viewport: crate::app_ui::viewport(),
+            ..Default::default()
+        },
         Box::new(move |cc| {
             crate::i18n::install_fonts(&cc.egui_ctx);
             Ok(Box::new(History {

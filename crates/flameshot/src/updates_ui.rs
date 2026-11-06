@@ -12,7 +12,7 @@ pub fn show() -> anyhow::Result<()> {
     eframe::run_native(
         "Flameshot Updates",
         eframe::NativeOptions {
-            viewport: egui::ViewportBuilder::default().with_inner_size([440.0, 180.0]),
+            viewport: crate::app_ui::viewport().with_inner_size([440.0, 180.0]),
             ..Default::default()
         },
         Box::new(move |_| {

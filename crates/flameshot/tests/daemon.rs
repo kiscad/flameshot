@@ -244,13 +244,18 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         Command::new(env!("CARGO_BIN_EXE_flameshot"))
             .env("XDG_CONFIG_HOME", temp.path())
             .env("LANG", "C")
+            .env("FLATPAK_ID", "org.flameshot.Flameshot")
             .spawn()
             .unwrap(),
     );
-    tokio::time::timeout(Duration::from_secs(5), registered.recv())
+    let sandbox_item = tokio::time::timeout(Duration::from_secs(5), registered.recv())
         .await
         .unwrap()
         .unwrap();
+    assert!(
+        sandbox_item.starts_with(':'),
+        "Sandbox tray should use its unique bus name"
+    );
     assert!(
         tokio::time::timeout(Duration::from_millis(200), notifications.recv())
             .await

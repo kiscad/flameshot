@@ -161,3 +161,29 @@ includes X11-XCB, and its [wayland package](https://archlinux.org/packages/extra
 includes the Wayland EGL library. A GPU driver or
 [vulkan-swrast software driver](https://archlinux.org/packages/extra/x86_64/vulkan-swrast/)
 is needed for Vulkan rendering; OpenGL is the alternative backend.
+
+## Flatpak
+
+The manifest uses Freedesktop 26.08 and a checksum-pinned Rust 1.99.1 build module.
+The compiler is removed from the application payload. This avoids relying on an SDK
+extension older than the workspace MSRV. Vendored archives are an
+[upstream-supported Cargo packaging approach](https://github.com/flatpak/flatpak-builder-tools/blob/master/cargo/README.md).
+
+```sh
+mkdir -p target/flatpak-manifest
+scripts/package-rust-source.sh target/flatpak-manifest/flameshot-15.0.0-rust.tar.gz
+cp packaging/flatpak/org.flameshot.Flameshot.yml target/flatpak-manifest/
+flatpak-builder --user --install-deps-from=flathub --force-clean target/flatpak-app target/flatpak-manifest/org.flameshot.Flameshot.yml
+```
+
+The builder needs working user namespaces and the 26.08 SDK/runtime. Local source
+preparation may download dependencies; application compilation is offline. The
+manifest keeps Pictures access and portal/tray/notification integration. X11 stays
+available alongside Wayland for clipboard fallback on compositors without data-control.
+Saving elsewhere and full host-app launching still require the remaining sandbox
+integration work; broad home access is not added as a substitute.
+
+The development environment currently rejects bubblewrap UID-map setup. Manifest
+parsing, source downloads and unconfined build/runtime checks therefore do not prove
+a successful Flatpak sandbox build. The dedicated CI workflow provides that build
+gate on a runner with the required namespace support; it has not yet run remotely.
