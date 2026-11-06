@@ -1620,3 +1620,21 @@ shutdown of spawned windows remain under audit. Baseline argument parsing also
 needs case-by-case treatment: `parse` failure can reach `finish` and return zero in
 `src/main.cpp`, so changing every parser failure to one purported legacy error code
 would not be evidence-based. Current Rust argument rejection remains nonzero.
+
+### Initial D-Bus connection failure classification
+
+Initial session-bus connection errors now carry an explicit connection-failure
+context and return 3 for daemon startup, capture startup and service-client connection
+setup. Both address construction and connection/authentication setup are covered
+for the daemon builder. The shared connection helper preserves the underlying
+error chain in stderr; it does not classify unrelated operation/configuration errors
+as bus failures. Cancellation notification remains best-effort and retains cancellation
+status rather than replacing it with a notification transport error.
+
+Integration tests use a missing private socket and a malformed address, with no
+display, and verify daemon/full-raw status 3, empty stdout and no configuration
+writes. A separate invalid-configuration case with the same bad bus address remains
+status 1 and read-only. Validation passed: all-feature workspace tests, private-bus
+capture/daemon regression tests, daemon signal/disconnection tests, all-target Clippy,
+formatting and warning-free manual rendering. Post-connect method-call failures,
+child shutdown lifecycle and the remaining CLI syntax cases are still under audit.

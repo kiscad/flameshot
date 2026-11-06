@@ -154,13 +154,14 @@ Cached capture selection. The usual cache root is
 Successful operation, help or version display.
 .TP
 .B 1
-An operation failed, including an unavailable desktop service or invalid configuration.
+An operation failed, for example because of invalid configuration or a desktop service error.
 .TP
 .B 2
 Capture was cancelled or command-line arguments were rejected.
 .TP
 .B 3
-The background service lost its established session D-Bus connection.
+The session D-Bus connection could not be established, or the background service
+lost its established connection.
 .TP
 .B 130
 The background service received SIGINT.

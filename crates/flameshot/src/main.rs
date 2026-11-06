@@ -135,7 +135,10 @@ async fn main() -> std::process::ExitCode {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
             if let Some(stop) = error.downcast_ref::<daemon::Stop>() {
-                if matches!(stop, daemon::Stop::Disconnected) {
+                if matches!(
+                    stop,
+                    daemon::Stop::Disconnected | daemon::Stop::ConnectionFailed
+                ) {
                     eprintln!("flameshot: {error:#}");
                 }
                 return std::process::ExitCode::from(stop.code());
@@ -377,9 +380,7 @@ async fn run(cli: Cli) -> Result<()> {
             }
             let target_monitor = selected_screen.as_ref().map(|(_, index)| *index);
 
-            let connection = zbus::Connection::session()
-                .await
-                .context("Cannot connect to session D-Bus")?;
+            let connection = daemon::session_connection().await?;
             let capture = if settings.use_x11_legacy_screenshot && !is_wayland() {
                 tokio::task::spawn_blocking(x11::capture_desktop).await??
             } else {

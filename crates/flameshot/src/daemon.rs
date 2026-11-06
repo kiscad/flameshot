@@ -17,13 +17,14 @@ pub enum Stop {
     Interrupt,
     Terminate,
     Disconnected,
+    ConnectionFailed,
 }
 impl Stop {
     pub fn code(&self) -> u8 {
         match self {
             Self::Interrupt => 130,
             Self::Terminate => 143,
-            Self::Disconnected => 3,
+            Self::Disconnected | Self::ConnectionFailed => 3,
         }
     }
 }
@@ -33,10 +34,14 @@ impl std::fmt::Display for Stop {
             Self::Interrupt => "Interrupted",
             Self::Terminate => "Terminated",
             Self::Disconnected => "Session D-Bus disconnected",
+            Self::ConnectionFailed => "Cannot connect to session D-Bus",
         })
     }
 }
 impl std::error::Error for Stop {}
+pub async fn session_connection() -> Result<Connection> {
+    Connection::session().await.context(Stop::ConnectionFailed)
+}
 const SERVICE: &str = "org.flameshot.Flameshot";
 #[derive(Default)]
 pub(crate) struct Activity {
@@ -203,7 +208,8 @@ pub async fn run() -> Result<()> {
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let activity = Arc::new(Activity::default());
-    let connection = zbus::connection::Builder::session()?
+    let connection = zbus::connection::Builder::session()
+        .context(Stop::ConnectionFailed)?
         .serve_at(
             "/",
             Service {
@@ -211,7 +217,8 @@ pub async fn run() -> Result<()> {
             },
         )?
         .build()
-        .await?;
+        .await
+        .context(Stop::ConnectionFailed)?;
     let reply = match connection
         .request_name_with_flags(SERVICE, zbus::fdo::RequestNameFlags::DoNotQueue.into())
         .await
@@ -285,7 +292,7 @@ pub async fn run() -> Result<()> {
     Ok(())
 }
 async fn connect_service() -> Result<Connection> {
-    let connection = Connection::session().await?;
+    let connection = session_connection().await?;
     let bus = zbus::fdo::DBusProxy::new(&connection).await?;
     let name = zbus::names::BusName::try_from(SERVICE)?;
     if !bus.name_has_owner(name.clone()).await? {

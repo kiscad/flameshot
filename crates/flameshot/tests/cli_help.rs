@@ -57,3 +57,49 @@ fn documented_commands_and_long_options_are_present_in_the_manual() {
         }
     }
 }
+
+#[test]
+fn unavailable_session_bus_has_legacy_status_without_output_or_config_writes() {
+    let temp = tempfile::tempdir().unwrap();
+    let missing = format!("unix:path={}/missing-bus", temp.path().display());
+    for address in [missing.as_str(), "not-a-valid-dbus-address"] {
+        for args in [vec![], vec!["full", "--raw"]] {
+            let output = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+                .env("XDG_CONFIG_HOME", temp.path())
+                .env("DBUS_SESSION_BUS_ADDRESS", address)
+                .env_remove("DISPLAY")
+                .env_remove("WAYLAND_DISPLAY")
+                .args(&args)
+                .output()
+                .unwrap();
+            assert_eq!(
+                output.status.code(),
+                Some(3),
+                "{args:?}: {:?}",
+                output.stderr
+            );
+            assert!(output.stdout.is_empty());
+            assert!(String::from_utf8_lossy(&output.stderr).contains("session D-Bus"));
+        }
+    }
+    assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn configuration_failure_is_not_a_bus_connection_failure() {
+    let temp = tempfile::tempdir().unwrap();
+    let directory = temp.path().join("flameshot");
+    std::fs::create_dir(&directory).unwrap();
+    let path = directory.join("flameshot.ini");
+    let content = "[General]\nundoLimit=1000\n";
+    std::fs::write(&path, content).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+        .env("XDG_CONFIG_HOME", temp.path())
+        .env("DBUS_SESSION_BUS_ADDRESS", "not-a-valid-dbus-address")
+        .args(["config", "--check"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("undoLimit"));
+    assert_eq!(std::fs::read_to_string(path).unwrap(), content);
+}
