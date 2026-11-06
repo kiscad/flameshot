@@ -163,10 +163,29 @@ try:
     assert service_owned(),'Idle daemon exited while hosting a pin'
     tool('windowfocus','--sync',window);time.sleep(.2);tool('key','Escape')
     wait_idle_exit()
+    owner=subprocess.Popen([binary],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
+    try:
+        deadline=time.monotonic()+5
+        while not service_owned():
+            assert owner.poll() is None,'Daemon stopped before readiness'
+            assert time.monotonic()<deadline
+            time.sleep(.05)
+        result=subprocess.run([binary,'screen','--number','0','--pin'],capture_output=True,timeout=20)
+        assert result.returncode==0,result.stderr.decode()
+        window=wait_window('^flameshot-pin$')
+        child_pid=int(tool('getwindowpid',window).stdout)
+        owner.terminate()
+        _,err=owner.communicate(timeout=5)
+        assert owner.returncode==143,err.decode()
+        assert not Path(f'/proc/{child_pid}').exists(),'Daemon termination left its pin process alive'
+        assert tool('search','--onlyvisible','--name','^flameshot-pin$').returncode!=0,'Pin window survived daemon termination'
+        wait_idle_exit()
+    finally:
+        if owner.poll() is None:owner.kill();owner.wait()
 finally:
     config.write_text(original)
     subprocess.run(['xsetroot','-solid','black'],timeout=5)
-print('PASS: JPEG MIME, large INCR clipboard, ownership-aware idle exit and pin lifetime')
+print('PASS: JPEG MIME, large INCR clipboard, ownership-aware idle exit, pin lifetime and owned-pin shutdown')
 editor=subprocess.Popen([binary,'gui'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 try:
     window=wait_window('^Flameshot$')

@@ -1,5 +1,6 @@
 mod app_ui;
 mod buttons;
+mod children;
 mod geometry_overlay;
 mod text_edit;
 mod theme;

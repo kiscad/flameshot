@@ -23,7 +23,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; remaining object-editing parity pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text, X11 INCR and ownership lifecycle verified on Xvfb/Sway; other compositor paths remain |
-| Daemon | Single instance, pins, tray, idle lifetime | Implemented and tested, including idle ownership/pin retention; full explicit-shutdown child audit remains |
+| Daemon | Single instance, pins, tray, idle lifetime | Idle ownership/pin retention and direct-child shutdown implemented/tested; descendant shutdown audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, configuration flags, completions and manual implemented/tested; final syntax/exit-code and shell acceptance remain |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures/atomic updates tested; live-reload/semantic gaps remain |
@@ -1638,3 +1638,24 @@ status 1 and read-only. Validation passed: all-feature workspace tests, private-
 capture/daemon regression tests, daemon signal/disconnection tests, all-target Clippy,
 formatting and warning-free manual rendering. Post-connect method-call failures,
 child shutdown lifecycle and the remaining CLI syntax cases are still under audit.
+
+### Owned direct-child shutdown
+
+Daemon-launched windows and pin processes now use a shared registry of owned Child
+handles rather than only an atomic count. Registration and shutdown are serialized,
+new launches are rejected once shutdown starts, and a scope guard terminates and
+waits for registered children on daemon exit, including signal/bus-error returns.
+Reapers use short nonblocking polls; payload writes do not hold registry/child
+locks, so a child that never reads its pin input cannot deadlock shutdown. Completed
+Child handles are removed before they could be confused with a reused PID. Idle
+checks also reject a busy spawn registry instead of racing an in-progress launch.
+
+Tests cover natural exit, failed spawn, blocked input, idempotent shutdown and
+concurrent spawn/shutdown. The isolated X11 suite starts a daemon and a pin, sends
+SIGTERM to that known daemon process, checks status 143, and verifies its pin process
+was reaped and its window disappeared. Full X11 and native Sway/Wayland suites pass,
+as do workspace tests, private-bus daemon/signal tests, Clippy and formatting.
+
+This registry covers directly owned children. Windows subsequently launched by a
+launcher child and other descendant/independent CLI ownership cases still need the
+remaining lifecycle audit. This is not a claim that the full shutdown gate is closed.

@@ -3,11 +3,10 @@ use anyhow::{Context, Result};
 use flameshot_core::qt_wire;
 use futures_util::StreamExt;
 use std::{
-    io::Write,
     process::{Command, Stdio},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -46,46 +45,23 @@ const SERVICE: &str = "org.flameshot.Flameshot";
 #[derive(Default)]
 pub(crate) struct Activity {
     clipboard: Mutex<Vec<flameshot_platform::clipboard::Lease>>,
-    children: AtomicUsize,
+    children: Arc<crate::children::Children>,
     used: AtomicBool,
 }
 impl Activity {
     pub(crate) fn launch(self: &Arc<Self>, command: &str) -> Result<()> {
-        let executable = std::env::current_exe()?;
-        self.children.fetch_add(1, Ordering::AcqRel);
-        let child = Command::new(executable)
-            .arg(command)
-            .stdout(Stdio::null())
-            .spawn();
-        match child {
-            Ok(child) => {
-                self.used.store(true, Ordering::Release);
-                self.reap(child, None);
-                Ok(())
-            }
-            Err(error) => {
-                self.children.fetch_sub(1, Ordering::AcqRel);
-                Err(error.into())
-            }
-        }
-    }
-    fn reap(
-        self: &Arc<Self>,
-        mut child: std::process::Child,
-        input: Option<(std::process::ChildStdin, Vec<u8>)>,
-    ) {
-        let state = self.clone();
-        std::thread::spawn(move || {
-            if let Some((mut pipe, data)) = input {
-                let _ = pipe.write_all(&data);
-            }
-            let _ = child.wait();
-            state.children.fetch_sub(1, Ordering::AcqRel);
-        });
+        self.children.spawn(
+            Command::new(std::env::current_exe()?)
+                .arg(command)
+                .stdout(Stdio::null()),
+            None,
+        )?;
+        self.used.store(true, Ordering::Release);
+        Ok(())
     }
     fn idle(&self) -> bool {
         self.used.load(Ordering::Acquire)
-            && self.children.load(Ordering::Acquire) == 0
+            && self.children.idle()
             && self.clipboard.try_lock().is_ok_and(|mut leases| {
                 leases.retain(|lease| lease.active());
                 leases.is_empty()
@@ -178,28 +154,16 @@ impl Service {
     #[zbus(name = "attachPin")]
     fn attach_pin(&self, data: Vec<u8>) -> zbus::fdo::Result<()> {
         qt_wire::decode_pin(&data).map_err(|e| zbus::fdo::Error::InvalidArgs(e.to_string()))?;
-        let executable = std::env::current_exe().map_err(failure)?;
-        self.activity.children.fetch_add(1, Ordering::AcqRel);
-        let mut child = match Command::new(executable)
-            .arg("internal-pin")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .spawn()
-        {
-            Ok(child) => child,
-            Err(error) => {
-                self.activity.children.fetch_sub(1, Ordering::AcqRel);
-                return Err(failure(error));
-            }
-        };
-        let Some(input) = child.stdin.take() else {
-            let _ = child.kill();
-            let _ = child.wait();
-            self.activity.children.fetch_sub(1, Ordering::AcqRel);
-            return Err(failure("Missing pin input pipe"));
-        };
+        self.activity
+            .children
+            .spawn(
+                Command::new(std::env::current_exe().map_err(failure)?)
+                    .arg("internal-pin")
+                    .stdout(Stdio::null()),
+                Some(data),
+            )
+            .map_err(failure)?;
         self.activity.used.store(true, Ordering::Release);
-        self.activity.reap(child, Some((input, data)));
         Ok(())
     }
 }
@@ -208,6 +172,7 @@ pub async fn run() -> Result<()> {
     let mut interrupt = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     let activity = Arc::new(Activity::default());
+    let _children_shutdown = activity.children.guard();
     let connection = zbus::connection::Builder::session()
         .context(Stop::ConnectionFailed)?
         .serve_at(
