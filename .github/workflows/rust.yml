@@ -40,7 +40,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config ripgrep desktop-file-utils appstream libx11-dev libxkbcommon-dev libwayland-dev \
+            build-essential pkg-config ripgrep desktop-file-utils appstream libx11-dev libx11-xcb1 libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev \
             libegl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
             libglib2.0-bin dbus dbus-x11 fonts-noto-core fonts-noto-cjk \
             xvfb xdotool xclip x11-xserver-utils python3-pil sway swaybg grim wtype \

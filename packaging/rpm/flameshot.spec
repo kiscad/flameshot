@@ -1,147 +1,85 @@
-Name:    flameshot
+# Build Source0 with scripts/package-rust-source.sh; it contains locked vendor sources.
+Name: flameshot
 Version: 15.0.0
 Release: 1%{?dist}
-Summary: Powerful yet simple to use screenshot software
-
+Summary: Screenshot capture and annotation for Linux
 License: GPL-3.0-or-later
-URL:     https://github.com/flameshot-org/flameshot
-Source0: %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
-Vendor:  Flameshot
+URL: https://github.com/flameshot-org/flameshot
+Source0: %{name}-%{version}.tar.gz
 
-BuildRequires: git
-BuildRequires: cmake
+BuildRequires: cargo >= 1.99
+BuildRequires: rust >= 1.99
+BuildRequires: gcc
+BuildRequires: pkgconfig(xkbcommon)
+BuildRequires: pkgconfig(wayland-client)
 BuildRequires: desktop-file-utils
-BuildRequires: jdupes
-
+BuildRequires: /usr/bin/python3
+BuildRequires: /usr/bin/gio
 %if 0%{?suse_version}
-BuildRequires: gcc15-c++
-BuildRequires: ninja
-BuildRequires: update-desktop-files
-BuildRequires: appstream-glib
+BuildRequires: dejavu-fonts
+Requires: dejavu-fonts
+Recommends: libvulkan_lvp
 %else
-BuildRequires: gcc-c++
-BuildRequires: ninja-build
-BuildRequires: libappstream-glib
+BuildRequires: dejavu-sans-fonts
+Requires: dejavu-sans-fonts
+Recommends: mesa-vulkan-drivers
 %endif
 
-BuildRequires: cmake(Qt6Core) >= 6.2.4
-BuildRequires: cmake(Qt6DBus) >= 6.2.4
-BuildRequires: cmake(Qt6Gui) >= 6.2.4
-BuildRequires: cmake(Qt6LinguistTools) >= 6.2.4
-BuildRequires: cmake(Qt6Network) >= 6.2.4
-BuildRequires: cmake(Qt6Svg) >= 6.2.4
-BuildRequires: cmake(Qt6Widgets) >= 6.2.4
-
-%if 0%{?fedora} || 0%{?suse_version} >= 1550 || (0%{?rhel} >= 10 && (0%{?centos} || 0%{?epel}))
-%global wayland_clipboard ON
-BuildRequires:  kf6-kguiaddons-devel >= 6.7.0
+# These libraries are loaded dynamically and are invisible to ELF dependency scans.
+%if 0%{?__isa_bits} == 64
+%global library_suffix ()(64bit)
 %else
-%global wayland_clipboard OFF
+%global library_suffix %{nil}
 %endif
-
+Requires: libX11.so.6%{library_suffix}
+Requires: libX11-xcb.so.1%{library_suffix}
+Requires: libXcursor.so.1%{library_suffix}
+Requires: libXi.so.6%{library_suffix}
+Requires: libXrandr.so.2%{library_suffix}
+Requires: libxkbcommon.so.0%{library_suffix}
+Requires: libxkbcommon-x11.so.0%{library_suffix}
+Requires: libwayland-client.so.0%{library_suffix}
+Requires: libEGL.so.1%{library_suffix}
+Requires: libGL.so.1%{library_suffix}
+Requires: libvulkan.so.1%{library_suffix}
+Requires: /usr/bin/gio
+Requires: /usr/bin/dbus-run-session
 Requires: hicolor-icon-theme
-
-%if 0%{?suse_version}
-Requires: qt6-svg
-%else
-%if 0%{?fedora} || 0%{?rhel}
-Requires: qt6-qtsvg%{?_isa}
-%else
-Requires: qt6-svg%{?_isa}
-%endif
-%endif
-
-%if 0%{?suse_version}
-Recommends: qt6-imageformats
-%else
-Recommends: qt6-qtimageformats%{?_isa}
-%endif
-
-Recommends: xdg-desktop-portal%{?_isa}
-Recommends: (xdg-desktop-portal-gnome%{?_isa} if gnome-shell%{?_isa})
-Recommends: (xdg-desktop-portal-kde%{?_isa} if plasma-workspace-wayland%{?_isa})
-Recommends: (xdg-desktop-portal-wlr%{?_isa} if wlroots%{?_isa})
+Recommends: xdg-desktop-portal
+Recommends: (xdg-desktop-portal-gnome if gnome-shell)
+Recommends: (xdg-desktop-portal-kde if plasma-workspace-wayland)
+Recommends: (xdg-desktop-portal-wlr if wlroots)
 
 %description
-Powerful and simple to use screenshot software with built-in
-editor with advanced features.
-
-Features:
-
- * Customizable appearance.
- * Easy to use.
- * In-app screenshot edition.
- * DBus interface.
+Flameshot provides screenshot capture, annotation, pinned images, and graphical
+and command-line interfaces. This Rust build supports X11 and screenshot portals.
+Imgur integration is included; distribution packages disable application update
+checking.
 
 %prep
 %autosetup -p1
 
 %build
-%if 0%{?suse_version}
-export CXX=/usr/bin/g++-15
-
-cmake -G Ninja -S . -B build \
-    -DCMAKE_INSTALL_PREFIX=%{_prefix} \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DUSE_WAYLAND_CLIPBOARD=%{wayland_clipboard} \
-    -DBUILD_SHARED_LIBS=OFF
-
-cmake --build build -j $(nproc)
-%else
-%cmake -G Ninja \
-    -DCMAKE_INSTALL_PREFIX=%{_prefix} \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DUSE_WAYLAND_CLIPBOARD=%{wayland_clipboard} \
-    -DBUILD_SHARED_LIBS=OFF
-
-%cmake_build
-%endif
+export CARGO_INCREMENTAL=0
+cargo build --locked --offline --release -p flameshot --no-default-features --features imgur
 
 %install
-%if 0%{?suse_version}
-DESTDIR=%{buildroot} cmake --install build
-%suse_update_desktop_file -r org.flameshot.Flameshot Utility X-SuSE-DesktopUtility
-%else
-%cmake_install
-%endif
-
-rm -rf %{buildroot}%{_includedir}/QtColorWidgets
-rm -rf %{buildroot}%{_libdir}/cmake/QtColorWidgets
-rm -f %{buildroot}%{_libdir}/libQtColorWidgets.*
-rm -f %{buildroot}%{_libdir}/pkgconfig/QtColorWidgets.pc
-rm -rf %{buildroot}%{_includedir}/kdsingleapplication-qt6
-rm -rf %{buildroot}%{_libdir}/cmake/KDSingleApplication-qt6
-rm -f %{buildroot}%{_libdir}/libkdsingleapplication-qt6.*
-
-%find_lang Internationalization --with-qt
-
-jdupes %{buildroot}%{_datadir}/icons
+DESTDIR="%{buildroot}" PREFIX="%{_prefix}" FLAMESHOT_BINARY="${CARGO_TARGET_DIR:-target}/release/flameshot" scripts/stage-rust.sh
 
 %check
-%if ! (0%{?rhel} <= 9)
-appstream-util validate-relax --nonet %{buildroot}%{_datadir}/metainfo/*.metainfo.xml || true
-%endif
-desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop
+cargo test --locked --offline --workspace --no-default-features --features imgur
+desktop-file-validate %{buildroot}%{_datadir}/applications/org.flameshot.Flameshot.desktop
 
-%files -f Internationalization.lang
-%{_datadir}/%{name}/translations/Internationalization_grc.qm
-%doc README.md
-%license LICENSE
-%dir %{_datadir}/%{name}
-%dir %{_datadir}/%{name}/translations
-%dir %{_datadir}/bash-completion/completions
-%dir %{_datadir}/zsh/site-functions
-%{_bindir}/%{name}
+%files
+%doc README.md docs/rust/BUILD.md
+%license %{_datadir}/licenses/%{name}
+%{_bindir}/flameshot
 %{_datadir}/applications/org.flameshot.Flameshot.desktop
 %{_datadir}/metainfo/org.flameshot.Flameshot.metainfo.xml
-%{_datadir}/bash-completion/completions/%{name}
-%{_datadir}/zsh/site-functions/_%{name}
-%{_datadir}/fish/vendor_completions.d/%{name}.fish
 %{_datadir}/dbus-1/interfaces/org.flameshot.Flameshot.xml
 %{_datadir}/dbus-1/services/org.flameshot.Flameshot.service
-%{_datadir}/icons/hicolor/*/apps/*.png
-%{_datadir}/icons/hicolor/scalable/apps/*.svg
-%{_mandir}/man1/%{name}.1*
+%{_datadir}/icons/hicolor/128x128/apps/org.flameshot.Flameshot.png
+%{_datadir}/icons/hicolor/scalable/apps/org.flameshot.Flameshot.svg
 
 %changelog
 * Sun Nov 01 2026 Jeremy Borgman <borgman.jeremy@pm.me> - 15.0.0
@@ -186,7 +124,7 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/*.desktop
 * Sun Jul 03 2022 Jeremy Borgman <borgman.jeremy@pm.me> - 12.1.0-1
 - Update for 12.1 release.
 
-* Wed Jun 21 2022 Jeremy Borgman <borgman.jeremy@pm.me> - 12.0.0-1
+* Tue Jun 21 2022 Jeremy Borgman <borgman.jeremy@pm.me> - 12.0.0-1
 - Update for 12.0 release.
 
 * Fri Jan 14 2022 Jeremy Borgman <borgman.jeremy@pm.me> - 11.0.0-1

@@ -116,3 +116,23 @@ To run desktop tests against an unpacked package executable, set
 `FLAMESHOT_TEST_HELPER_DIR` to the directory containing the Rust test helpers and
 `FLAMESHOT_TEST_ARTIFACT_DIR` to a writable directory for diagnostic screenshots.
 The test scripts locate fixtures relative to their own repository location.
+
+## RPM packages
+
+Prepare `flameshot-15.0.0.tar.gz` with `scripts/package-rust-source.sh`, place it in
+the RPM build tree's `SOURCES` directory, and copy `packaging/rpm/flameshot.spec`
+into `SPECS`. With the declared build dependencies installed:
+
+```sh
+rpmbuild -ba SPECS/flameshot.spec
+```
+
+The spec uses offline Cargo, runs the workspace tests and validates the desktop
+entry. Imgur is enabled and application update checking is disabled. Dynamically
+loaded graphics libraries are declared explicitly by SONAME, with the correct
+32/64-bit capability suffix; they cannot be inferred from `ldd` alone.
+
+Driver recommendations use the distro packages
+[Fedora mesa-vulkan-drivers](https://packages.fedoraproject.org/pkgs/mesa/mesa-vulkan-drivers/index.html)
+and [openSUSE libvulkan_lvp](https://slc-downloadcontent.opensuse.org/repositories/X11%3A/XOrg/openSUSE_Factory/x86_64/).
+Select a screenshot portal backend appropriate for the running desktop.

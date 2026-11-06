@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Implemented with isolated service/window tests; full desktop integration acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian Cargo source/package build and desktop suites validated; RPM/Arch/Flatpak/Snap/Nix pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM Cargo package builds and packaged-binary desktop suites validated locally; Arch/Flatpak/Snap/Nix and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb and native Sway/mixed-DPI suites pass; full GNOME/KDE and IME coverage pending |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -1198,3 +1198,26 @@ Two source archive runs produced the same SHA-256 at the validation snapshot:
 The archive was inspected for portable vendor configuration, absence of the legacy
 root C++/CMake project, and inclusion of the final clipboard fix. Debian packaging
 is migrated/locally validated; RPM, Arch, Flatpak, Snap and Nix remain pending.
+
+RPM rules now build/test with locked offline Cargo and use the shared staging
+script. Qt/CMake dependencies, QM installation and Qt-specific cleanup were removed.
+The file list matches the Rust payload. Runtime libraries loaded via dlopen are
+explicit SONAME dependencies with architecture-correct capability suffixes; distro
+font/driver recommendations retain separate openSUSE and other-RPM branches.
+Source review identified libX11-xcb and libxkbcommon-x11 as required winit libraries;
+Debian and CI dependencies were corrected too. The RPM changelog's incorrect weekday
+for 21 June 2022 was corrected without changing the release date/version history.
+Spec parsing passed for x86_64, i686, aarch64 and the openSUSE branch. An actual RPM
+and source RPM were built with locally extracted RPM tools and --nodeps, supplying
+the Rust toolchain/dependencies outside an RPM database. Build, workspace tests and
+metadata validation passed. This is local package construction, not a clean Fedora
+or openSUSE installation test; packaged-binary desktop suites are in progress.
+
+Final RPM/source RPM builds completed without the old changelog weekday warning.
+The packaged executable passed full X11 and native Sway suites. After final metadata
+updates, its bytes matched the desktop-tested executable exactly. RPM dependency
+and file-list checks verified dynamic X11/XKB libraries, the session-bus utility,
+IPC metadata and absence of Qt linkage. Debian was rebuilt with the same dynamic
+library corrections and session-bus dependency. Native Fedora/openSUSE clean-root
+installation and non-x86 binary execution remain unverified; macro parsing alone
+is not claimed as those tests. Arch/Flatpak/Snap/Nix migration remains pending.
