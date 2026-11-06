@@ -1488,3 +1488,32 @@ the mouse-release modifier unit test), all-target/all-feature Clippy with warnin
 denied, formatting, and the complete isolated Xvfb suite with live Ctrl constraints,
 release, undo/redo and line snapping. Other compositor/modifier acceptance remains
 part of the final desktop audit.
+
+### Counter deletion and history numbering
+
+Deleting a counter now decrements remaining counter values at or above the deleted
+value, preserving layer positions and unrelated annotations. The removal and all
+renumbering share one history entry. Removal preview uses the same transformation.
+Automatically chosen next numbers follow the remaining counters. A manually selected
+next number is decremented on counter deletion; toolbar and shortcut undo/redo now
+both clear that override and recalculate from existing counters, matching the
+baseline `restoreCircleCountState` behavior.
+
+The core test covers intervening non-counter layers, deletion preview/commit,
+undo/redo, the next automatic number, non-counter removal and duplicated labels.
+The baseline decrement can produce zero when deleting a manually duplicated first
+counter; the Rust implementation keeps such duplicates at one to preserve the
+existing valid counter range instead of constructing an invalid annotation.
+
+The X11 case compares rendered labels after deleting the middle of three counters,
+undoing/redoing, creating the next counter, and adjusting the next number manually
+before undo. It waits for exact expected image content rather than assuming software
+rendering finishes within a fixed quarter second. Diagnosis also found needless
+full-image redraws on Ctrl changes outside drawing; modifier changes now invalidate
+the preview only during a supported pending constrained stroke. Existing Ctrl-drag
+coverage is retained in the complete desktop suite.
+
+Validation passed: `cargo test --locked --workspace --all-features`, all-target
+all-feature Clippy with warnings denied, formatting, and the complete isolated
+Xvfb suite including counter deletion/history/manual-override reset, Ctrl drawing
+constraints and grouped property undo. Temporary diagnostic logging was removed.

@@ -952,6 +952,16 @@ impl Editor {
             Tool::Select | Tool::Text | Tool::Move | Tool::MoveSelection => None,
         }
     }
+    fn undo_edit(&mut self) {
+        self.dirty |= self.document.undo();
+        self.selected_object = None;
+        self.counter_override = None;
+    }
+    fn redo_edit(&mut self) {
+        self.dirty |= self.document.redo();
+        self.selected_object = None;
+        self.counter_override = None;
+    }
     fn advance_counter(&mut self) {
         if let Some(number) = &mut self.counter_override {
             *number = number.saturating_add(1).min(999);
@@ -1087,8 +1097,20 @@ impl eframe::App for Editor {
         });
         if self.constrain_drawing != constrain {
             self.constrain_drawing = constrain;
-            self.dirty = true;
-            ctx.request_repaint();
+            if self.points.len() >= 2
+                && matches!(
+                    self.tool,
+                    Tool::Line
+                        | Tool::Arrow
+                        | Tool::Marker
+                        | Tool::Rectangle
+                        | Tool::FilledRectangle
+                        | Tool::Ellipse
+                )
+            {
+                self.dirty = true;
+                ctx.request_repaint();
+            }
         }
         if self.dismissed_dialog_frame != Some(ctx.cumulative_frame_nr())
             && ctx.input(|i| i.key_pressed(egui::Key::Escape))
@@ -1135,14 +1157,8 @@ impl eframe::App for Editor {
                     "TYPE_INVERT" => self.tool = Tool::Invert,
                     "TYPE_TEXT" => self.tool = Tool::Text,
                     "TYPE_CIRCLECOUNT" => self.tool = Tool::Counter,
-                    "TYPE_UNDO" => {
-                        self.dirty |= self.document.undo();
-                        self.selected_object = None;
-                    }
-                    "TYPE_REDO" => {
-                        self.dirty |= self.document.redo();
-                        self.selected_object = None;
-                    }
+                    "TYPE_UNDO" => self.undo_edit(),
+                    "TYPE_REDO" => self.redo_edit(),
                     "TYPE_COPY" => self.accept(&ctx, Action::Copy),
                     "TYPE_SAVE" => self.accept(&ctx, Action::Save),
                     "TYPE_PIN" => self.accept(&ctx, Action::Pin),
@@ -1183,9 +1199,18 @@ impl eframe::App for Editor {
                     "TYPE_TOGGLE_PANEL" => self.panel_visible = !self.panel_visible,
                     "TYPE_DELETE_CURRENT_TOOL" => {
                         if let Some(index) = self.selected_object.take() {
+                            let counter = matches!(
+                                self.document.annotations().get(index),
+                                Some(Annotation::Counter { .. })
+                            );
                             if let Err(error) = self.document.remove(index) {
                                 self.error = error.to_string();
                             } else {
+                                if counter {
+                                    self.counter_override = self
+                                        .counter_override
+                                        .map(|number| number.saturating_sub(1).max(1));
+                                }
                                 self.dirty = true;
                             }
                         }
@@ -1316,8 +1341,8 @@ impl eframe::App for Editor {
                         ] {
                             if self.button_enabled(id) && crate::buttons::available(id) && ui.button(tr(context,label)).clicked() {
                                 match id {
-                                    9 => self.dirty |= self.document.undo(),
-                                    16 => self.dirty |= self.document.redo(),
+                                    9 => self.undo_edit(),
+                                    16 => self.redo_edit(),
                                     10 => self.accept(&ctx,Action::Copy),
                                     11 => self.accept(&ctx,Action::Save),
                                     #[cfg(feature="imgur")]

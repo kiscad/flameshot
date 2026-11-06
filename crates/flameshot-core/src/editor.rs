@@ -149,12 +149,29 @@ impl Document {
         self.commit(next);
         Ok(())
     }
-    pub fn remove(&mut self, index: usize) -> Result<(), EditError> {
-        if index >= self.annotations.len() {
-            return Err(EditError::InvalidIndex);
-        }
+    fn without_annotation(&self, index: usize) -> Result<Vec<Annotation>, EditError> {
+        let removed = self.annotations.get(index).ok_or(EditError::InvalidIndex)?;
+        let counter = if let Annotation::Counter { number, .. } = removed {
+            Some(*number)
+        } else {
+            None
+        };
         let mut next = self.annotations.clone();
         next.remove(index);
+        if let Some(removed_number) = counter {
+            for annotation in &mut next {
+                if let Annotation::Counter { number, .. } = annotation
+                    && *number >= removed_number
+                {
+                    // Manually duplicated first counters must remain valid.
+                    *number = number.saturating_sub(1).max(1);
+                }
+            }
+        }
+        Ok(next)
+    }
+    pub fn remove(&mut self, index: usize) -> Result<(), EditError> {
+        let next = self.without_annotation(index)?;
         self.commit(next);
         Ok(())
     }
@@ -386,6 +403,9 @@ impl Document {
         }
         if let Some(annotation) = replacement {
             validate(annotation)?;
+        } else {
+            let next = self.without_annotation(index)?;
+            return self.render_annotations(next.iter());
         }
         self.render_annotations(self.annotations.iter().enumerate().filter_map(
             |(position, annotation)| {
@@ -1071,6 +1091,45 @@ mod tests {
             },
             filled: true,
             radius: 0.0,
+        }
+    }
+    #[test]
+    fn deleting_a_counter_renumbers_following_values_in_one_reversible_edit() {
+        let counter = |number, x| Annotation::Counter {
+            center: Point { x, y: 20.0 },
+            tip: Point { x, y: 20.0 },
+            number,
+            radius: 16.0,
+            color: [255, 0, 0, 255],
+            outline: false,
+        };
+        let mut doc = Document::new(RgbaImage::new(150, 60), 10).unwrap();
+        doc.add(counter(1, 20.0)).unwrap();
+        doc.add(mark()).unwrap();
+        doc.add(counter(2, 60.0)).unwrap();
+        doc.add(counter(3, 100.0)).unwrap();
+        let before = doc.annotations().to_vec();
+        let preview = doc.preview_replacement(2, None).unwrap();
+        assert_eq!(doc.annotations(), before);
+        doc.remove(2).unwrap();
+        assert_eq!(
+            doc.annotations(),
+            &[counter(1, 20.0), mark(), counter(2, 100.0)]
+        );
+        assert_eq!(doc.next_counter(), 3);
+        assert_eq!(doc.render().unwrap(), preview);
+        assert!(doc.undo());
+        assert_eq!(doc.annotations(), before);
+        assert_eq!(doc.next_counter(), 4);
+        assert!(doc.redo());
+        assert_eq!(doc.render().unwrap(), preview);
+        doc.remove(1).unwrap(); // Removing a different tool must not renumber.
+        assert_eq!(doc.annotations(), &[counter(1, 20.0), counter(2, 100.0)]);
+        doc.add(counter(1, 60.0)).unwrap();
+        doc.remove(0).unwrap();
+        assert_eq!(doc.annotations(), &[counter(1, 100.0), counter(1, 60.0)]);
+        for annotation in doc.annotations() {
+            validate(annotation).unwrap();
         }
     }
     #[test]

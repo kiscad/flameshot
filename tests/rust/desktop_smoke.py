@@ -354,7 +354,7 @@ print('PASS: capture lock is released after a killed editor')
         assert (Path(directory)/'flameshot/flameshot.ini').read_text()=='[General]\ncheckForUpdates=false\n'
         process=None
         print('PASS: configuration window opens and closes without modifying settings')
-        for mode in ('cancel','raw','geometry','both','autosave','adjust','magnifier','save-retry','save-cancel','preset','last','lastconfig','lastoverride','fixed','shortcut','shortcutmeta','shortcutdefault','openwith','toolsize','undolimit','color','opacity','textedit','objectmove','constraints','palette','uploadcancel','buttons','geometryoverlay','pixelatesafe','pixelateinsecure','quitresume','quitconfirm','quitdisable','monitors','monitoroverride','monitordelay'):
+        for mode in ('cancel','raw','geometry','both','autosave','adjust','magnifier','save-retry','save-cancel','preset','last','lastconfig','lastoverride','fixed','shortcut','shortcutmeta','shortcutdefault','openwith','toolsize','undolimit','color','opacity','textedit','objectmove','constraints','counterdelete','palette','uploadcancel','buttons','geometryoverlay','pixelatesafe','pixelateinsecure','quitresume','quitconfirm','quitdisable','monitors','monitoroverride','monitordelay'):
             if mode=='uploadcancel' and b'history' not in help_text: continue
             cancel = mode in ('cancel','quitconfirm','quitdisable')
             flags = ['--raw'] if mode in ('cancel','raw') else ['--accept-on-select','--print-geometry']
@@ -394,6 +394,11 @@ print('PASS: capture lock is released after a killed editor')
             if mode=='palette':
                 flags=['--raw']
                 test_config.write_text('[General]\ncheckForUpdates=false\nuserColors=#00ff00, red, picker\n')
+            if mode=='counterdelete':
+                flags=['--raw','--region','400x200+500+450']
+                data=struct.pack('>II',127,11)+b'QList<int>\0'+struct.pack('>I',0)
+                variant='@Variant('+''.join(chr(92)+'x'+format(byte,'02x') for byte in data)+')'
+                test_config.write_text('[General]\ncheckForUpdates=false\nlanguage=en\nshowSelectionGeometry=0\nbuttons='+variant+'\n[Shortcuts]\nTYPE_CIRCLECOUNT=F10\n')
             if mode=='constraints':
                 flags=['--raw','--region','400x200+500+450']
                 test_config.write_text('[General]\ncheckForUpdates=false\nshowSelectionGeometry=0\ndrawColor=#ff0000\ndrawThickness=3\n')
@@ -519,6 +524,59 @@ print('PASS: capture lock is released after a killed editor')
                 assert any(value!=255 for value in geometry_pixels()),'Selection movement did not restore geometry'
                 tool('key','Return')
             elif mode in ('monitors','monitoroverride','monitordelay'):
+                tool('key','Return')
+            elif mode=='counterdelete':
+                import io
+                from PIL import Image
+                counter_captures=[]
+                def counters():
+                    time.sleep(.25)
+                    captured=subprocess.run(bus_command+[str(binary),'full','--raw'],env=env,capture_output=True,timeout=20)
+                    assert captured.returncode==0,captured.stderr.decode()
+                    (artifact_dir/f'rust-counter-delete-{len(counter_captures)}.png').write_bytes(captured.stdout)
+                    counter_captures.append(True)
+                    image=Image.open(io.BytesIO(captured.stdout)).convert('RGB')
+                    return tuple(image.crop((x-20,480,x+20,520)).tobytes() for x in (550,650,750,850))
+                def wait_counters(predicate, message):
+                    deadline=time.monotonic()+5
+                    while True:
+                        pixels=counters()
+                        if predicate(pixels): return pixels
+                        assert time.monotonic()<deadline,message
+                empty=counters()
+                tool('key','F10')
+                time.sleep(.2)
+                for x in (550,650,750):
+                    tool('mousemove','--window',window,str(x),'500')
+                    tool('click','1')
+                    time.sleep(.25)
+                before=wait_counters(lambda pixels:len(set(pixels[:3]))==3 and all(pixels[i]!=empty[i] for i in range(3)),'Counter labels did not increment')
+                tool('mousemove','--window',window,'180','37')
+                tool('click','1')
+                time.sleep(.2)
+                tool('mousemove','--window',window,'650','500')
+                tool('click','1')
+                time.sleep(.2)
+                tool('key','Delete')
+                after=wait_counters(lambda pixels:pixels[0]==before[0] and pixels[1]==empty[1] and pixels[2]==before[1],'Deleting the middle counter did not renumber following labels')
+                tool('key','ctrl+z')
+                wait_counters(lambda pixels:pixels==before,'Counter deletion was not one undoable edit')
+                tool('key','ctrl+shift+z')
+                wait_counters(lambda pixels:pixels==after,'Counter deletion redo failed')
+                tool('key','F10')
+                time.sleep(.2)
+                tool('mousemove','--window',window,'850','500')
+                tool('click','1')
+                wait_counters(lambda pixels:pixels[3]==before[2],'Automatic counter cursor did not follow deletion')
+                tool('keydown','Control_L')
+                tool('click','4')
+                tool('keyup','Control_L')
+                time.sleep(.2)
+                tool('key','ctrl+z')
+                time.sleep(.2)
+                tool('mousemove','--window',window,'850','500')
+                tool('click','1')
+                wait_counters(lambda pixels:pixels[3]==before[2],'Undo failed to reset a manually adjusted next counter')
                 tool('key','Return')
             elif mode=='constraints':
                 import io
@@ -914,7 +972,7 @@ print('PASS: capture lock is released after a killed editor')
                 pixels=Image.open(io.BytesIO(out)).convert('RGB')
                 assert pixels.size==(512,768),pixels.size
                 assert pixels.getpixel((256,384))==((0,0,255) if mode=='monitoroverride' else (255,0,0)),'Wrong X11 monitor captured'
-            elif mode in ('textedit','objectmove','constraints'):
+            elif mode in ('textedit','objectmove','constraints','counterdelete'):
                 assert png(out)==(400,200)
             elif mode in ('preset','last','lastconfig','lastoverride'):
                 assert out==(b'20x10+5+6\n' if mode=='lastoverride' else b'80x60+20+30\n'),out
