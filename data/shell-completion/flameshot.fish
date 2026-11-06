@@ -72,7 +72,7 @@ set -l SUBCOMMANDS gui screen full launcher config help
 # No subcommand
 complete -c flameshot                                                                                        --no-files --arguments "$SUBCOMMANDS" --condition __flameshot_no_positional_args 
 complete -c flameshot --long-option "help"    --short-option "h" --description "Display help message"        --no-files
-complete -c flameshot --long-option "version" --short-option "V" --description "Display version information" --no-files                            --condition __flameshot_no_positional_args
+complete -c flameshot --long-option "version" --short-option "v" --description "Display version information" --no-files                            --condition __flameshot_no_positional_args
 
 # GUI subcommand
 __flameshot_complete gui --no-files
@@ -128,3 +128,5 @@ function __flameshot_has_command --argument-names name
 end
 complete -c flameshot -f -a history -n '__flameshot_no_positional_args; and __flameshot_has_command history' -d 'Open upload history'
 complete -c flameshot -f -a updates -n '__flameshot_no_positional_args; and __flameshot_has_command updates' -d 'Check for updates'
+
+complete -c flameshot -s V -d "Display version information" --no-files --condition __flameshot_no_positional_args

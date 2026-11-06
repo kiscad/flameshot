@@ -267,5 +267,6 @@ An optional second argument supplies an extracted Ubuntu shell-tool root contain
 Fish, Zsh and Fish's helper functions for additional native-shell checks. Local
 validation covers Bash and Fish completion results, Zsh syntax, and staged file
 contents. Interactive Zsh completion and refreshed distribution package builds
-remain part of packaging acceptance. The legacy manual page is still pending its
-separate Rust CLI documentation audit.
+remain part of packaging acceptance. The Rust CLI manual is installed in `share/man/man1/flameshot.1`; package tools
+may compress it. Its options are checked against the executable help in the Rust
+integration tests. Final exit-code compatibility remains under audit.

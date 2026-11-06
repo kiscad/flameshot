@@ -29,3 +29,5 @@ install -Dm644 data/dbus/org.flameshot.Flameshot.xml "$package_root/share/dbus-1
 install -Dm644 data/shell-completion/flameshot.bash "$package_root/share/bash-completion/completions/flameshot"
 install -Dm644 data/shell-completion/flameshot.zsh "$package_root/share/zsh/site-functions/_flameshot"
 install -Dm644 data/shell-completion/flameshot.fish "$package_root/share/fish/vendor_completions.d/flameshot.fish"
+
+install -Dm644 data/man/man1/flameshot.1 "$package_root/share/man/man1/flameshot.1"

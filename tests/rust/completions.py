@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory(prefix='flameshot completion ') as directory:
                                 env=env, cwd=directory, text=True, capture_output=True, check=True)
         return set(filter(None, result.stdout.split('\0')))
     root = bash(['flameshot', ''])
-    assert {'gui','screen','full','config','launcher','--help','--version','-V'} <= root
+    assert {'gui','screen','full','config','launcher','--help','--version','-v','-V'} <= root
     for optional in ['history','updates']:
         assert (optional in root) == bool(re.search(r'^  '+optional+r'\s', help_text, re.M))
     for command in ['gui','screen','full','config','launcher']:
@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory(prefix='flameshot completion ') as directory:
         assert '--notifications' in fish_complete('flameshot config --not')
         assert '--path' in fish_complete('flameshot gui --raw --p')
         assert not {'true','false'} & fish_complete('flameshot gui -s ')
-        assert '-V' in fish_complete('flameshot -')
+        assert {'-v','-V'} <= fish_complete('flameshot -')
         for optional in ['history','updates']:
             assert (optional in fish_complete('flameshot ')) == bool(re.search(r'^  '+optional+r'\s',help_text,re.M))
         print('PASS: Fish live completion and Fish/Zsh syntax')

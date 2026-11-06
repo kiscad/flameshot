@@ -5,7 +5,7 @@ _flameshot() {
     local cmd="${COMP_WORDS[1]-}" options item help
     COMPREPLY=()
     if (( COMP_CWORD == 1 )); then
-        options='gui screen full config launcher help --help -h --version -V'
+        options='gui screen full config launcher help --help -h --version -v -V'
         help=$(command flameshot --help 2>/dev/null)
         [[ $help == *$'\n  history '* ]] && options+=' history'
         [[ $help == *$'\n  updates '* ]] && options+=' updates'

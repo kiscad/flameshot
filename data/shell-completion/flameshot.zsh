@@ -110,7 +110,7 @@ _flameshot() {
     [[ $help_text == *$'\n  history '* ]] && commands+=("history:Open upload history")
     [[ $help_text == *$'\n  updates '* ]] && commands+=("updates:Check for updates")
     _arguments -C -s -S -n \
-        '(- 1 *)'{-V,--version}"[display version information]" \
+        '(- 1 *)'{-v,-V,--version}"[display version information]" \
         '(- 1 *)'{-h,--help}'[display usage information]' \
         '1:cmd:->cmds' \
         '*:: :->args' && ret=0

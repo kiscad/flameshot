@@ -1,352 +1,186 @@
-.\"                                      Hey, EMACS: -*- nroff -*-
-.\" (C) Copyright 2018 Boyuan Yang <073plan@gmail.com>,
-.\" This file is released under CC0 1.0 Universal (CC0-1.0) license.
-.\"
-.TH "FLAMESHOT" "1" "2021-11-11"
-.\" Please adjust this date whenever revising the manpage.
-.\"
-.\" Some roff macros, for reference:
-.\" .nh        disable hyphenation
-.\" .hy        enable hyphenation
-.\" .ad l      left justify
-.\" .ad b      justify to both left and right margins
-.\" .nf        disable filling
-.\" .fi        enable filling
-.\" .br        insert line break
-.\" .sp <n>    insert n+1 empty lines
-.\" for manpage-specific macros, see man(7)
+.\" Originally (C) Copyright 2018 Boyuan Yang <073plan@gmail.com>.
+.\" Updated for the Rust implementation. CC0-1.0.
+.TH FLAMESHOT 1 "2026-11-07" "Flameshot 15.0.0" "User Commands"
 .SH NAME
-Flameshot \- Powerful yet simple-to-use screenshot software
+flameshot \- screenshot capture and annotation
 .SH SYNOPSIS
 .B flameshot
-[subcommands] [arguments]
-.br
-.B flameshot gui
-[gui arguments]
-.br
-.B flameshot screen
-[screen arguments]
-.br
-.B flameshot full
-[fullscreen arguments]
-.br
-.B flameshot config
-[config arguments]
-.br
-.B flameshot launcher
-.br
-.
-.\"----------------------------------------------------------------------------
+.RI [ command ] " [ options ]"
 .SH DESCRIPTION
-This manual page documents briefly the
-.B flameshot
-command as provided by
-.B flameshot
-package.
+Flameshot captures screenshots, provides an annotation editor, copies or saves
+images, and pins images above other windows. Running without a command starts
+the background service and, when enabled, its tray icon; it does not take a screenshot.
 .PP
-\fBflameshot\fP is a screenshot tool that aims to be powerful yet simple-to-use.
-Its notable features include a customizable appearance, in-app screenshot editing,
-D-Bus interface, tray icon support, experimental GNOME/KDE Wayland support,
-integration with Imgur and support for both GUI and CLI interface.
-.PP
-Besides the usage information about \fBflameshot\fR in this manpage, you can find similar information using \fBflameshot --help\fR. Same \fB--help\fR can be used for each subcommand as well to get the valid arguments for them. The detailed usage of \fBflameshot\fP is documented in the \fIREADME.md\fR file on the project's Git repository page:
-https://github.com/flameshot-org/flameshot
-.
-.\"----------------------------------------------------------------------------
-.SH "SUBCOMMANDS"
-.PP
-Per default without subcommands, \fBflameshot\fR runs Flameshot in the background and adds a tray icon for configuration. Note that it will not take a screenshot unless you define one of the modes though the subcommands. There are various subcommands that can be used to use flameshot in different modes:
-.
+X11 capture and Wayland desktop screenshot portals are supported. On Wayland,
+portal permissions and available operations depend on the desktop environment.
+A graphical session and its session D-Bus are required for capture and desktop actions.
+.SH COMMANDS
 .TP
 .B gui
-Running Flameshot in \fBgui\fR mode would let the user select the region from which the screenshot should be taken and then allow them to annotate the screenshot.
-.
-.TP
-.B full
-Takes a screenshot of all monitors at the same time
-.
+Capture, select a region and edit annotations. On a multi-monitor desktop a monitor
+chooser may appear unless a monitor or the entire desktop was explicitly selected.
 .TP
 .B screen
-Takes a screenshot of the specified monitor.
-.
+Capture one monitor. On X11 the default is the monitor containing the pointer.
+On Wayland, specify a monitor with
+.BR \-\-number .
 .TP
-.SH launcher
-Does not accept any arguments, it will just open the launcher window
-.
+.B full
+Capture the entire desktop without opening the annotation editor.
 .TP
-.SH config
-If no argument is provided, it will open the config window, otherwise it can change the configurations based on the provided arguments.
-.
-.\"----------------------------------------------------------------------------
-.SH "ARGUMENTS"
-.PP
-Here we list all the arguments available for all subcommands. The subcommands that accept each argument are listed after each argument. Alternatively, you can use the \fBflameshot [subcommand] --help\fR to know the list of available arguments for each subcommand.
-.
-.PP
-\-s, \-\-accept-on-select
-.RS 4
-Accept capture as soon as a selection is made
-.br
-Valid for subcommands: gui
-.RE
-.
-.PP
-\-a, \-\-autostart <bool>
-.RS 4
-Enable or disable run at startup
-.br
-Valid for subcommands: config
-.RE
-.
-.PP
-\-\-check
-.RS 4
-Check the configuration for errors. This is useful if you manually change the config file and want to make sure it does not contain errors.
-.br
-Valid for subcommands: config
-.RE
-.
-.PP
-\-c, \-\-clipboard
-.RS 4
-Save the captured screenshot to the clipboard
-.br
-Valid for subcommands: full, gui, screen
-.RE
-.
-.PP
-\-k, \-\-contrastcolor <color-code>
-.RS 4
-Define the contrast UI color
-.br
-Valid for subcommands: config
-.RE
-.
-.PP
-\-d, \-\-delay <milliseconds>
-.RS 4
-How many milliseconds should Flameshot wait before taking the screenshot
-.br
-Valid for subcommands: full, gui, screen
-.RE
-.
-.PP
-\-e, \-\-edit
-.RS 4
-Interactively select and edit the screenshot region
-.br
-Valid for subcommands: screen
-.RE
-.
-.PP
-\-f, \-\-filename <pattern>
-.RS 4
-Set the filename pattern
-.br
-Valid for subcommands: config
-.RE
-.
-.PP
-\-h, \-\-help
-.RS 4
-Show a brief help message and list the valid arguments for that subcommand
-.br
-Valid for subcommands: config, full, gui, launcher, screen
-.RE
-.
-.PP
-\-\-last-region
-.RS 4
-Repeat screenshot with previously selected region
-.br
-Valid for subcommands: gui
-.RE
-.
-.PP
-\-m, \-\-maincolor <color-code>
-.RS 4
-Define the main UI color
-.br
-Valid for subcommands: config
-.RE
-.
-.PP
-\-n, \-\-notifications
-.RS 4
-Enable or disable notifications
-.br
-Valid for subcommands: config
-.RE
-.
-.PP
-\-n, \-\-number <Screen number>
-.RS 4
-Define the screen to capture (starting from 0), default: screen containing the cursor
-.br
-Valid for subcommands: screen
-.RE
-.
-.PP
-\-p, \-\-path <path>
-.RS 4
-Existing directory or new file to save to
-.br
-Valid for subcommands: full, gui, screen
-.RE
-.
-.PP
-\-\-pin
-.RS 4
-Pin the capture to the screen
-.br
-Valid for subcommands: gui, screen
-.RE
-.
-.PP
-\-g, \-\-print-geometry
-.RS 4
-Print geometry of the selection in the format WxH+X+Y. Does nothing if raw is specified
-.br
-Valid for subcommands: gui
-.RE
-.
-.PP
-\-r, \-\-raw
-.RS 4
-Send raw PNG to stdout
-.br
-Valid for subcommands: full, gui, screen
-.RE
-.
-.PP
-\-\-region <WxH+X+Y or string>  
-.RS 4
-Screenshot region to select
-.br
-Valid for subcommands: gui, screen
-.RE
-.
-.PP
-\-s, \-\-showhelp <bool>
-.RS 4
-Show the help message in the capture mode
-.br
-Valid for subcommands: config
-.RE
-.
-.PP
-\-t, \-\-trayicon <bool>
-.RS 4
-Enable or disable the trayicon
-.br
-Valid for subcommands: config
-.RE
-.
-.\"----------------------------------------------------------------------------
-.SH "EXAMPLE USAGE"
-.PP
-This section lists some of the most common usage of \fBflameshot\fR via
-command line.
-.
+.B launcher
+Open the capture launcher.
 .TP
-.B flameshot
-Start flameshot and have it running in background. If enabled,
-an icon will appear in the tray area of current desktop environment.
-.
+.B config
+Open the settings window when no configuration options are supplied; otherwise
+update the requested settings or check the configuration.
+.TP
+.B history
+Open upload history. Available only in builds with Imgur support.
+.TP
+.B updates
+Open the update checker. Available only in builds with update checking enabled.
+.TP
+.B help
+Show help, optionally for a command, for example
+.BR "flameshot help gui" .
+.SH GENERAL OPTIONS
+.TP
+.BR \-h , " " \-\-help
+Show help. Each command also accepts this option.
+.TP
+.BR \-v , " " \-V , " " \-\-version
+Show version information without starting the background service.
+.SH CAPTURE OPTIONS
+The following options apply to
+.BR gui , " " screen " and " full .
+.TP
+.BR \-p , " " \-\-path " " \fIPATH\fR
+Save to an existing directory or an image filename. Directories use the configured
+filename pattern. Existing images are not overwritten; a distinct filename is chosen.
+.TP
+.BR \-d , " " \-\-delay " " \fIMILLISECONDS\fR
+Delay capture by the given number of milliseconds. The default is zero.
+.TP
+.BR \-c , " " \-\-clipboard
+Copy the resulting image to the clipboard. This can be combined with an output path.
+.TP
+.BR \-r , " " \-\-raw
+Write PNG image bytes to standard output. Redirect this output to a file or pipe.
+Diagnostics are written to standard error. An explicit output path still requests
+saving in addition to writing PNG bytes.
+.PP
+With no raw output, clipboard, pin, geometry output or explicit editor action,
+the result is saved using the configured output directory. Clipboard-related
+configuration can also request saving a copy or copying a saved path.
+.SH GUI AND SCREEN OPTIONS
+.TP
+.BI \-\-region " REGION"
+Select a region in capture-image pixel coordinates. A rectangle uses
+.IR WIDTHxHEIGHT+X+Y ;
+negative offsets can use minus signs. The value
+.B all
+selects the whole captured image. For
+.B gui
+only,
+.BI screen N
+selects monitor number N, starting at zero.
+.TP
+.B \-\-pin
+Pin the captured image above other windows.
+.SH GUI OPTIONS
+.TP
+.B \-\-last-region
+Reuse the previous selection where it overlaps the current capture. An explicit
+.B \-\-region
+has priority.
+.TP
+.BR \-s , " " \-\-accept-on-select
+Accept immediately after making a selection.
+.TP
+.BR \-g , " " \-\-print-geometry
+Print the selection as WIDTHxHEIGHT+X+Y. When combined with
+.BR \-\-raw ,
+PNG output takes priority.
+.SH SCREEN OPTIONS
+.TP
+.BR \-n , " " \-\-number " " \fIINDEX\fR
+Select a zero-based monitor index.
+.TP
+.BR \-e , " " \-\-edit
+Open the editor for the selected monitor.
+.SH CONFIGURATION OPTIONS
+Boolean values must be explicitly supplied as
+.B true
+or
+.BR false .
+Only requested settings are changed; unrelated settings are preserved.
+.TP
+.BR \-a , " " \-\-autostart " " \fIBOOLEAN\fR
+Enable or disable startup with the desktop session.
+.TP
+.BR \-f , " " \-\-filename " " \fIPATTERN\fR
+Set the filename pattern. This is a pattern, not a directory path.
+.TP
+.BR \-n , " " \-\-notifications " " \fIBOOLEAN\fR
+Enable or disable notifications.
+.TP
+.BR \-t , " " \-\-trayicon " " \fIBOOLEAN\fR
+Enable or disable the tray icon.
+.TP
+.BR \-s , " " \-\-showhelp " " \fIBOOLEAN\fR
+Enable or disable editor help text.
+.TP
+.BR \-m , " " \-\-maincolor " " \fICOLOR\fR
+Set the main interface color.
+.TP
+.BR \-k , " " \-\-contrastcolor " " \fICOLOR\fR
+Set the contrasting interface color. Quote hexadecimal colors in the shell.
+.TP
+.B \-\-check
+Validate configuration values and shortcut assignments without opening the settings window.
+.SH FILES
+.TP
+.I $XDG_CONFIG_HOME/flameshot/flameshot.ini
+Configuration file. The usual default is
+.IR ~/.config/flameshot/flameshot.ini .
+.TP
+.I $XDG_CACHE_HOME/flameshot/flameshot/region.txt
+Cached capture selection. The usual cache root is
+.IR ~/.cache .
+.SH EXIT STATUS
+.TP
+.B 0
+Successful operation, help or version display.
+.TP
+.B 1
+An operation failed, including an unavailable desktop service or invalid configuration.
+.TP
+.B 2
+Capture was cancelled or command-line arguments were rejected.
+.SH EXAMPLES
 .TP
 .B flameshot gui
-Capture with GUI.
-.
+Select and annotate an image.
 .TP
-\fBflameshot gui\fR \-p /path/to/captures
-Capture with GUI and custom save path.
-.
+.B flameshot gui \-\-region 400x300+100+100 \-\-raw > capture.png
+Edit a preset region and write the resulting PNG to a file.
 .TP
-\fBflameshot gui\fR \-d 2000
-Open GUI with a delay of 2 seconds.
-.
+.B flameshot full \-p ~/Pictures \-d 2000
+Capture the desktop after two seconds and save in Pictures.
 .TP
-.B flameshot launcher
-Open a launcher dialog for advanced screenshot, such as custom
-time delay, etc.
-.
+.B flameshot screen \-n 0 \-c
+Copy the first monitor to the clipboard.
 .TP
-.B flameshot full \-\-help
-Shows help for \fBflameshot full\fR subcommand.
-.
+.B flameshot config \-\-notifications false \-\-trayicon true
+Change notification and tray preferences.
 .TP
-\fBflameshot full\fR -p /path/to/captures -d 5000
-Fullscreen capture with custom save path (no GUI) and time delay.
-.
-.TP
-\fBflameshot full\fR -c -p /path/to/captures
-Fullscreen capture with custom savepath copying to clipboard.
-.
-.TP
-\fBflameshot screen\fR \-\-number <screen number>
-Define the screen to capture. Will capture the screen containing the
-cursor by default.
-.
-.TP
-\fBflameshot screen\fR \-\-help
-Shows help for \fBflameshot screen\fR subcommand.
-.
-.\"----------------------------------------------------------------------------
-.SH RETURN VALUE
-Returns 0 on normal exit, 2 on screenshot aborted, 3 on dbus connection lost, 130 on SIGINT received, 143 on SIGTERM received.
-.
-.\"----------------------------------------------------------------------------
+.B flameshot config \-\-check
+Check the configuration without opening a window.
 .SH SEE ALSO
-.PP
-You may also find more detailed online documentation on upstream project homepage.
-.
-.HP
-Upstream project homepage:
+Project documentation: https://flameshot.org/
 .br
-• \m[blue]\fBhttps://flameshot.org\fR\m[]
-.br
-• \m[blue]\fBhttps://github.com/flameshot-org/flameshot\fR\m[]
-.
-.\"----------------------------------------------------------------------------
-.SH "AUTHOR"
-.PP
-.ad l
-.B Flameshot
-was initially written by
-.MT izhe@\:hotmail.es
-lupoDharkael
-.ME
-and is currently maintained by
-Jeremy Borgman,
-.MT byang@\:debian.org
-Boyuan Yang
-.ME ,
-Haris Gušić,
-Ahmed Zetao Yang,
-Mehrad Mahmoudian,
-and
-Martin Eckleben
-(ordered based on number of contributions on the date of writing this manpage).
-.br
-The following URL gives you a more complete list of contributors:
-.RS
-\m[blue]\fBhttps://github.com/flameshot-org/flameshot/graphs/contributors\fR\m[]\&.
-.RE
-.
-.\"----------------------------------------------------------------------------
-.SH "LICENSE"
-.nh
-.PP
-• The main code is licensed under GPLv3+
-.br
-• The logo of Flameshot is licensed under Free Art License v1.3
-.br
-• The button icons are licensed under Apache License 2.0. See: \m[blue]\fBhttps://github.com/google/material-design-icons\fR\m[]
-.br
-• The code at capture/capturewidget.cpp is based on \m[blue]\fBhttps://github.com/ckaiser/Lightscreen/blob/master/dialogs/areadialog.cpp\fR\m[] (GPLv2)
-.br
-• The code at capture/capturewidget.h is based on \m[blue]\fBhttps://github.com/ckaiser/Lightscreen/blob/master/dialogs/areadialog.h\fR\m[] (GPLv2)
-.br
-• Few lines of code from KSnapshot regiongrabber.cpp SVN revision 796531 (LGPL)
-.br
-• Qt-Color-Widgets taken and modified from \m[blue]\fBhttps://github.com/mbasaglia/Qt-Color-Widgets\fR\m[] (see their license and exceptions in the project) (LGPL/GPL)
+Source and contributors: https://github.com/flameshot-org/flameshot
+.SH LICENSE
+The application is licensed under GPL-3.0-or-later. The logo and material icons
+have separate licenses shipped with the application. This manual is CC0-1.0.

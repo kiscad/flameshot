@@ -86,6 +86,8 @@ desktop-file-validate %{buildroot}%{_datadir}/applications/org.flameshot.Flamesh
 %{_datadir}/zsh/site-functions/_flameshot
 %{_datadir}/fish/vendor_completions.d/flameshot.fish
 
+%{_mandir}/man1/flameshot.1*
+
 %changelog
 * Sun Nov 01 2026 Jeremy Borgman <borgman.jeremy@pm.me> - 15.0.0
 - Updated for v15.0.0 release

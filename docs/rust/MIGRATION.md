@@ -24,7 +24,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text, X11 INCR and ownership lifecycle verified on Xvfb/Sway; other compositor paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Implemented and tested, including idle ownership/pin retention; full explicit-shutdown child audit remains |
-| CLI | Existing commands/options, stdout PNG, exit codes | Commands and configuration flags implemented; final syntax/exit-code audit and completions remain |
+| CLI | Existing commands/options, stdout PNG, exit codes | Commands, configuration flags, completions and manual implemented/tested; final syntax/exit-code and shell acceptance remain |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures/atomic updates tested; live-reload/semantic gaps remain |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
@@ -1573,3 +1573,28 @@ match their sources and the RPM spec parses with the new entries. No screenshot,
 daemon, host installation or remote workflow was started by completion testing.
 Interactive Zsh behavior, the manual page, final CLI compatibility audit and fresh
 package builds remain pending; these checks do not close the entire CLI gate.
+
+### CLI manual and legacy version option
+
+Replaced the stale manual with documentation of the Rust command surface: capture
+and configuration options, region/monitor rules, optional-feature commands, PNG
+stdout and geometry priority, XDG files, examples, and current actual exit statuses.
+The shared staging script installs it and RPM includes compressed or uncompressed
+man-page output. Historical manual attribution and CC0 licensing are retained;
+legacy C++ implementation-specific license descriptions are not presented as Rust
+application components.
+
+The baseline parser exposes `-v`, which the initial Clap-derived CLI had lost.
+Restored `-v` and retained `-V` as an alias for `--version`; all shell completions
+were updated. A regression test runs each spelling with an unusable session-bus
+address and verifies version output, no stderr, and no configuration writes.
+The command-options test compares executable help with the manual. Normal config
+integration and private-bus daemon tests confirm the version argument is optional.
+
+Validation passed: all-feature workspace tests, all-target/all-feature Clippy,
+formatting, Bash/Fish completion tests and Zsh syntax, the private-bus daemon test,
+shared staging/content comparison, RPM spec parsing, and groff UTF-8 rendering
+with no warnings. The earlier manual claimed D-Bus exit 3 and signal-specific
+statuses that the current Rust paths do not yet consistently implement; those
+remain explicit compatibility gaps rather than being claimed by this manual.
+Argument-error priority and final command syntax also remain in the CLI audit.

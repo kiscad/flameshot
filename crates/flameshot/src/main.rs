@@ -37,9 +37,12 @@ use std::{
 #[command(
     name = "flameshot",
     version,
-    about = "Flameshot Rust migration — desktop screenshot utility"
+    disable_version_flag = true,
+    about = "Powerful yet simple-to-use screenshot software"
 )]
 struct Cli {
+    #[arg(short = 'v', long = "version", visible_short_alias = 'V', action = clap::ArgAction::Version, help = "Display version information")]
+    _version: Option<bool>,
     #[command(subcommand)]
     command: Option<Command>,
 }
