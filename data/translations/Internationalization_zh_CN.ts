@@ -3518,6 +3518,86 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
         <source>Choose a screen to edit. Number keys 1–9 select a screen.</source>
         <translation>选择要编辑的屏幕。可用数字键 1–9 选择。</translation>
     </message>
+    <message>
+        <source>Yes</source>
+        <translation>是</translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation>否</translation>
+    </message>
+    <message>
+        <source>Select an area first</source>
+        <translation>请先选择区域</translation>
+    </message>
+    <message>
+        <source>Save Screenshot</source>
+        <translation>保存截图</translation>
+    </message>
+    <message>
+        <source>Image format</source>
+        <translation>图像格式</translation>
+    </message>
+    <message>
+        <source>Destination file</source>
+        <translation>目标文件</translation>
+    </message>
+    <message>
+        <source>Parent folder</source>
+        <translation>上级文件夹</translation>
+    </message>
+    <message>
+        <source>Size: </source>
+        <translation>尺寸：</translation>
+    </message>
+    <message>
+        <source>Objects and properties</source>
+        <translation>对象与属性</translation>
+    </message>
+    <message>
+        <source>Drag to select • Enter: accept • Ctrl+C: copy • Ctrl+S: save • Esc: cancel</source>
+        <translation>拖动选择 • Enter：确认 • Ctrl+C：复制 • Ctrl+S：保存 • Esc：取消</translation>
+    </message>
+    <message>
+        <source>Magnifier (G: pick color)</source>
+        <translation>放大镜（G：拾取颜色）</translation>
+    </message>
+    <message>
+        <source>Objects</source>
+        <translation>对象</translation>
+    </message>
+    <message>
+        <source>Curved arrow head</source>
+        <translation>弧形箭头</translation>
+    </message>
+    <message>
+        <source>Reverse arrow</source>
+        <translation>反向箭头</translation>
+    </message>
+    <message>
+        <source>Counter outline</source>
+        <translation>序号轮廓</translation>
+    </message>
+    <message>
+        <source>Click the image to enter text, or type here to place repeated labels</source>
+        <translation>点击图像输入文字，或在此输入以重复放置标签</translation>
+    </message>
+    <message>
+        <source>Move object</source>
+        <translation>移动对象</translation>
+    </message>
+    <message>
+        <source>Move selection</source>
+        <translation>移动选区</translation>
+    </message>
+    <message>
+        <source>Counter</source>
+        <translation>序号</translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>矩形</translation>
+    </message>
 </context>
 
 <context>

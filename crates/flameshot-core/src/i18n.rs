@@ -142,6 +142,32 @@ mod tests {
         );
     }
     #[test]
+    fn chinese_editor_labels_are_translated_and_keep_shortcut_hints() {
+        for locale in ["zh_CN", "zh_TW", "zh_HK"] {
+            let tr = Translator::new(locale);
+            for source in [
+                "Save Screenshot",
+                "Move object",
+                "Move selection",
+                "Objects and properties",
+                "Select an area first",
+            ] {
+                assert_ne!(
+                    tr.translate("RustEditor", source),
+                    source,
+                    "{locale}: {source}"
+                );
+            }
+            let help = tr.translate(
+                "RustEditor",
+                "Drag to select • Enter: accept • Ctrl+C: copy • Ctrl+S: save • Esc: cancel",
+            );
+            for shortcut in ["Enter", "Ctrl+C", "Ctrl+S", "Esc"] {
+                assert!(help.contains(shortcut));
+            }
+        }
+    }
+    #[test]
     fn unknown_locale_and_unfinished_entries_fall_back_to_source() {
         assert_eq!(
             Translator::new("unknown").translate("CopyTool", "Copy"),

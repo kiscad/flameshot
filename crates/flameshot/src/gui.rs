@@ -421,7 +421,7 @@ impl Editor {
                 Err(error) => self.error = error.to_string(),
             }
         } else {
-            self.error = "Select an area first".into();
+            self.error = tr("RustEditor", "Select an area first").into();
         }
     }
     fn request_quit(&mut self, ctx: &egui::Context) {
@@ -473,13 +473,13 @@ impl Editor {
                     }
                 }
                 ui.horizontal(|ui| {
-                    let no = ui.button("No");
+                    let no = ui.button(tr("RustEditor", "No"));
                     if self.quit_focus {
                         no.request_focus();
                         self.quit_focus = false;
                     }
                     cancel |= no.clicked();
-                    confirm |= ui.button("Yes").clicked();
+                    confirm |= ui.button(tr("RustEditor", "Yes")).clicked();
                 });
                 if !self.error.is_empty() {
                     ui.colored_label(Color32::RED, &self.error);
@@ -506,7 +506,7 @@ impl Editor {
     }
     fn accept(&mut self, ctx: &egui::Context, action: Action) {
         if self.selection.is_none() {
-            self.error = "Select an area first".into();
+            self.error = tr("RustEditor", "Select an area first").into();
             return;
         }
         let should_save = action == Action::Save
@@ -574,7 +574,7 @@ impl Editor {
     ) -> Result<()> {
         let selection = self
             .selection
-            .ok_or_else(|| anyhow::anyhow!("Select an area first"))?;
+            .ok_or_else(|| anyhow::anyhow!(tr("RustEditor", "Select an area first")))?;
         let image = self.document.export(selection)?;
         let settings = crate::settings::Settings::load()?;
         let result = if let Some(extension) = selected_extension {
@@ -612,7 +612,7 @@ impl Editor {
                 Err(error) => self.error = error.to_string(),
             }
         } else {
-            self.error = "Select an area first".into();
+            self.error = tr("RustEditor", "Select an area first").into();
         }
     }
     fn save_ui(&mut self, ui: &mut egui::Ui) {
@@ -702,7 +702,7 @@ impl Editor {
 
         let mut cancel = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         let mut save = ctx.input(|i| i.key_pressed(egui::Key::Enter));
-        egui::Window::new("Save Screenshot")
+        egui::Window::new(tr("RustEditor", "Save Screenshot"))
             .collapsible(false)
             .resizable(true)
             .default_width(550.0)
@@ -714,7 +714,7 @@ impl Editor {
                     .unwrap_or("png")
                     .to_ascii_lowercase();
                 let mut extension = original.clone();
-                egui::ComboBox::from_label("Image format")
+                egui::ComboBox::from_label(tr("RustEditor", "Image format"))
                     .selected_text(&extension)
                     .show_ui(ui, |ui| {
                         for &value in crate::output::EXTENSIONS {
@@ -729,7 +729,7 @@ impl Editor {
                     path.set_extension(extension);
                     dialog.path = path.to_string_lossy().into_owned();
                 }
-                ui.label("Destination file");
+                ui.label(tr("RustEditor", "Destination file"));
                 let id = egui::Id::unique("save-destination");
                 let response = ui.add(
                     egui::TextEdit::singleline(&mut dialog.path)
@@ -748,7 +748,7 @@ impl Editor {
                         .unwrap_or(std::path::Path::new("."))
                         .to_owned()
                 };
-                if ui.button("Parent folder").clicked()
+                if ui.button(tr("RustEditor", "Parent folder")).clicked()
                     && let Some(parent) = folder.parent()
                 {
                     dialog.path = parent.to_string_lossy().into_owned();
@@ -956,7 +956,7 @@ impl Editor {
                 egui::DragValue::new(&mut value)
                     .range(1.0..=limit)
                     .speed(1.0)
-                    .prefix("Size: "),
+                    .prefix(tr("RustEditor", "Size: ")),
             )
             .changed()
         {
@@ -1272,7 +1272,7 @@ impl eframe::App for Editor {
                                 Err(error) => self.error = error.to_string(),
                             }
                         } else {
-                            self.error = "Select an area first".into();
+                            self.error = tr("RustEditor", "Select an area first").into();
                         }
                     }
                     "TYPE_ACCEPT" => self.accept(&ctx, Action::Accept),
@@ -1357,7 +1357,7 @@ impl eframe::App for Editor {
             self.color = Color32::from_rgba_unmultiplied(color[0], color[1], color[2], color[3]);
         }
         if self.panel_visible {
-            egui::Window::new("Objects and properties")
+            egui::Window::new(tr("RustEditor", "Objects and properties"))
                 .default_pos(egui::pos2(20.0, 180.0))
                 .show(&ctx, |ui| {
                     self.tool_size_control(ui);
@@ -1420,7 +1420,22 @@ impl eframe::App for Editor {
                                 if ui
                                     .selectable_label(
                                         self.selected_object == Some(index),
-                                        format!("{}: {label}", index + 1),
+                                        format!(
+                                            "{}: {}",
+                                            index + 1,
+                                            tr(
+                                                if matches!(
+                                                    annotation,
+                                                    Annotation::Counter { .. }
+                                                        | Annotation::Rectangle { .. }
+                                                ) {
+                                                    "RustEditor"
+                                                } else {
+                                                    "RustConfig"
+                                                },
+                                                label
+                                            )
+                                        ),
                                     )
                                     .clicked()
                                 {
@@ -1437,7 +1452,7 @@ impl eframe::App for Editor {
             .movable(true)
             .show(&ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    if self.show_help && self.selection.is_none() {ui.label("Drag to select • Enter: accept • Ctrl+C: copy • Ctrl+S: save • Esc: cancel");}
+                    if self.show_help && self.selection.is_none() {ui.label(tr("RustEditor", "Drag to select • Enter: accept • Ctrl+C: copy • Ctrl+S: save • Esc: cancel"));}
                     ui.set_max_width((ctx.content_rect().width() - 40.0).clamp(200.0, 900.0));
                     ui.horizontal_wrapped(|ui| {
                         let mut tools=vec![
@@ -1462,14 +1477,14 @@ impl eframe::App for Editor {
                             tools.sort_by_key(|(tool,_)|tool.legacy_id().map(|id|crate::buttons::priority(id)+1).unwrap_or(0));
                         for (tool,label) in tools {
                             let (context,source)=match tool {
- Tool::Select=>("CaptureWidget","Capture region"),Tool::Text=>("TextTool",label),Tool::Pencil=>("PencilTool",label),Tool::Marker=>("MarkerTool",label),Tool::Counter=>("CircleCountTool",label),Tool::Move=>("MoveTool",label),Tool::MoveSelection=>("MoveTool",label),Tool::Line=>("LineTool",label),Tool::Arrow=>("ArrowTool",label),Tool::Rectangle=>("SelectionTool","Rectangular Selection"),Tool::FilledRectangle=>("RectangleTool",label),Tool::Ellipse=>("CircleTool","Circle"),Tool::Invert=>("InvertTool",label),Tool::Pixelate=>("PixelateTool",label)};
+ Tool::Select=>("CaptureWidget","Select screenshot area"),Tool::Text=>("TextTool",label),Tool::Pencil=>("PencilTool",label),Tool::Marker=>("MarkerTool",label),Tool::Counter=>("CircleCountTool",label),Tool::Move=>("RustEditor",label),Tool::MoveSelection=>("RustEditor",label),Tool::Line=>("LineTool",label),Tool::Arrow=>("ArrowTool",label),Tool::Rectangle=>("SelectionTool","Rectangular Selection"),Tool::FilledRectangle=>("RectangleTool",label),Tool::Ellipse=>("CircleTool","Circle"),Tool::Invert=>("InvertTool",label),Tool::Pixelate=>("PixelateTool",label)};
  ui.selectable_value(&mut self.tool, tool, tr(context,source));
                         }
                         if ui.color_edit_button_srgba(&mut self.color).changed() { self.persist_color(); }
                         self.tool_size_control(ui);
                         for (id,context,label) in [
                             (9,"UndoTool","Undo"),(16,"RedoTool","Redo"),(10,"CopyTool","Copy"),(11,"SaveTool","Save"),
-                            (13,"ImageUploaderTool","Upload"),(23,"AcceptTool","Accept"),(14,"AppLauncher","Open with"),
+                            (13,"RustConfig","Upload"),(23,"AcceptTool","Accept"),(14,"RustConfig","Open with"),
                             (12,"ColorGrabWidget","Cancel"),(17,"PinTool","Pin Tool"),(20,"CaptureWidget","+"),(21,"CaptureWidget","−"),
                         ] {
                             if self.button_enabled(id) && crate::buttons::available(id) && ui.button(tr(context,label)).clicked() {
@@ -1481,7 +1496,7 @@ impl eframe::App for Editor {
                                     #[cfg(feature="imgur")]
                                     13 => {
                                         if let Some(selection)=self.selection { match self.document.export(selection) { Ok(image)=>self.upload_dialog=Some(crate::upload_ui::UploadDialog::new(image)),Err(error)=>self.error=error.to_string() } }
-                                        else { self.error="Select an area first".into(); }
+                                        else { self.error=tr("RustEditor", "Select an area first").into(); }
                                     }
                                     23 => self.accept(&ctx,Action::Accept),
                                     14 => self.open_application(),
@@ -1496,17 +1511,17 @@ impl eframe::App for Editor {
                     });
                     self.palette_ui(ui,false);
                     ui.horizontal(|ui| {
-                        ui.checkbox(&mut self.magnifier,"Magnifier (G: pick color)");
-                        if self.show_panel_button && ui.button("Objects").clicked() {self.panel_visible = !self.panel_visible;}
+                        ui.checkbox(&mut self.magnifier,tr("RustEditor", "Magnifier (G: pick color)"));
+                        if self.show_panel_button && ui.button(tr("RustEditor", "Objects")).clicked() {self.panel_visible = !self.panel_visible;}
                     });
                     if self.tool==Tool::Arrow {
-                        let changed=ui.checkbox(&mut self.curved_arrow,"Curved arrow head").changed() | ui.checkbox(&mut self.reverse_arrow,"Reverse arrow").changed();
+                        let changed=ui.checkbox(&mut self.curved_arrow,tr("RustEditor", "Curved arrow head")).changed() | ui.checkbox(&mut self.reverse_arrow,tr("RustEditor", "Reverse arrow")).changed();
                         if changed && let Err(error)=crate::settings::Settings::update(&[("arrowStyle",u8::from(self.curved_arrow).to_string()),("reverseArrow",self.reverse_arrow.to_string())]) {self.error=error.to_string();}
                     }
 
-                    if self.tool==Tool::Counter {ui.checkbox(&mut self.counter_outline,"Counter outline");}
+                    if self.tool==Tool::Counter {ui.checkbox(&mut self.counter_outline,tr("RustEditor", "Counter outline"));}
                     if self.tool == Tool::Text {
-                        ui.label("Click the image to enter text, or type here to place repeated labels");
+                        ui.label(tr("RustEditor", "Click the image to enter text, or type here to place repeated labels"));
                         ui.text_edit_multiline(&mut self.text);
                         ui.horizontal(|ui| {
                             ui.label(tr("RustEditor", "Font family"));

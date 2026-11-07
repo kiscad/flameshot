@@ -3437,6 +3437,86 @@ Bạn có thể cần phải thoát khỏi dấu &apos;#&apos; như trong &apos;
         <source>Choose a screen to edit. Number keys 1–9 select a screen.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Yes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select an area first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save Screenshot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Image format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Destination file</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Parent folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Size: </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Objects and properties</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Drag to select • Enter: accept • Ctrl+C: copy • Ctrl+S: save • Esc: cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Magnifier (G: pick color)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Objects</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Curved arrow head</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Reverse arrow</source>
+        <translation>Mũi tên ngược</translation>
+    </message>
+    <message>
+        <source>Counter outline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Click the image to enter text, or type here to place repeated labels</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move object</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move selection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Counter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Rectangle</source>
+        <translation>Hình chữ nhật</translation>
+    </message>
 </context>
 
 <context>

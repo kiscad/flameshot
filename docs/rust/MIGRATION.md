@@ -2448,3 +2448,26 @@ Backend diagnostic details and other editor windows still need translation revie
 this is not completion of full application translation coverage.
 The eight no-default-feature form tests, formatting and diff checks also passed.
 The rendered Chinese unchanged-save status was inspected after clicking Save.
+
+### Translate remaining capture controls and native Save UI
+
+Capture help, size controls, arrow options, object panel, selection errors, quit
+buttons and native Save dialog labels now use translation catalogs. Twenty additional
+RustEditor messages are registered in every catalog, with Simplified/Traditional
+Chinese translations and reuse of unambiguous existing translations elsewhere.
+Object rows reuse translated tool names. Incorrect source/context pairs for capture
+selection, object/selection movement, Upload and Open With were corrected; these had
+silently fallen back to English even in Chinese sessions.
+
+The private localization fixture now captures the actual editor and Save dialog in
+both Chinese locales. It selects the screen, opens Save, cancels back to the editor,
+and cancels capture back to the launcher. Its save directory is inside the disposable
+XDG tree, and no screenshot is saved through the dialog. Rendered screenshots were
+inspected; this caught the Upload/Open With fallbacks that static compilation missed.
+All 49 catalogs parse with 27 distinct RustEditor messages. Six translation tests and
+73 all-feature application unit tests pass (one existing ignored test); all-feature
+all-target Clippy passes. Backend diagnostics and other windows remain separate
+translation audit work, so this does not close the global resources acceptance gate.
+Final Chinese editor screenshots confirm Upload/Open With are translated. The
+65 no-default-feature application unit tests also pass (one existing ignored test),
+as do formatting and diff checks.

@@ -42,7 +42,7 @@ def window(title):
     names=tool('search','--onlyvisible','--name','Flameshot').stdout.decode().splitlines()
     raise AssertionError('Missing '+title+'; windows: '+repr([tool('getwindowname',name).stdout for name in names]))
 for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動器')]:
-    config.write_text(f'[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\nuseX11LegacyScreenshot=true\nuiLanguage={locale}\n')
+    config.write_text(f'[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\nuseX11LegacyScreenshot=true\nuiLanguage={locale}\nsavePath={config.parent}\n')
     process=subprocess.Popen([binary,'launcher'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     try:
         launcher=window('^'+title+'$')
@@ -55,6 +55,18 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
         capture=window('^Flameshot$')
         tool('windowfocus','--sync',capture)
         time.sleep(.3)
+        for stage in ['editor','save-dialog']:
+            if stage=='save-dialog':
+                tool('key','ctrl+a')
+                tool('key','ctrl+s')
+                time.sleep(.5)
+            captured=subprocess.run([binary,'full','--raw'],capture_output=True,timeout=10)
+            assert captured.returncode==0,captured.stderr.decode()
+            Path(artifacts,f'rust-{stage}-{locale}.png').write_bytes(captured.stdout)
+        tool('key','Escape') # Cancel Save, leaving the capture editor alive.
+        time.sleep(.3)
+        assert process.poll() is None
+        assert tool('getwindowname',capture).returncode==0
         tool('key','Escape')
         launcher=window('^'+title+'$')
         tool('windowfocus','--sync',launcher)
@@ -66,7 +78,7 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
         if process.poll() is None:process.kill()
         out,err=process.communicate()
         if process.returncode:print(err.decode(),file=sys.stderr)
-    print('PASS:',locale,'launcher title, capture/cancel lifecycle and rendered screenshot')
+    print('PASS:',locale,'launcher/editor/save-dialog rendering and capture/cancel lifecycle')
     config_title={'zh_CN':'Flameshot 配置','zh_TW':'Flameshot 設定'}[locale]
     original_config=config.read_bytes()
     process=subprocess.Popen([binary,'config'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
