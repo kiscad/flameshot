@@ -87,7 +87,46 @@ Run this mode separately from `--clipboard`. It additionally requires
 python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input --multi-monitor
 ```
 
-Fractional scaling, hotplug and native KDE IME remain separate acceptance work.
+Fractional scaling is covered in the follow-up below; hotplug and native KDE IME remain separate acceptance work.
+
+## Fractional-scale crop boundaries
+
+The `--fractional` mode uses scales 1 and 1.5 and implicitly enables the multi-monitor
+fixture. KWin reports a logical second-output width of 683 and normalizes positions
+to (0,0) and (683,0). Its actual portal image is 2561×1152: the second monitor occupies
+columns 0–1024 (1025 pixels), and the first occupies columns 1025–2560 (1536 pixels).
+The compositor's composite rounding is authoritative here; forcing the second crop
+to its physical mode width of 1024 would discard a column of the portal image.
+
+This exposed another production bug: outward rounding, appropriate for an arbitrary
+selection, started the first monitor at column 1024. Its 1537-pixel crop included one
+orange column from the adjacent monitor. Monitor partitions now use consistent
+nearest-pixel boundaries, while ordinary selections retain outward rounding. The
+regression checks shared horizontal and vertical boundaries and keeps the original
+selection-rounding test.
+
+After the fix, full capture, both monitor crops, explicit/interactive editor export
+and native second-monitor placement all pass. The second editor has a 683×512
+logical frame and exports the correct 1025×768 portal-image region. Crop edge colors
+are checked as well as interior pixels. Local evidence is in `target/kde-fractional.log`
+and `target/kde-fractional-artifacts`; `target/kde-fractional-before.png` shows the
+pre-fix adjacent column. Tested debug executable SHA-256:
+`74f2e0b6f6cc555a242b1c32e7a522d47648dbeb8c0f36b22ee09b0a4cffa460`.
+
+```sh
+python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input --fractional
+```
+
+KWin 1×/2× and GNOME dual-monitor regressions pass. Sway's fixture additionally checks
+1×/1.5× at a negative origin: it asserts compositor output geometry, disjoint crop
+sizes, byte-for-byte equality with corresponding full-portal rectangles, and the
+color distinction across their shared boundary. Its source can contain resampling
+and earlier rendered content, so uniform wallpaper color across every edge is not
+assumed. The complete Sway/IME fixture passes with these checks.
+
+All-feature workspace tests, focused geometry tests, all-target Clippy, formatting,
+Python syntax and diff checks pass. These are representative fractional-scale
+cases, not every scale/rotation combination or a KDE hotplug/IME acceptance claim.
 
 ## Reproduce
 
@@ -141,7 +180,7 @@ python3 /validation/kde_smoke.py /usr/bin/flameshot /validation/kde_input --clip
 ```
 
 No real terminal, browser, uploader or user desktop is invoked. Remaining KDE
-coverage includes native IME, fractional-scale/negative-origin
+coverage includes native IME, additional scale/rotation combinations and negative-origin
 outputs, hotplug and installed sandbox behavior. The plain `screen` command cannot
 infer the pointer's monitor on this Wayland backend; the existing diagnostic asks
 for `--number`. Hosted CI has not run this fixture.

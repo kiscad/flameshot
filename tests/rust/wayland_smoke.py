@@ -293,6 +293,35 @@ try:
     assert closing.returncode==2 and not out,err.decode()
     print('PASS: native close respects confirmation, default No, and confirmed cancellation',flush=True)
 
+    # A 1.5x output has a rounded logical width. Monitor crops must share a
+    # boundary rather than both rounding outward into their neighboring output.
+    result=call(str(root/'usr/bin/swaymsg'),'output HEADLESS-2 scale 1.5 position -853 0')
+    assert result.returncode==0,result.stderr.decode()
+    time.sleep(.5)
+    layout=call(str(root/'usr/bin/swaymsg'),'-t','get_outputs')
+    assert layout.returncode==0,layout.stderr.decode()
+    outputs={output['name']:output for output in json.loads(layout.stdout)}
+    assert outputs['HEADLESS-2']['scale']==1.5
+    assert outputs['HEADLESS-2']['rect']=={'x':-853,'y':0,'width':853,'height':640},outputs['HEADLESS-2']
+    full=call(str(binary),'full','--raw');assert full.returncode==0,full.stderr.decode()
+    (artifact_dir/'rust-wayland-fractional-full.png').write_bytes(full.stdout)
+    composite=Image.open(BytesIO(full.stdout)).convert('RGB')
+    assert composite.size==(2816,1152),composite.size
+    for index,size in [(0,(1536,1152)),(1,(1280,960))]:
+        result=call(str(binary),'screen','--number',str(index),'--raw')
+        assert result.returncode==0,result.stderr.decode()
+        (artifact_dir/f'rust-wayland-fractional-screen-{index}.png').write_bytes(result.stdout)
+        pixels=Image.open(BytesIO(result.stdout)).convert('RGB')
+        assert pixels.size==size,(index,pixels.size)
+        bounds=(1280,0,2816,1152) if index==0 else (0,0,1280,960)
+        assert pixels.tobytes()==composite.crop(bounds).tobytes(),(index,'Crop differs from corresponding portal pixels')
+        # The source may include resampling or previously rendered content; its
+        # pixels above are authoritative. The adjoining edges must still belong
+        # to the blue primary output and red secondary output respectively.
+        red,green,blue=pixels.getpixel((0 if index==0 else pixels.width-1,20))
+        assert (blue-red>30 if index==0 else red-blue>30),(index,'wrong monitor at shared boundary')
+    print('PASS: fractional-scale negative-origin crops have no overlapping neighbor columns',flush=True)
+
 
 finally:
     for process in reversed(processes):

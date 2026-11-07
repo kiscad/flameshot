@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER [--clipboard] [--multi-monitor]
+"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER [--clipboard] [--multi-monitor] [--fractional]
 Requires KWin 5, KDE portal, Qt Wayland, PyQt5, Pillow and private-session tools.
 """
 import os
@@ -15,6 +15,7 @@ import shutil
 import json
 from PIL import Image
 binary,helper=map(lambda p:Path(p).resolve(),sys.argv[1:3])
+if '--fractional' in sys.argv and '--multi-monitor' not in sys.argv:sys.argv.insert(3,'--multi-monitor')
 if '--inside' not in sys.argv:
     assert not ('--clipboard' in sys.argv and '--multi-monitor' in sys.argv),'Run clipboard and monitor fixtures separately'
     with tempfile.TemporaryDirectory(prefix='flameshot-kde-') as directory:
@@ -31,7 +32,7 @@ if '--inside' not in sys.argv:
         env=os.environ.copy()
         for key in ['DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','DBUS_SYSTEM_BUS_ADDRESS','SESSION_MANAGER']:env.pop(key,None)
         env.update(XDG_RUNTIME_DIR=str(root/'runtime'),XDG_CONFIG_HOME=str(root/'config'),XDG_DATA_HOME=str(root/'data'),XDG_CACHE_HOME=str(root/'cache'),TMPDIR=str(root/'tmp'),XDG_CURRENT_DESKTOP='KDE',XDG_SESSION_TYPE='wayland',QT_QPA_PLATFORM='wayland',LIBGL_ALWAYS_SOFTWARE='1',KWIN_COMPOSE='O2')
-        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),*[flag for flag in ['--clipboard','--multi-monitor'] if flag in sys.argv],'--inside',str(root)],env=env,start_new_session=True)
+        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),*[flag for flag in ['--clipboard','--multi-monitor','--fractional'] if flag in sys.argv],'--inside',str(root)],env=env,start_new_session=True)
         try:
             status=session.wait(timeout=100)
         except subprocess.TimeoutExpired:
@@ -70,13 +71,15 @@ try:
         for state in [1,0]:
             pointer.stdin.write(f'key {code} {state}\n');pointer.stdin.flush();assert pointer.stdout.readline().strip()=='ok'
     if '--multi-monitor' in sys.argv:
-        configured=subprocess.run(['kscreen-doctor','output.Virtual-0.scale.1','output.Virtual-0.position.0,0','output.Virtual-1.scale.2','output.Virtual-1.position.-512,0'],env=env,capture_output=True,text=True,timeout=10)
+        scale=1.5 if '--fractional' in sys.argv else 2
+        logical_width=683 if '--fractional' in sys.argv else 512
+        configured=subprocess.run(['kscreen-doctor','output.Virtual-0.scale.1','output.Virtual-0.position.0,0',f'output.Virtual-1.scale.{scale}',f'output.Virtual-1.position.-{logical_width},0'],env=env,capture_output=True,text=True,timeout=10)
         assert configured.returncode==0,configured.stderr+configured.stdout
         layout=subprocess.run(['kscreen-doctor','--json'],env=env,capture_output=True,text=True,check=True,timeout=10)
         (root/'outputs.log').write_text(layout.stdout)
         outputs={output['name']:output for output in json.loads(layout.stdout)['outputs']}
-        assert outputs['Virtual-0']['scale']==1 and outputs['Virtual-1']['scale']==2,outputs
-        assert outputs['Virtual-0']['pos']=={'x':512,'y':0} and outputs['Virtual-1']['pos']=={'x':0,'y':0},outputs
+        assert outputs['Virtual-0']['scale']==1 and outputs['Virtual-1']['scale']==scale,outputs
+        assert outputs['Virtual-0']['pos']=={'x':logical_width,'y':0} and outputs['Virtual-1']['pos']=={'x':0,'y':0},outputs
     background_code="""from PyQt5.QtWidgets import QApplication,QWidget
 app=QApplication([])
 windows=[]
@@ -96,6 +99,8 @@ app.exec_()
     cases=[('full',['full','--raw'],(1024,768),True),('screen',['screen','--number','0','--raw'],(1024,768),True),('editor',['gui','--region','80x60+500+450','--raw'],(80,60),True),('cancel',['gui','--region','80x60+500+450','--raw'],None,False)]
     if '--multi-monitor' in sys.argv:
         cases=[('full',['full','--raw'],(3072,1536),True),('screen',['screen','--number','0','--raw'],(2048,1536),True),('screen-second',['screen','--number','1','--raw'],(1024,768),True),('editor-second',['gui','--region','screen1','--raw'],(1024,768),True),('chooser-second',['gui','--raw'],(1024,768),True),('cancel',['gui','--region','screen1','--raw'],None,False)]
+    if '--fractional' in sys.argv:
+        cases=[(command,args,((2561,1152) if command=='full' else (1536,1152) if command=='screen' else (1025,768) if size else None),accept) for command,args,size,accept in cases]
     for command,args,size,accept in cases:
         capture=start('capture-'+command,[str(binary),*args],stdout=subprocess.PIPE)
         deadline=time.monotonic()+20
@@ -115,7 +120,7 @@ app.exec_()
                             key(3) # Number 2 chooses the second output.
                             chosen=True
                             continue
-                        if geometry!='0 0 512 384':
+                        if geometry!=('0 0 683 512' if '--fractional' in sys.argv else '0 0 512 384'):
                             continue
                         if command=='chooser-second':
                             pointer.stdin.write('key 29 1\n');pointer.stdin.flush();assert pointer.stdout.readline().strip()=='ok'
@@ -129,13 +134,15 @@ app.exec_()
             continue
         assert capture.returncode==0,(command,capture.returncode)
         if command in ['editor-second','chooser-second']:assert placement_checked,'Editor exited before native geometry could be checked'
+        if os.environ.get('FLAMESHOT_TEST_ARTIFACT_DIR'):
+            artifacts=Path(os.environ['FLAMESHOT_TEST_ARTIFACT_DIR']);artifacts.mkdir(parents=True,exist_ok=True)
+            (artifacts/('kde-'+command+'.png')).write_bytes(data)
         image=Image.open(io.BytesIO(data)).convert('RGB')
         assert image.size==size,image.size
         color=(160,80,32) if '--multi-monitor' in sys.argv and command in ['full','screen-second','editor-second','chooser-second'] else (32,64,96)
         assert image.getpixel((20,20))==color,image.getpixel((20,20))
-        if os.environ.get('FLAMESHOT_TEST_ARTIFACT_DIR'):
-            artifacts=Path(os.environ['FLAMESHOT_TEST_ARTIFACT_DIR']);artifacts.mkdir(parents=True,exist_ok=True)
-            (artifacts/('kde-'+command+'.png')).write_bytes(data)
+        if '--fractional' in sys.argv and command!='full':
+            assert all(image.getpixel((x,y))==color for x in [0,image.width-1] for y in [0,20,image.height-1]),'Monitor crop contains adjacent output pixels'
         print('PASS: KWin/KDE real portal',command,size,'and background pixels',flush=True)
     if '--clipboard' in sys.argv:
         daemon=start('flameshot-daemon',[str(binary)])

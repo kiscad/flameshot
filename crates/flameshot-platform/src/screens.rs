@@ -98,7 +98,7 @@ pub fn crop_bounds(screens: &[Screen], index: usize, width: u32, height: u32) ->
     )
     .map_err(|e| anyhow::anyhow!("Invalid desktop mapping: {e:?}"))?;
     mapping
-        .crop(selected.bounds)
+        .crop_partition(selected.bounds)
         .map_err(|e| anyhow::anyhow!("Invalid monitor crop: {e:?}"))
 }
 pub fn at_point(screens: &[Screen], x: f64, y: f64) -> Option<usize> {

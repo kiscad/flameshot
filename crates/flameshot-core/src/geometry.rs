@@ -75,6 +75,21 @@ impl CaptureMapping {
 
     /// Clip to the capture and round outward so selected edge pixels survive.
     pub fn crop(self, selection: DesktopRect) -> Result<PixelRect, GeometryError> {
+        self.crop_edges(selection, false)
+    }
+
+    /// Map a desktop partition with shared, nearest-pixel boundaries. Unlike a
+    /// freehand selection, adjacent monitors must not both include the same edge
+    /// pixel when the portal's composite dimensions imply a fractional scale.
+    pub fn crop_partition(self, selection: DesktopRect) -> Result<PixelRect, GeometryError> {
+        self.crop_edges(selection, true)
+    }
+
+    fn crop_edges(
+        self,
+        selection: DesktopRect,
+        partition: bool,
+    ) -> Result<PixelRect, GeometryError> {
         if !selection.valid() {
             return Err(GeometryError::InvalidSelection);
         }
@@ -85,18 +100,19 @@ impl CaptureMapping {
         if right <= left || bottom <= top {
             return Err(GeometryError::OutsideCapture);
         }
-        let x = (((left - self.desktop.x) / self.desktop.width) * f64::from(self.image_width))
-            .floor() as u32;
-        let y = (((top - self.desktop.y) / self.desktop.height) * f64::from(self.image_height))
-            .floor() as u32;
+        let start = |value: f64| if partition { value.round() } else { value.floor() } as u32;
+        let end = |value: f64| if partition { value.round() } else { value.ceil() } as u32;
+        let x = start((left - self.desktop.x) / self.desktop.width * f64::from(self.image_width));
+        let y = start((top - self.desktop.y) / self.desktop.height * f64::from(self.image_height));
         let end_x =
-            ((((right - self.desktop.x) / self.desktop.width) * f64::from(self.image_width)).ceil()
-                as u32)
+            end((right - self.desktop.x) / self.desktop.width * f64::from(self.image_width))
                 .min(self.image_width);
-        let end_y = ((((bottom - self.desktop.y) / self.desktop.height)
-            * f64::from(self.image_height))
-        .ceil() as u32)
-            .min(self.image_height);
+        let end_y =
+            end((bottom - self.desktop.y) / self.desktop.height * f64::from(self.image_height))
+                .min(self.image_height);
+        if end_x <= x || end_y <= y {
+            return Err(GeometryError::OutsideCapture);
+        }
         Ok(PixelRect {
             x,
             y,
@@ -165,6 +181,54 @@ mod tests {
         );
     }
 
+    #[test]
+    fn monitor_partitions_share_one_boundary_without_neighbor_pixels() {
+        // Observed KDE 1x/1.5x desktop: logical width 1707, portal width 2561.
+        let mapping = CaptureMapping::new(rect(-683.0, 0.0, 1707.0, 768.0), 2561, 1152).unwrap();
+        let left = mapping
+            .crop_partition(rect(-683.0, 0.0, 683.0, 512.0))
+            .unwrap();
+        let right = mapping
+            .crop_partition(rect(0.0, 0.0, 1024.0, 768.0))
+            .unwrap();
+        assert_eq!(
+            left,
+            PixelRect {
+                x: 0,
+                y: 0,
+                width: 1025,
+                height: 768
+            }
+        );
+        assert_eq!(
+            right,
+            PixelRect {
+                x: 1025,
+                y: 0,
+                width: 1536,
+                height: 1152
+            }
+        );
+        assert_eq!(left.x + left.width, right.x);
+        assert_eq!(right.x + right.width, 2561);
+        let vertical = CaptureMapping::new(rect(0.0, -683.0, 768.0, 1707.0), 1152, 2561).unwrap();
+        let upper = vertical
+            .crop_partition(rect(0.0, -683.0, 512.0, 683.0))
+            .unwrap();
+        let lower = vertical
+            .crop_partition(rect(0.0, 0.0, 768.0, 1024.0))
+            .unwrap();
+        assert_eq!(upper.height, 1025);
+        assert_eq!(lower.y, 1025);
+        assert_eq!(lower.height, 1536);
+        assert_eq!(upper.y + upper.height, lower.y);
+        assert_eq!(lower.y + lower.height, 2561);
+        assert_eq!(mapping.crop(rect(0.0, 0.0, 1024.0, 768.0)).unwrap().x, 1024);
+        assert_eq!(
+            mapping.crop_partition(rect(-682.9, 0.0, 0.01, 1.0)),
+            Err(GeometryError::OutsideCapture)
+        );
+    }
     #[test]
     fn touching_edge_is_not_an_intersection() {
         let mapping = CaptureMapping::new(rect(0.0, 0.0, 100.0, 100.0), 100, 100).unwrap();

@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE IME/fractional-scale/hotplug acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE IME/hotplug and broader scale/rotation acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2604,3 +2604,27 @@ hash are in KDE-VALIDATION.md. Fractional-scale/hotplug/KDE IME work remains ope
 The minimal-feature application unit tests also pass (65 passed, one existing
 ignored test). The disposable container was stopped and removed after verifying
 that no test desktop processes remained.
+
+### Prevent adjacent-monitor pixels in fractional-scale crops
+
+The KWin 1x/1.5x fixture found a one-column leak: the full portal image separates
+outputs at x=1025, but outward rounding started the first monitor at x=1024.
+Monitor crops now use shared nearest-pixel partition boundaries. Ordinary selection
+crops retain outward rounding. A core regression covers both horizontal and vertical
+shared boundaries, negative desktop origin, full coverage and non-overlap.
+
+KWin fractional full/screen/editor/interactive-choice cases now pass, including native
+window geometry and edge colors. The compositor itself assigns 1025 columns to the
+second monitor in its composite; the fixture verifies that actual image partition,
+not an assumed 1024 physical-mode width. KWin integer-scale and GNOME multi-monitor
+regressions also pass. Sway now verifies 1x/1.5x negative-origin geometry and exact
+pixel equality with disjoint regions of its full portal image. Initial uniform-color
+assertions were replaced with source-image equality because resampling/previously
+rendered content was already present in that source, not introduced by cropping.
+The complete Sway/IME run passes.
+
+All-feature workspace tests, focused core geometry tests, all-feature all-target
+Clippy, formatting, Python syntax and diff checks pass. KDE-VALIDATION.md records
+hashes, dimensions, reproduction and evidence limits. The container was stopped and
+removed after cleanup verification. Hotplug/KDE IME and broader scale combinations
+remain open; this is not completion of the whole migration.
