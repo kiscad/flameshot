@@ -3289,3 +3289,25 @@ passed under OpenGL and checks restored opacity after cancellation. All GUI test
 private displays, buses and XDG directories. Pin-save behavior is implemented and these
 specified paths are verified; hosted CI, installed packaging and the other migration
 acceptance gates are still pending.
+
+### Keep all best-effort application notifications nonblocking
+
+The remaining application notification call sites now use the no-reply transport:
+screenshot completion, capture cancellation, daemon startup and background update
+announcements. They enqueue notifications without waiting for the notification service
+to finish handling them. Preference conditions and existing bounded transport setup
+remain intact; the reply-returning platform API is retained for callers needing an ID.
+
+The private notification fixture records NoReplyExpected headers and can keep handlers
+blocked behind a gate. Both cancellation and successful save/raw commands must exit
+before that gate is released, preserving cancellation status 2, success status 0, PNG
+stdout and saved image pixels. Preference combinations and rejecting handlers remain
+covered. Notification observations are awaited rather than assumed to have arrived
+synchronously with command completion. The daemon fixture also requires no-reply
+headers for startup messages, without enabling real update-network requests.
+
+Validation passed: the complete Rust gate with Fish/Zsh checks, including private-bus
+startup and capture-notification tests, plus focused notification tests under both
+minimal and all-feature builds. The blocked-handler cases use synthetic local services
+and images; no desktop notification or external update request is sent to the user's
+session. Hosted CI and the remaining migration acceptance gates are still pending.

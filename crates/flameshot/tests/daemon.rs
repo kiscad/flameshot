@@ -119,6 +119,13 @@ impl Notifications {
         _timeout: i32,
         #[zbus(header)] header: zbus::message::Header<'_>,
     ) -> zbus::fdo::Result<u32> {
+        assert!(
+            header
+                .primary()
+                .flags()
+                .contains(zbus::message::Flags::NoReplyExpected),
+            "Best-effort notification requested a reply"
+        );
         let _ = self.messages.send(body.into());
         if body.starts_with("clipboard-order")
             && let Some((gate, observations)) = &self.delivery

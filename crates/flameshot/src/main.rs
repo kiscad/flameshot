@@ -350,7 +350,7 @@ async fn main() -> std::process::ExitCode {
                 {
                     let _ = tokio::time::timeout(Duration::from_secs(2), async {
                         let connection = zbus::Connection::session().await?;
-                        flameshot_platform::desktop::notify(
+                        flameshot_platform::desktop::notify_no_reply(
                             &connection,
                             "Flameshot",
                             "Screenshot aborted.",
@@ -786,7 +786,9 @@ async fn run(cli: Cli) -> Result<()> {
                 } else {
                     "Capture saved"
                 };
-                let _ = flameshot_platform::desktop::notify(&connection, "Flameshot", body).await;
+                let _ =
+                    flameshot_platform::desktop::notify_no_reply(&connection, "Flameshot", body)
+                        .await;
             }
             if raw {
                 let png = output::encode(&capture, image::ImageFormat::Png)?;
