@@ -47,13 +47,18 @@ Show help, optionally for a command, for example
 .SH GENERAL OPTIONS
 .TP
 .BR \-h , " " \-\-help
-Show help. Each command also accepts this option.
+Show help. Place it immediately after the program name or command, with no
+following arguments.
 .TP
 .BR \-v , " " \-V , " " \-\-version
-Show version information without starting the background service.
+Show version information without starting the background service. It must be the
+only argument.
 .SH CAPTURE OPTIONS
 Capture and configuration options may be repeated. The first supplied value is used;
 all occurrences of checked values must be valid. Repeating a switch keeps it enabled.
+Short options cannot be clustered. Values may follow their option as a separate
+argument or after an equals sign. A separate value beginning with a dash is still
+a value, so quote and supply values carefully.
 The following options apply to
 .BR gui , " " screen " and " full .
 .TP
@@ -159,13 +164,15 @@ Cached capture selection. The usual cache root is
 .SH EXIT STATUS
 .TP
 .B 0
-Successful operation, help or version display.
+Successful operation, help or version display. For compatibility with the legacy
+CLI, command-line syntax and value-parsing errors also return zero; these errors
+are reported on standard error and no command is executed.
 .TP
 .B 1
 An operation failed, for example because of invalid configuration or a desktop service error.
 .TP
 .B 2
-Capture was cancelled or command-line arguments were rejected.
+Capture was cancelled.
 .TP
 .B 3
 The session D-Bus connection could not be established, or the background service

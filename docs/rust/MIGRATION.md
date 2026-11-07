@@ -24,7 +24,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
-| CLI | Existing commands/options, stdout PNG, exit codes | Commands, configuration flags, completions and manual implemented/tested; final syntax/exit-code and shell acceptance remain |
+| CLI | Existing commands/options, stdout PNG, exit codes | Commands, numeric/repetition/help rules, parse statuses and completions implemented/tested; final command/shell behavior audit remains |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures/atomic updates and idle-window reload tested; concurrent-edit/semantic gaps remain |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
@@ -38,7 +38,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 ## Compatibility facts from source
 
 - Binary name: `flameshot`; commands: `gui`, `full`, `screen`, `launcher`, `config`.
-- Exit codes: success 0, general 1, cancelled 2, D-Bus connection 3; signals 128+signal.
+- Exit codes: success/help/version and legacy parse rejection 0, runtime general failure 1, cancelled 2, D-Bus connection 3; signals 128+signal. Parse rejection is diagnosed on stderr.
 - D-Bus service/interface: `org.flameshot.Flameshot`, object `/`.
 - Methods: `captureScreen`, `attachScreenshotToClipboard(ay)`,
   `attachTextToClipboard(s,s)`, `attachPin(ay)`.
@@ -2715,3 +2715,35 @@ collision-safe saving. All-feature all-target Clippy and Bash/Fish/Zsh completio
 checks pass; the manual documents repetitions and opaque QColor formats and renders
 without warnings. Formatting/diff checks pass. Legacy parse-error status and remaining
 help/version/syntax semantics are still unclosed CLI acceptance items.
+
+### Restore legacy help/version grammar and parse-rejection status
+
+Compiled the unchanged CommandLineParser/CommandArgument/CommandOption sources against
+Qt 6 with a stream-only logger and a small headless harness under target/qt-fixtures.
+The harness covers parser behavior, not capture/config execution; main.cpp's finish
+path separately establishes zero return after parse failure. Local output is retained
+in target/cli-reference-results.json. Cases confirm immediate/final help placement,
+version-with-trailing-arguments rejection, rejection of clustered short switches,
+and literal --help consumed as a filename option's value.
+
+The Rust entry point now checks legacy option shape using its existing Clap schema,
+then delegates typed validation to Clap. Separate values are normalized to inline
+values without losing native path bytes, including dash-leading values and the
+legacy empty-equals-plus-next-value rule. Earlier invalid values retain priority
+over later help/syntax errors. The Rust help subcommand and -V alias remain documented
+extensions. Parser errors print to stderr and return zero as the baseline does;
+help/version print to stdout. No command executes after a parse error. Runtime
+operation failure/cancellation/bus statuses keep their separate handling.
+
+Tests exercise the real entry point with unavailable desktop services and isolated
+configuration: valid help/version, invalid combinations, unknown arguments, literal
+help/version filename values, no side effects on rejection, and the existing typed
+validation/repetition/non-UTF-8 cases. Config parser-error tests now require stderr,
+empty stdout and unchanged files instead of assuming a nonzero status.
+
+The complete check-rust.sh gate passed with FLAMESHOT_COMPLETION_TOOL_ROOT enabled:
+default/all-feature lint and workspace tests, private-bus integration/daemon exit
+tests, minimal builds, Bash/Fish live completions and Fish/Zsh syntax. Formatting,
+diff checks and warning-free man rendering pass. The manual explicitly documents
+legacy zero-status parse errors. This closes the previously recorded blanket parse
+status discrepancy, not every remaining command/config semantic audit item.

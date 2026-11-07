@@ -158,7 +158,9 @@ fn legacy_color_options_are_headless_atomic_and_preserve_unknown_settings() {
         vec!["config", "-k", "not-a-color"],
     ] {
         let result = run(&args);
-        assert_eq!(result.status.code(), Some(2));
+        assert_eq!(result.status.code(), Some(0));
+        assert!(!result.stderr.is_empty());
+        assert!(result.stdout.is_empty());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
     }
 }
@@ -406,7 +408,9 @@ fn repeated_config_options_keep_first_values_and_later_errors_write_nothing() {
         ],
     ] {
         let result = run(&args);
-        assert_eq!(result.status.code(), Some(2));
+        assert_eq!(result.status.code(), Some(0));
+        assert!(!result.stderr.is_empty());
+        assert!(result.stdout.is_empty());
         assert!(result.stdout.is_empty());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
     }

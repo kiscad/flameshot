@@ -30,7 +30,7 @@ mod upload_history;
 #[cfg(feature = "imgur")]
 mod upload_ui;
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand, builder::TypedValueParser};
+use clap::{CommandFactory, Parser, Subcommand, builder::TypedValueParser};
 use flameshot_platform::{portal, screens, x11};
 use std::{
     io::{self, Write},
@@ -183,9 +183,135 @@ enum Command {
     },
 }
 
+fn parse_cli_from<I, T>(arguments: I) -> Result<Cli, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString>,
+{
+    use clap::error::ErrorKind;
+    let mut args: Vec<std::ffi::OsString> = arguments.into_iter().map(Into::into).collect();
+    // The documented Rust help subcommand is an extension to the legacy CLI.
+    if args.get(1).is_some_and(|arg| arg == "help") {
+        return Cli::try_parse_from(args);
+    }
+    let mut schema = Cli::command();
+    schema.build();
+    let mut node = &schema;
+    let mut help_position = true;
+    let mut index = 1;
+    let shape_error = |args: &[std::ffi::OsString], index, message: String| {
+        // A malformed earlier value wins over a later syntax/help error.
+        Cli::try_parse_from(&args[..index])
+            .err()
+            .unwrap_or_else(|| clap::Error::raw(ErrorKind::InvalidValue, message))
+    };
+    while index < args.len() {
+        let text = args[index].to_string_lossy().into_owned();
+        if !text.starts_with('-') {
+            let Some(command) = node.find_subcommand(&text) else {
+                return Err(shape_error(
+                    &args,
+                    index,
+                    format!("'{text}' is not a valid argument"),
+                ));
+            };
+            node = command;
+            help_position = true;
+            index += 1;
+            continue;
+        }
+        let (name, inline) = text
+            .split_once('=')
+            .map_or((text.as_str(), None), |(name, value)| (name, Some(value)));
+        let long = name.starts_with("--");
+        if (long && name.len() <= 3) || (!long && name.chars().count() != 2) {
+            return Err(shape_error(
+                &args,
+                index,
+                format!("The option '{name}' has a wrong format"),
+            ));
+        }
+        let argument = node.get_arguments().find(|argument| {
+            if long {
+                argument.get_long() == Some(&name[2..])
+                    || argument
+                        .get_all_aliases()
+                        .is_some_and(|aliases| aliases.contains(&&name[2..]))
+            } else {
+                let short = name.chars().nth(1).unwrap();
+                argument.get_short() == Some(short)
+                    || argument
+                        .get_all_short_aliases()
+                        .is_some_and(|aliases| aliases.contains(&short))
+            }
+        });
+        let Some(argument) = argument else {
+            return Err(shape_error(
+                &args,
+                index,
+                format!("The option '{name}' is not valid for '{}'", node.get_name()),
+            ));
+        };
+        match argument.get_action() {
+            clap::ArgAction::Help | clap::ArgAction::HelpShort | clap::ArgAction::HelpLong => {
+                if !help_position || inline.is_some() || index + 1 != args.len() {
+                    return Err(shape_error(&args, index, "Help must appear immediately after the command and have no following arguments".into()));
+                }
+                Cli::try_parse_from(&args[..index])?;
+                return Cli::try_parse_from(args);
+            }
+            clap::ArgAction::Version => {
+                if index != 1 || inline.is_some() || args.len() != 2 {
+                    return Err(shape_error(
+                        &args,
+                        index,
+                        "Invalid arguments after or before the version option".into(),
+                    ));
+                }
+                return Cli::try_parse_from(args);
+            }
+            action if action.takes_values() => {
+                if inline.is_none_or(str::is_empty) {
+                    if index + 1 == args.len() {
+                        return Err(shape_error(
+                            &args,
+                            index,
+                            format!("Expected value after the option '{name}'"),
+                        ));
+                    }
+                    // Legacy options consume the next argument verbatim, even
+                    // when it starts with '-'. Preserve native path bytes.
+                    let mut combined = std::ffi::OsString::from(name);
+                    combined.push("=");
+                    combined.push(args.remove(index + 1));
+                    args[index] = combined;
+                }
+            }
+            _ if inline.is_some() => {
+                return Err(shape_error(
+                    &args,
+                    index,
+                    format!("The option '{name}' does not take a value"),
+                ));
+            }
+            _ => {}
+        }
+        help_position = false;
+        index += 1;
+    }
+    Cli::try_parse_from(args)
+}
+
 #[tokio::main]
 async fn main() -> std::process::ExitCode {
-    let cli = Cli::parse();
+    let cli = match parse_cli_from(std::env::args_os()) {
+        Ok(cli) => cli,
+        Err(error) => {
+            let _ = error.print();
+            // The legacy main returns zero through `finish` after parse failure.
+            return std::process::ExitCode::SUCCESS;
+        }
+    };
     if let Some(parent) = cli.internal_parent {
         match children::bind_owner(parent) {
             Ok(true) => {}
@@ -668,8 +794,42 @@ fn unavailable(error: &portal::CaptureError) -> bool {
 mod cli_tests {
     use super::*;
     #[test]
+    fn legacy_shape_distinguishes_help_from_option_values() {
+        for args in [
+            vec!["flameshot", "--help"],
+            vec!["flameshot", "gui", "-h"],
+            vec!["flameshot", "--version"],
+        ] {
+            let error = parse_cli_from(args).err().unwrap();
+            assert!(!error.use_stderr());
+        }
+        for args in [
+            vec!["flameshot", "--help", "extra"],
+            vec!["flameshot", "--version", "extra"],
+            vec!["flameshot", "gui", "--help", "extra"],
+            vec!["flameshot", "gui", "--raw", "--help"],
+            vec!["flameshot", "full", "-rr"],
+            vec!["flameshot", "full", "--raw=true"],
+            vec!["flameshot", "full", "--"],
+        ] {
+            assert!(parse_cli_from(args).err().unwrap().use_stderr());
+        }
+        for args in [
+            vec!["flameshot", "config", "--filename", "--help"],
+            vec!["flameshot", "config", "--filename=", "--help"],
+        ] {
+            assert!(
+                matches!(parse_cli_from(args).unwrap().command,Some(Command::Config {filename:Some(value),..}) if value=="--help")
+            );
+        }
+        let error = parse_cli_from(["flameshot", "gui", "--delay", "bad", "--help"])
+            .err()
+            .unwrap();
+        assert!(error.to_string().contains("2147483647"));
+    }
+    #[test]
     fn duplicate_options_keep_first_values_and_validate_all_occurrences() {
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli_from([
             "flameshot",
             "gui",
             "--delay",
@@ -699,7 +859,7 @@ mod cli_tests {
                 ..
             })
         ));
-        let cli = Cli::try_parse_from([
+        let cli = parse_cli_from([
             "flameshot",
             "config",
             "--notifications",
@@ -738,7 +898,7 @@ mod cli_tests {
                 "#11223344",
             ],
         ] {
-            assert!(Cli::try_parse_from(args).is_err());
+            assert!(parse_cli_from(args).is_err());
         }
     }
     #[test]
@@ -774,7 +934,7 @@ mod cli_tests {
             second.into(),
         ];
         assert!(
-            matches!(Cli::try_parse_from(args).unwrap().command,Some(Command::Full { path:Some(path),delay:0,.. }) if path==first)
+            matches!(parse_cli_from(args).unwrap().command,Some(Command::Full { path:Some(path),delay:0,.. }) if path==first)
         );
         let missing = root.path().join("absent/file.png");
         let args: Vec<std::ffi::OsString> = vec![
@@ -785,13 +945,13 @@ mod cli_tests {
             "-p".into(),
             missing.into(),
         ];
-        assert!(Cli::try_parse_from(args).is_err());
+        assert!(parse_cli_from(args).is_err());
     }
     #[test]
     fn numeric_options_keep_legacy_i32_bounds_and_whitespace() {
         for command in ["gui", "screen", "full"] {
             for (value, expected) in [("0", 0), (" +42 ", 42), ("2147483647", 2147483647)] {
-                let cli = Cli::try_parse_from(["flameshot", command, "--delay", value]).unwrap();
+                let cli = parse_cli_from(["flameshot", command, "--delay", value]).unwrap();
                 let delay = match cli.command.unwrap() {
                     Command::Gui { delay, .. }
                     | Command::Screen { delay, .. }
@@ -802,21 +962,18 @@ mod cli_tests {
             }
             for value in ["2147483648", "18446744073709551615", "-1", "1.5", ""] {
                 assert!(
-                    Cli::try_parse_from(["flameshot", command, &format!("--delay={value}")])
-                        .is_err()
+                    parse_cli_from(["flameshot", command, &format!("--delay={value}")]).is_err()
                 );
             }
         }
         for (value, expected) in [("0", 0), (" +42 ", 42), ("2147483647", 2147483647)] {
-            let cli = Cli::try_parse_from(["flameshot", "screen", "--number", value]).unwrap();
+            let cli = parse_cli_from(["flameshot", "screen", "--number", value]).unwrap();
             assert!(
                 matches!(cli.command, Some(Command::Screen { number: Some(number), .. }) if number == expected)
             );
         }
         for value in ["2147483648", "18446744073709551615", "-1", "1.5", ""] {
-            assert!(
-                Cli::try_parse_from(["flameshot", "screen", &format!("--number={value}")]).is_err()
-            );
+            assert!(parse_cli_from(["flameshot", "screen", &format!("--number={value}")]).is_err());
         }
     }
 }

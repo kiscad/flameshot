@@ -141,9 +141,75 @@ fn oversized_numeric_options_fail_before_desktop_services_or_configuration_write
             .args(&args)
             .output()
             .unwrap();
-        assert_eq!(output.status.code(), Some(2));
+        assert_eq!(output.status.code(), Some(0));
         assert!(output.stdout.is_empty());
         assert!(String::from_utf8_lossy(&output.stderr).contains("2147483647"));
     }
     assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+}
+
+#[test]
+fn legacy_help_and_parse_rejection_preserve_streams_and_zero_status() {
+    let root = tempfile::tempdir().unwrap();
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("XDG_CONFIG_HOME", root.path())
+            .env("DBUS_SESSION_BUS_ADDRESS", "not-a-valid-dbus-address")
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    for args in [
+        vec!["--help"],
+        vec!["-h"],
+        vec!["--version"],
+        vec!["-v"],
+        vec!["-V"],
+        vec!["gui", "--help"],
+        vec!["screen", "-h"],
+        vec!["config", "--help"],
+        vec!["launcher", "-h"],
+    ] {
+        let output = run(&args);
+        assert_eq!(output.status.code(), Some(0), "{args:?}");
+        assert!(
+            !output.stdout.is_empty() && output.stderr.is_empty(),
+            "{args:?}: {output:?}"
+        );
+    }
+    for args in [
+        vec!["--help", "extra"],
+        vec!["--version", "extra"],
+        vec!["gui", "--help", "extra"],
+        vec!["gui", "--raw", "--help"],
+        vec!["gui", "--delay", "bad", "--help"],
+        vec!["full", "-rr"],
+        vec!["full", "--raw=true"],
+        vec!["full", "--"],
+        vec!["unknown-command"],
+    ] {
+        let output = run(&args);
+        assert_eq!(output.status.code(), Some(0), "{args:?}");
+        assert!(
+            output.stdout.is_empty() && !output.stderr.is_empty(),
+            "{args:?}: {output:?}"
+        );
+    }
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    for (args, value) in [
+        (vec!["config", "--filename", "--help"], "--help"),
+        (vec!["config", "--filename=", "--version"], "--version"),
+    ] {
+        let output = run(&args);
+        assert_eq!(output.status.code(), Some(0));
+        assert!(output.stdout.is_empty() && output.stderr.is_empty());
+        let source = std::fs::read_to_string(root.path().join("flameshot/flameshot.ini")).unwrap();
+        let ini = flameshot_core::config::IniDocument::parse(source);
+        assert_eq!(
+            ini.string("General", "filenamePattern").unwrap().as_deref(),
+            Some(value)
+        );
+    }
 }
