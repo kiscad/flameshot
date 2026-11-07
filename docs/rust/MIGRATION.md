@@ -1873,3 +1873,32 @@ and all-feature/no-default-feature private D-Bus tests plus real GIO dispatch te
 Existing package manifests already supply GIO. This establishes native desktop
 dispatch; sandbox OpenURI/AppChooser portal integration and installed Flatpak/Snap
 acceptance remain separate unfinished gates. Monitor-selection tray actions remain.
+
+### Tray monitor selection
+
+The tray now includes the baseline Select Screen submenu when more than one output
+is available, with translated monitor descriptions and logical dimensions. Names
+preserve literal ampersands, underscores and placeholder-like text. Opening the
+root menu refreshes the output list, including removal of the submenu when only one
+output remains; unavailable enumeration leaves other tray actions usable.
+
+Each monitor action uses the existing owned child registry and `gui --region
+screen<N> --delay 500` capture path, preserving the baseline combined menu-hide and
+capture delay. X11 and Wayland share the same screen enumeration/cropping already
+used by the CLI. The menu snapshot uses the baseline's numeric monitor selection;
+output reordering between activation and capture remains subject to the existing
+CLI screen-index semantics.
+
+The isolated two-monitor tray test registers a real private D-Bus watcher, activates
+the published second-monitor action, copies the resulting editor selection and
+checks both its 512x768 dimensions and red pixels (the first monitor is blue).
+Removing the second output and invoking AboutToShow removes the submenu. The test
+also keeps exercising normal save-directory and Quit actions after the menu changes.
+Reproduction is documented in BUILD.md.
+
+Validation passed: all-feature workspace tests and all-target Clippy, all-feature
+and no-default-feature private D-Bus tests, the isolated Xvfb tray activation/removal
+test, formatting and the headless Sway regression suite. Actual tray activation was
+tested on X11; Sway validation covers the shared Wayland capture/monitor paths rather
+than native host tray rendering. Full GNOME/KDE, sandbox and release-package acceptance
+remain unfinished, as does final removal of the C++ reference implementation.

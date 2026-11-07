@@ -50,9 +50,12 @@ pub(crate) struct Activity {
 }
 impl Activity {
     pub(crate) fn launch(self: &Arc<Self>, command: &str) -> Result<()> {
+        self.launch_args(&[command])
+    }
+    pub(crate) fn launch_args(self: &Arc<Self>, args: &[&str]) -> Result<()> {
         self.children.spawn(
             crate::children::owned_command()?
-                .arg(command)
+                .args(args)
                 .stdout(Stdio::null()),
             None,
         )?;
@@ -240,7 +243,7 @@ pub async fn run() -> Result<()> {
                     if settings.auto_close_idle && activity.idle() {break;}
                     if settings.disabled_tray {if let Some(handle)=tray_handle.take() {let handle:ksni::Handle<crate::tray::Tray>=handle;handle.shutdown().await;}}
                     else if tray_handle.is_none() {
-                        tray_handle=crate::tray::Tray{quit:quit.clone(),activity:activity.clone()}.disable_dbus_name(crate::app_ui::restricted_bus_names()).spawn().await.ok();
+                        tray_handle=crate::tray::Tray::new(quit.clone(),activity.clone()).disable_dbus_name(crate::app_ui::restricted_bus_names()).spawn().await.ok();
                         if tray_handle.is_some() && settings.startup_message {
                             let connection=connection.clone();
                             tokio::spawn(async move {

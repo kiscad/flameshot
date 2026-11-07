@@ -40,6 +40,11 @@ python3 tests/rust/desktop_smoke.py / target/debug/flameshot
 python3 tests/rust/wayland_smoke.py / target/debug/flameshot
 ```
 
+The tray monitor test also exercises actual D-Bus menu activation and output removal.
+Build its test executable with `cargo test --locked -p flameshot --all-features
+--test daemon --no-run`, then pass the executable path printed by Cargo to
+`python3 tests/rust/tray_smoke.py / TEST_EXECUTABLE`.
+
 The test tool root `/` uses installed system tools. A directory containing an
 extracted `usr/bin`, `usr/libexec` and libraries can also be supplied. X11 tests
 need Xvfb, xdotool, xclip, xrandr and xsetroot. Wayland tests need Sway, swaybg, grim, wtype,

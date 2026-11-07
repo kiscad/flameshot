@@ -203,6 +203,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     )
     .await
     .unwrap();
+    let _: bool = menu.call("AboutToShow", &(0_i32,)).await.unwrap();
     type Layout = (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>);
     let (_, (_, _, children)): (u32, Layout) = menu
         .call("GetLayout", &(0_i32, -1_i32, vec!["label"]))
@@ -211,6 +212,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     let mut labels = Vec::new();
     let mut quit = None;
     let mut open_save = None;
+    let mut monitor_items = Vec::new();
     for child in children {
         let structure = Structure::try_from(child).unwrap();
         let mut fields = structure.into_fields();
@@ -218,6 +220,21 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         let properties: HashMap<String, OwnedValue> = fields.remove(0).downcast().unwrap();
         if let Some(label) = properties.get("label") {
             let label = <&str>::try_from(label).unwrap().to_string();
+            if label == "Select Screen" {
+                let entries: Vec<OwnedValue> = fields.remove(0).downcast().unwrap();
+                for entry in entries {
+                    let mut fields = Structure::try_from(entry).unwrap().into_fields();
+                    let id: i32 = fields.remove(0).downcast().unwrap();
+                    let properties: HashMap<String, OwnedValue> =
+                        fields.remove(0).downcast().unwrap();
+                    monitor_items.push((
+                        id,
+                        <&str>::try_from(properties.get("label").unwrap())
+                            .unwrap()
+                            .to_owned(),
+                    ));
+                }
+            }
             if label == "_Open Save Path" {
                 open_save = Some(id);
             }
@@ -232,6 +249,95 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     assert!(labels.contains(&"_About".into()));
     assert!(labels.contains(&"_Open Save Path".into()));
     assert!(labels.contains(&"_Open Launcher".into()));
+    if let Ok(tools) = std::env::var("FLAMESHOT_TEST_PRIVATE_DISPLAY_TOOLS") {
+        assert_eq!(monitor_items.len(), 2, "{monitor_items:?}");
+        assert_eq!(monitor_items[1].1, "Monitor 2: right (512x768)");
+        menu.call::<_, _, ()>(
+            "Event",
+            &(monitor_items[1].0, "clicked", Value::from(0_i32), 0_u32),
+        )
+        .await
+        .unwrap();
+        let xdotool = std::path::Path::new(&tools).join("usr/bin/xdotool");
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let window = loop {
+            let output = Command::new(&xdotool)
+                .args(["search", "--onlyvisible", "--name", "^Flameshot$"])
+                .output()
+                .unwrap();
+            if output.status.success() {
+                break String::from_utf8(output.stdout)
+                    .unwrap()
+                    .lines()
+                    .last()
+                    .unwrap()
+                    .to_owned();
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Monitor action did not open an editor"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        };
+        assert!(
+            Command::new(&xdotool)
+                .args(["windowfocus", "--sync", &window])
+                .status()
+                .unwrap()
+                .success()
+        );
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        assert!(
+            Command::new(&xdotool)
+                .args(["key", "ctrl+c"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        let copied = Command::new(std::path::Path::new(&tools).join("usr/bin/xclip"))
+            .args(["-selection", "clipboard", "-t", "image/png", "-o"])
+            .output()
+            .unwrap();
+        assert!(copied.status.success(), "{:?}", copied.stderr);
+        let image = image::load_from_memory(&copied.stdout).unwrap();
+        assert_eq!((image.width(), image.height()), (512, 768));
+        assert_eq!(
+            image.to_rgba8().get_pixel(256, 384).0,
+            [255, 0, 0, 255],
+            "Captured the wrong monitor"
+        );
+        assert!(
+            Command::new("xrandr")
+                .args(["--delmonitor", "right"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        let _: bool = menu.call("AboutToShow", &(0_i32,)).await.unwrap();
+        let (_, (_, _, children)): (u32, Layout) = menu
+            .call("GetLayout", &(0_i32, -1_i32, vec!["label"]))
+            .await
+            .unwrap();
+        for child in children {
+            let mut fields = Structure::try_from(child).unwrap().into_fields();
+            let id: i32 = fields.remove(0).downcast().unwrap();
+            let properties: HashMap<String, OwnedValue> = fields.remove(0).downcast().unwrap();
+            if let Some(label) = properties.get("label") {
+                let label = <&str>::try_from(label).unwrap();
+                assert_ne!(
+                    label, "Select Screen",
+                    "Single remaining output retained monitor submenu"
+                );
+                if label == "_Quit" {
+                    quit = Some(id);
+                }
+                if label == "_Open Save Path" {
+                    open_save = Some(id);
+                }
+            }
+        }
+    }
     let saved = temp.path().join("截图 saved $(literal)");
     std::fs::create_dir(&saved).unwrap();
     std::fs::write(
