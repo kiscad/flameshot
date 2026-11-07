@@ -8,7 +8,7 @@ mod precision_pick;
 mod size_keyboard;
 mod text_edit;
 mod theme;
-#[cfg(all(test, any(feature = "imgur", feature = "update-check")))]
+#[cfg(test)]
 mod ui_test;
 mod wheel;
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -25,6 +25,7 @@ mod open_with;
 mod output;
 mod pin;
 mod region_cache;
+mod save_dialog;
 mod settings;
 mod shortcuts;
 mod tray;

@@ -3577,6 +3577,10 @@ Vous devrez probablement remplacer le signe &apos;#&apos; par &apos;\#FFF&apos;<
         <source>Rectangle</source>
         <translation>Rectangle plein</translation>
     </message>
+    <message>
+        <source>Replace existing file?</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 
 <context>

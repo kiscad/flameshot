@@ -120,80 +120,6 @@ impl Tool {
         }
     }
 }
-struct FileEntry {
-    name: String,
-    path: std::path::PathBuf,
-    directory: bool,
-}
-type FolderResult = Result<Vec<FileEntry>, String>;
-type PortalSaveResult = Result<Option<flameshot_platform::file_chooser::SaveSelection>, String>;
-struct SaveDialog {
-    portal: bool,
-    portal_start: bool,
-    portal_task: Option<std::sync::mpsc::Receiver<PortalSaveResult>>,
-    focus: bool,
-    listed_folder: Option<std::path::PathBuf>,
-    pending_folder: Option<std::path::PathBuf>,
-    listing_task: Option<std::sync::mpsc::Receiver<FolderResult>>,
-    entries: Vec<FileEntry>,
-    folder_error: String,
-    path: String,
-    error: String,
-    action: Action,
-}
-impl SaveDialog {
-    fn refresh_folder(&mut self, folder: &std::path::Path, ctx: &egui::Context) {
-        if let Some(receiver) = &self.listing_task
-            && let Some(result) = crate::jobs::poll(receiver, "Folder listing worker stopped")
-        {
-            self.listed_folder = self.pending_folder.take();
-            self.listing_task = None;
-            match result {
-                Ok(entries) => {
-                    self.entries = entries;
-                    self.folder_error.clear();
-                }
-                Err(error) => {
-                    self.entries.clear();
-                    self.folder_error = error;
-                }
-            }
-        }
-        if self.listing_task.is_none() && self.listed_folder.as_deref() != Some(folder) {
-            self.entries.clear();
-            self.folder_error.clear();
-            let folder = folder.to_owned();
-            self.pending_folder = Some(folder.clone());
-            let (sender, receiver) = std::sync::mpsc::channel();
-            self.listing_task = Some(receiver);
-            std::thread::spawn(move || {
-                let result = std::fs::read_dir(&folder)
-                    .map(|entries| {
-                        let mut entries: Vec<_> = entries
-                            .filter_map(Result::ok)
-                            .map(|entry| {
-                                let path = entry.path();
-                                let directory = path.is_dir();
-                                FileEntry {
-                                    name: entry.file_name().to_string_lossy().into_owned(),
-                                    path,
-                                    directory,
-                                }
-                            })
-                            .collect();
-                        entries
-                            .sort_by(|a, b| (!a.directory, &a.name).cmp(&(!b.directory, &b.name)));
-                        entries
-                    })
-                    .map_err(|e| e.to_string());
-                let _ = sender.send(result);
-            });
-        }
-        if self.listing_task.is_some() {
-            ctx.request_repaint_after(std::time::Duration::from_millis(50));
-        }
-    }
-}
 struct Editor {
     show_quit_prompt: bool,
     quit_prompt: bool,
@@ -264,7 +190,7 @@ struct Editor {
     magnifier_texture: Option<TextureHandle>,
     selection_drag: Option<(PixelRect, flameshot_core::selection::Drag)>,
     options: Options,
-    save_dialog: Option<SaveDialog>,
+    save_dialog: Option<(crate::save_dialog::SaveDialog, Action)>,
     result: Arc<Mutex<Option<Outcome>>>,
 }
 impl Editor {
@@ -581,20 +507,10 @@ impl Editor {
                 path
             };
             ctx.request_repaint();
-            self.save_dialog = Some(SaveDialog {
-                portal: crate::app_ui::restricted_bus_names(),
-                portal_start: crate::app_ui::restricted_bus_names(),
-                portal_task: None,
-                focus: true,
-                listed_folder: None,
-                pending_folder: None,
-                listing_task: None,
-                entries: Vec::new(),
-                folder_error: String::new(),
-                path: path.to_string_lossy().into_owned(),
-                error: self.error.clone(),
+            self.save_dialog = Some((
+                crate::save_dialog::SaveDialog::new(path, self.error.clone()),
                 action,
-            });
+            ));
             return;
         }
         self.finish(ctx, action, None);
@@ -605,15 +521,18 @@ impl Editor {
         ctx: &egui::Context,
         action: Action,
     ) -> Result<()> {
-        self.save_to_selected(path, ctx, action, None)
+        let saved = self.write_selection(path, None)?;
+        if self.options.save_path.is_none() {
+            crate::save_dialog::remember_directory(&saved);
+        }
+        self.finish(ctx, action, Some(saved));
+        Ok(())
     }
-    fn save_to_selected(
+    fn write_selection(
         &mut self,
         path: &std::path::Path,
-        ctx: &egui::Context,
-        action: Action,
         selected_extension: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<std::path::PathBuf> {
         let selection = self
             .selection
             .ok_or_else(|| anyhow::anyhow!(tr("RustEditor", "Select an area first")))?;
@@ -627,8 +546,7 @@ impl Editor {
         match result {
             Ok(saved) => {
                 eprintln!("flameshot: Capture saved as {}", saved.display());
-                self.finish(ctx, action, Some(saved));
-                Ok(())
+                Ok(saved)
             }
             Err(error) => {
                 self.error = error.to_string();
@@ -667,179 +585,18 @@ impl Editor {
                 Color32::WHITE,
             );
         }
-        let mut dialog = self.save_dialog.take().unwrap();
-        if dialog.portal {
-            if let Some(task) = &dialog.portal_task
-                && let Some(result) = crate::jobs::poll(task, "File chooser worker stopped")
-            {
-                dialog.portal_task = None;
-                match result {
-                    Ok(None) => return,
-                    Ok(Some(selection)) => {
-                        dialog.path = selection.path.to_string_lossy().into_owned();
-                        match self.save_to_selected(
-                            &selection.path,
-                            &ctx,
-                            dialog.action,
-                            Some(&selection.extension),
-                        ) {
-                            Ok(()) => return,
-                            Err(error) => dialog.error = error.to_string(),
-                        }
-                    }
-                    Err(error) => dialog.error = error,
-                }
+        let (mut dialog, action) = self.save_dialog.take().unwrap();
+        match dialog.show(ui, |path, extension| self.write_selection(path, extension)) {
+            crate::save_dialog::SaveOutcome::Pending => self.save_dialog = Some((dialog, action)),
+            crate::save_dialog::SaveOutcome::Cancelled => {
+                self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr())
             }
-            let mut retry = dialog.portal_start;
-            dialog.portal_start = false;
-            let mut cancel = false;
-            egui::Window::new(tr("SaveTool", "Save"))
-                .collapsible(false)
-                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .show(&ctx, |ui| {
-                    if dialog.portal_task.is_some() {
-                        ui.spinner();
-                        ctx.request_repaint_after(std::time::Duration::from_millis(100));
-                    } else {
-                        if !dialog.error.is_empty() {
-                            ui.colored_label(Color32::RED, &dialog.error);
-                        }
-                        retry |= ui.button(tr("SaveTool", "Save")).clicked()
-                            || ctx.input(|i| i.key_pressed(egui::Key::Enter));
-                        cancel = ui.button(tr("ColorGrabWidget", "Cancel")).clicked()
-                            || ctx.input(|i| i.key_pressed(egui::Key::Escape));
-                    }
-                });
-            if cancel {
-                return;
-            }
-            if retry && dialog.portal_task.is_none() {
-                let (sender, receiver) = std::sync::mpsc::channel();
-                dialog.portal_task = Some(receiver);
-                dialog.error.clear();
-                let path = std::path::PathBuf::from(&dialog.path);
-                ctx.request_repaint();
-                let ctx = ctx.clone();
-                tokio::spawn(async move {
-                    let result = async {
-                        let connection = crate::daemon::session_connection().await?;
-                        flameshot_platform::file_chooser::save_file(
-                            &connection,
-                            "",
-                            tr("SaveTool", "Save"),
-                            &path,
-                            crate::output::EXTENSIONS,
-                            std::time::Duration::from_secs(120),
-                        )
-                        .await
-                    }
-                    .await;
-                    let _ = sender.send(result.map_err(|e: anyhow::Error| e.to_string()));
-                    ctx.request_repaint();
-                });
-            }
-            self.save_dialog = Some(dialog);
-            return;
-        }
-
-        let mut cancel = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-        let mut save = ctx.input(|i| i.key_pressed(egui::Key::Enter));
-        egui::Window::new(tr("RustEditor", "Save Screenshot"))
-            .collapsible(false)
-            .resizable(true)
-            .default_width(550.0)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(&ctx, |ui| {
-                let original = std::path::Path::new(&dialog.path)
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("png")
-                    .to_ascii_lowercase();
-                let mut extension = original.clone();
-                egui::ComboBox::from_label(tr("RustEditor", "Image format"))
-                    .selected_text(&extension)
-                    .show_ui(ui, |ui| {
-                        for &value in crate::output::EXTENSIONS {
-                            ui.selectable_value(&mut extension, value.into(), value.to_uppercase());
-                        }
-                    });
-                if extension != original {
-                    let mut path = std::path::PathBuf::from(&dialog.path);
-                    if path.is_dir() {
-                        path = path.join("capture");
-                    }
-                    path.set_extension(extension);
-                    dialog.path = path.to_string_lossy().into_owned();
-                }
-                ui.label(tr("RustEditor", "Destination file"));
-                let id = egui::Id::unique("save-destination");
-                let response = ui.add(
-                    egui::TextEdit::singleline(&mut dialog.path)
-                        .id(id)
-                        .desired_width(f32::INFINITY),
-                );
-                if dialog.focus {
-                    response.request_focus();
-                    dialog.focus = false;
-                }
-                let path = std::path::PathBuf::from(&dialog.path);
-                let folder = if path.is_dir() {
-                    path.clone()
-                } else {
-                    path.parent()
-                        .unwrap_or(std::path::Path::new("."))
-                        .to_owned()
-                };
-                if ui.button(tr("RustEditor", "Parent folder")).clicked()
-                    && let Some(parent) = folder.parent()
-                {
-                    dialog.path = parent.to_string_lossy().into_owned();
-                }
-                dialog.refresh_folder(&folder, &ctx);
-                if !dialog.folder_error.is_empty() {
-                    ui.colored_label(Color32::RED, &dialog.folder_error);
-                }
-                let row_height =
-                    ui.text_style_height(&egui::TextStyle::Body) + ui.spacing().item_spacing.y;
-                egui::ScrollArea::vertical().max_height(250.0).show_rows(
-                    ui,
-                    row_height,
-                    dialog.entries.len(),
-                    |ui, range| {
-                        for index in range {
-                            let entry = &dialog.entries[index];
-                            let label = if entry.directory {
-                                format!("{}/", entry.name)
-                            } else {
-                                entry.name.clone()
-                            };
-                            if ui.selectable_label(false, label).clicked() {
-                                dialog.path = entry.path.to_string_lossy().into_owned();
-                            }
-                        }
-                    },
-                );
-                if !dialog.error.is_empty() {
-                    ui.colored_label(Color32::RED, &dialog.error);
-                }
-                ui.horizontal(|ui| {
-                    save |= ui.button(tr("SaveTool", "Save")).clicked();
-                    cancel |= ui.button(tr("ColorGrabWidget", "Cancel")).clicked();
-                });
-            });
-        if cancel {
-            return;
-        }
-        if save {
-            match self.save_to(std::path::Path::new(&dialog.path), &ctx, dialog.action) {
-                Ok(()) => return,
-                Err(error) => {
-                    dialog.error = error.to_string();
-                    dialog.focus = true;
-                }
+            crate::save_dialog::SaveOutcome::Saved(path) => {
+                crate::save_dialog::remember_directory(&path);
+                self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
+                self.finish(&ctx, action, Some(path));
             }
         }
-        self.save_dialog = Some(dialog);
     }
     fn sync_render_options(&mut self) {
         if self

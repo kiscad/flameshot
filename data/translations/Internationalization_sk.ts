@@ -3640,6 +3640,10 @@ Možno budete musieť napísať pred &apos;#&apos; opačnú lomku, teda &apos;\#
         <source>Rectangle</source>
         <translation>Obdĺžnik</translation>
     </message>
+    <message>
+        <source>Replace existing file?</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 
 <context>

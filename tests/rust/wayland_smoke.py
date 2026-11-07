@@ -211,11 +211,43 @@ try:
     point('right')
     time.sleep(.3)
     snapshot=call(str(root/'usr/bin/grim'),'-c','-');(artifact_dir/'rust-wayland-pin-menu.png').write_bytes(snapshot.stdout)
-    call(str(root/'usr/bin/wtype'),'-s','300','-k','Down','-s','150','-k','Down','-s','150','-k','Return')
+    call(str(root/'usr/bin/wtype'),'-s','300','-k','Down','-s','150','-k','Down','-s','150','-k','Down','-s','150','-k','Return')
     wait_for(lambda:pin_node()['rect']['width']==300 and pin_node()['rect']['height']==400,5)
     result=call(str(root/'usr/bin/grim'),'-');rotated=Image.open(BytesIO(result.stdout)).convert('RGB');rect=pin_node()['rect']
     vertical=[rotated.getpixel((rect['x']+rect['width']//2,rect['y']+rect['height']*fraction//4)) for fraction in (1,3)]
     assert vertical==[(255,0,0),(0,255,0)],vertical
+    pin_settings=directory/'config/flameshot/flameshot.ini'
+    pin_settings.write_text(f'[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\nsavePath={directory}\nfilenamePattern=pin-wayland\n')
+    point(f"move {rect['x']+20} {rect['y']+20}");point('right');time.sleep(.2)
+    call(str(root/'usr/bin/wtype'),'-s','200','-k','Down','-s','150','-k','Down','-s','150','-k','Return')
+    def pin_save_node():
+        result=call(str(root/'usr/bin/swaymsg'),'-t','get_tree')
+        def locate(node):
+            if node.get('pid')==pinned.pid and node.get('name')=='Save Screenshot':return node
+            for key in ['nodes','floating_nodes']:
+                for child in node.get(key,[]):
+                    found=locate(child)
+                    if found:return found
+        return locate(json.loads(result.stdout)) if result.returncode==0 else None
+    wait_for(lambda:pin_save_node() is not None,10)
+    save_window=pin_save_node()
+    call(str(root/'usr/bin/swaymsg'),f"[con_id={save_window['id']}] focus")
+    destination=directory/'pin-wayland-saved.png'
+    call(str(root/'usr/bin/wtype'),'-s','300','-M','ctrl','-k','a','-m','ctrl',str(destination),'-s','200','-k','Return')
+    wait_for(lambda:destination.exists() and pin_save_node() is None,10)
+    saved_pin=Image.open(destination).convert('RGBA')
+    assert saved_pin.size==image.transpose(Image.Transpose.ROTATE_270).size
+    assert saved_pin.tobytes()==image.transpose(Image.Transpose.ROTATE_270).tobytes(),'Pin save changed rotated pixels'
+    assert pinned.poll() is None,'Saving closed the pin'
+    (artifact_dir/'rust-wayland-pin-saved.png').write_bytes(destination.read_bytes())
+    call(str(root/'usr/bin/swaymsg'),f'[pid={pinned.pid}] focus')
+    rect=pin_node()['rect']
+    time.sleep(.3)
+    restored=call(str(root/'usr/bin/grim'),'-');assert restored.returncode==0,restored.stderr.decode()
+    restored_image=Image.open(BytesIO(restored.stdout)).convert('RGB')
+    restored_pixels=[restored_image.getpixel((rect['x']+rect['width']//2,rect['y']+rect['height']*fraction//4)) for fraction in (1,3)]
+    assert restored_pixels==[(255,0,0),(0,255,0)],('Pin presentation was not restored after saving',restored_pixels)
+    (artifact_dir/'rust-wayland-pin-after-save.png').write_bytes(restored.stdout)
     call(str(root/'usr/bin/wtype'),'-s','200','5')
     point(f"move {rect['x']+20} {rect['y']+20}");point('right');time.sleep(.2)
     call(str(root/'usr/bin/wtype'),'-s','200','-k','Down','-s','150','-k','Return','-s','150','-k','Escape')
@@ -230,7 +262,7 @@ try:
         assert time.monotonic()<deadline,'Pin clipboard did not retain full-opacity rotated pixels after close'
         time.sleep(.1)
     (artifact_dir/'rust-wayland-pin-clipboard.png').write_bytes(copied.stdout)
-    print('PASS: native Wayland pin opacity/rotation and full-resolution clipboard persistence after close',flush=True)
+    print('PASS: native Wayland pin save, opacity/rotation and full-resolution clipboard persistence after close',flush=True)
 
     # Add a second output after the single-output checks to exercise hotplug,
     # a negative logical origin and a 2x/1x mixed-scale desktop.

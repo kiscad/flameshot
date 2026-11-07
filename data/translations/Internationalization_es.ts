@@ -3568,6 +3568,10 @@ Puede ser que necesites preceder el símbolo &quot;#&quot; con &quot;\&quot;, co
         <source>Rectangle</source>
         <translation>Rectángulo</translation>
     </message>
+    <message>
+        <source>Replace existing file?</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 
 <context>

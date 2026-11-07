@@ -3537,6 +3537,10 @@ Sinun on ehkä vältettävä &quot;#&quot; merkkiä kuten &quot;\#FFF&quot;</tra
         <source>Rectangle</source>
         <translation>Suorakulmio</translation>
     </message>
+    <message>
+        <source>Replace existing file?</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 
 <context>

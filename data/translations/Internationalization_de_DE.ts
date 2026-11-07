@@ -3590,6 +3590,10 @@ Eventuell muss das &apos;#&apos; Zeichen als &apos;\#FFF&apos; maskiert werden</
         <source>Rectangle</source>
         <translation>Rechteck</translation>
     </message>
+    <message>
+        <source>Replace existing file?</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 
 <context>

@@ -3773,6 +3773,10 @@ You can find me in the system tray.</source>
         <source>Rectangle</source>
         <translation>Прямоугольник</translation>
     </message>
+    <message>
+        <source>Replace existing file?</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 
 <context>

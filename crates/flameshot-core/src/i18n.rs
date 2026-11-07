@@ -151,6 +151,7 @@ mod tests {
                 "Move selection",
                 "Objects and properties",
                 "Select an area first",
+                "Replace existing file?",
             ] {
                 assert_ne!(
                     tr.translate("RustEditor", source),
@@ -160,6 +161,7 @@ mod tests {
             }
             for source in [
                 "Copy to clipboard",
+                "Save to file",
                 "Rotate Left",
                 "Rotate Right",
                 "Increase Opacity",

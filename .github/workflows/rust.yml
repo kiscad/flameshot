@@ -73,6 +73,8 @@ jobs:
         run: python3 tests/rust/drawing_grid_smoke.py / target/debug/flameshot
       - name: Color grab confirmation and object recoloring
         run: python3 tests/rust/color_grab_smoke.py / target/debug/flameshot
+      - name: Pinned-image saving and overwrite confirmation
+        run: python3 tests/rust/pin_save_smoke.py / target/debug/flameshot
       - name: Native terminal launch
         run: python3 tests/rust/terminal_smoke.py / target/debug/flameshot
       - name: Native Fcitx Pinyin input and text clipboard

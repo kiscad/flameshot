@@ -53,10 +53,19 @@ pub fn show(pin: Pin) -> anyhow::Result<()> {
                 close_after_copy: false,
                 shortcut_frame: None,
                 dismissed_dialog_frame: None,
+                save_dialog: None,
+                close_after_save: false,
+                copy_path: None,
+                save_error: false,
             }))
         }),
     )
     .map_err(|e| anyhow::anyhow!("Cannot display pin: {e}"))
+}
+struct PinSave {
+    dialog: crate::save_dialog::SaveDialog,
+    image: image::RgbaImage,
+    settings: crate::settings::Settings,
 }
 struct Pinned {
     shortcuts: crate::shortcuts::Shortcuts,
@@ -71,6 +80,10 @@ struct Pinned {
     close_after_copy: bool,
     shortcut_frame: Option<u64>,
     dismissed_dialog_frame: Option<u64>,
+    save_dialog: Option<PinSave>,
+    close_after_save: bool,
+    copy_path: Option<std::path::PathBuf>,
+    save_error: bool,
 }
 impl Pinned {
     fn copy(&mut self, ctx: &egui::Context) {
@@ -78,6 +91,8 @@ impl Pinned {
             return;
         }
         self.copy_error = None;
+        self.copy_path = None;
+        self.save_error = false;
         let (sender, receiver) = std::sync::mpsc::channel();
         self.copy_job = Some(receiver);
         let image = self.image.clone();
@@ -91,6 +106,10 @@ impl Pinned {
         });
     }
     fn request_close(&mut self, ctx: &egui::Context) {
+        if self.save_dialog.is_some() {
+            self.close_after_save = true;
+            return;
+        }
         if self.copy_job.is_some() {
             self.close_after_copy = true;
         } else {
@@ -112,6 +131,98 @@ impl Pinned {
             Err(error) => self.copy_error = Some(error),
         }
         self.close_after_copy = false;
+    }
+    fn start_save(&mut self, ctx: &egui::Context) {
+        self.copy_error = None;
+        let settings = match crate::settings::Settings::load() {
+            Ok(settings) => settings,
+            Err(error) => {
+                self.save_error = true;
+                self.copy_error = Some(error.to_string());
+                return;
+            }
+        };
+        let directory = settings.save_directory();
+        let mut error = String::new();
+        if settings.save_path_fixed {
+            match crate::output::save_with_settings(&self.image, &directory, &settings) {
+                Ok(path) => {
+                    self.saved(ctx, path, &settings);
+                    return;
+                }
+                Err(failure) => error = failure.to_string(),
+            }
+        }
+        let path = directory.join(format!(
+            "{}.{}",
+            chrono::Local::now().format(&settings.filename_pattern),
+            settings.extension
+        ));
+        self.save_dialog = Some(PinSave {
+            dialog: crate::save_dialog::SaveDialog::new(path, error),
+            image: self.image.clone(),
+            settings,
+        });
+        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+            egui::WindowLevel::Normal,
+        ));
+        ctx.request_repaint();
+    }
+    fn saved(
+        &mut self,
+        ctx: &egui::Context,
+        path: std::path::PathBuf,
+        settings: &crate::settings::Settings,
+    ) {
+        let path = std::path::absolute(&path).unwrap_or(path);
+        eprintln!("flameshot: Capture saved as {}", path.display());
+        crate::save_dialog::remember_directory(&path);
+        self.copy_path = settings
+            .copy_path_after_save
+            .then(|| std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone()));
+        self.save_error = false;
+        if !settings.notifications && self.copy_path.is_none() {
+            return;
+        }
+        let (sender, receiver) = std::sync::mpsc::channel();
+        self.copy_job = Some(receiver);
+        let copy_path = self.copy_path.clone();
+        let notify = settings.notifications;
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            if notify && let Ok(connection) = crate::daemon::session_connection().await {
+                let body = format!(
+                    "{}{}",
+                    tr("ScreenshotSaver", "Capture saved as "),
+                    path.display()
+                );
+                let _ =
+                    flameshot_platform::desktop::notify_no_reply(&connection, "Flameshot", &body)
+                        .await;
+            }
+            let result = if let Some(path) = copy_path {
+                crate::daemon::copy_text(&path.to_string_lossy())
+                    .await
+                    .map_err(|error| error.to_string())
+            } else {
+                Ok(())
+            };
+            let _ = sender.send(result);
+            ctx.request_repaint();
+        });
+    }
+    fn retry_copy_path(&mut self, ctx: &egui::Context, path: std::path::PathBuf) {
+        self.copy_error = None;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        self.copy_job = Some(receiver);
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            let result = crate::daemon::copy_text(&path.to_string_lossy())
+                .await
+                .map_err(|error| error.to_string());
+            let _ = sender.send(result);
+            ctx.request_repaint();
+        });
     }
     fn resize(&self, ctx: &egui::Context) {
         if let Ok(size) = scaled_size(
@@ -141,7 +252,8 @@ impl Pinned {
 }
 impl eframe::App for Pinned {
     fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
-        if self.copy_job.is_some()
+        if (self.copy_job.is_some() || self.save_dialog.is_some())
+            && input.viewport_id == egui::ViewportId::ROOT
             && let Some(viewport) = input.viewports.get_mut(&input.viewport_id)
             && viewport.close_requested()
         {
@@ -149,7 +261,11 @@ impl eframe::App for Pinned {
                 .events
                 .retain(|event| !matches!(event, egui::ViewportEvent::Close));
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.close_after_copy = true;
+            if self.save_dialog.is_some() {
+                self.close_after_save = true;
+            } else {
+                self.close_after_copy = true;
+            }
         }
     }
     fn clear_color(&self, _: &egui::Visuals) -> [f32; 4] {
@@ -158,6 +274,64 @@ impl eframe::App for Pinned {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.poll_copy(&ctx);
+        if let Some(mut save) = self.save_dialog.take() {
+            let mut completed = None;
+            ctx.show_viewport_immediate(
+                egui::ViewportId::from_hash_of("pin-save-dialog"),
+                crate::app_ui::viewport()
+                    .with_title(tr("RustEditor", "Save Screenshot"))
+                    .with_inner_size([620.0, 520.0])
+                    .with_min_inner_size([420.0, 320.0]),
+                |ui, _| {
+                    if completed.is_some() {
+                        return;
+                    }
+                    let result = if ui.input(|input| input.viewport().close_requested()) {
+                        if save.dialog.pending() {
+                            ui.ctx()
+                                .send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                            crate::save_dialog::SaveOutcome::Pending
+                        } else {
+                            crate::save_dialog::SaveOutcome::Cancelled
+                        }
+                    } else {
+                        save.dialog.show(ui, |path, extension| {
+                            save.settings = crate::settings::Settings::load()?;
+                            let settings = &save.settings;
+                            if let Some(extension) = extension {
+                                crate::output::save_selected(&save.image, path, extension, settings)
+                            } else {
+                                crate::output::save_with_settings(&save.image, path, settings)
+                            }
+                        })
+                    };
+                    if !matches!(result, crate::save_dialog::SaveOutcome::Pending) {
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        completed = Some(result);
+                    }
+                },
+            );
+            match completed {
+                None => self.save_dialog = Some(save),
+                Some(result) => {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                        egui::WindowLevel::AlwaysOnTop,
+                    ));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::MousePassthrough(false));
+                    self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
+                    self.shortcuts.reset();
+                    if let crate::save_dialog::SaveOutcome::Saved(path) = result {
+                        self.saved(&ctx, path, &save.settings);
+                    }
+                    if self.close_after_save {
+                        self.close_after_save = false;
+                        self.request_close(&ctx);
+                    }
+                    ctx.request_repaint();
+                }
+            }
+            return;
+        }
         let actions = if self.shortcut_frame == Some(ctx.cumulative_frame_nr()) {
             Vec::new()
         } else {
@@ -236,19 +410,41 @@ impl eframe::App for Pinned {
         if let Some(error) = self.copy_error.clone() {
             let mut retry = false;
             let mut dismiss = ctx.input(|input| input.key_pressed(egui::Key::Escape));
-            egui::Window::new(tr("ScreenshotSaver", "Error while saving to clipboard"))
-                .collapsible(false)
-                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-                .show(&ctx, |ui| {
-                    ui.label(error);
-                    retry = ui.button(tr("PinWidget", "Copy to clipboard")).clicked();
-                    dismiss |= ui.button(tr("PinWidget", "Close")).clicked();
-                });
+            egui::Window::new(tr(
+                "ScreenshotSaver",
+                if self.save_error {
+                    "Save Error"
+                } else {
+                    "Error while saving to clipboard"
+                },
+            ))
+            .collapsible(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(&ctx, |ui| {
+                ui.label(error);
+                retry = ui
+                    .button(tr(
+                        "PinWidget",
+                        if self.save_error {
+                            "Save to file"
+                        } else {
+                            "Copy to clipboard"
+                        },
+                    ))
+                    .clicked();
+                dismiss |= ui.button(tr("PinWidget", "Close")).clicked();
+            });
             if retry || dismiss {
                 self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
             }
             if retry {
-                self.copy(&ctx);
+                if self.save_error {
+                    self.start_save(&ctx);
+                } else if let Some(path) = self.copy_path.clone() {
+                    self.retry_copy_path(&ctx, path);
+                } else {
+                    self.copy(&ctx);
+                }
             } else if dismiss {
                 self.copy_error = None;
             }
@@ -275,6 +471,16 @@ impl eframe::App for Pinned {
                 .clicked()
             {
                 self.copy(&ctx);
+                ui.close();
+            }
+            if ui
+                .add_enabled(
+                    self.copy_job.is_none(),
+                    egui::Button::new(tr("PinWidget", "Save to file")),
+                )
+                .clicked()
+            {
+                self.start_save(&ctx);
                 ui.close();
             }
             ui.separator();

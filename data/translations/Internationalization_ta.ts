@@ -3363,6 +3363,10 @@ You சி-வைகாசி need பெறுநர் escape the &apos;#&apos
         <source>Rectangle</source>
         <translation>செவ்வகம்</translation>
     </message>
+    <message>
+        <source>Replace existing file?</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 
 <context>

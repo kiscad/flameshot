@@ -275,6 +275,14 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
             &chooser_calls,
         )
         .await;
+        exercise_pin_save_ui(
+            root.path(),
+            &tools,
+            &chooser_status,
+            &chosen_uris,
+            &chooser_calls,
+        )
+        .await;
     }
     let file = root.path().join("not-a-directory");
     std::fs::write(&file, "data").unwrap();
@@ -736,6 +744,162 @@ async fn exercise_save_ui(
             assert_eq!(std::fs::read(&destination).unwrap(), b"old file");
         }
     }
+}
+
+async fn exercise_pin_save_ui(
+    root: &std::path::Path,
+    tools: &str,
+    status: &AtomicU32,
+    uris: &Mutex<Vec<String>>,
+    calls: &AtomicU32,
+) {
+    use std::io::Write;
+    let xdotool = std::path::Path::new(tools).join("usr/bin/xdotool");
+    let tool = |args: &[&str]| {
+        let result = std::process::Command::new(&xdotool)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{:?}: {:?}", args, result.stderr);
+        result.stdout
+    };
+    let find = |title: &str| {
+        let found = std::process::Command::new(&xdotool)
+            .args(["search", "--onlyvisible", "--name", title])
+            .output()
+            .unwrap();
+        found.status.success().then(|| {
+            String::from_utf8(found.stdout)
+                .unwrap()
+                .lines()
+                .last()
+                .unwrap()
+                .to_owned()
+        })
+    };
+    for code in [0, 1, 2, 6] {
+        status.store(if code == 6 { 0 } else { code }, Ordering::SeqCst);
+        let destination = root.join(format!("pin-save-{code}"));
+        std::fs::write(&destination, b"old pin file").unwrap();
+        let chosen = if code == 6 {
+            root.join("missing/pin.png")
+        } else {
+            destination.clone()
+        };
+        *uris.lock().unwrap() = vec![format!("file://{}", chosen.display())];
+        std::fs::write(root.join("flameshot/flameshot.ini"),format!("[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\nsavePath={}\n",root.display())).unwrap();
+        let image = image::RgbaImage::from_pixel(400, 300, image::Rgba([20, 40, 200, 255]));
+        let data = flameshot_core::qt_wire::encode_pin(&flameshot_core::qt_wire::Pin {
+            image,
+            geometry: flameshot_core::qt_wire::PinGeometry {
+                x: 100,
+                y: 100,
+                width: 400,
+                height: 300,
+            },
+            scale: 1.0,
+        })
+        .unwrap();
+        let mut child = ChildGuard(
+            std::process::Command::new(env!("CARGO_BIN_EXE_flameshot"))
+                .arg("internal-pin")
+                .env("FLATPAK_ID", "isolated-test")
+                .env("XDG_CONFIG_HOME", root)
+                .env("XDG_CACHE_HOME", root)
+                .env("XDG_DATA_HOME", root)
+                .env("LC_ALL", "C")
+                .env("PATH", "/nonexistent/flameshot-test-tools")
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::inherit())
+                .spawn()
+                .unwrap(),
+        );
+        child.0.stdin.take().unwrap().write_all(&data).unwrap();
+        let window = tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                if let Some(window) = find("^flameshot-pin$") {
+                    break window;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap();
+        tool(&["windowfocus", "--sync", &window]);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let before = calls.load(Ordering::SeqCst);
+        tool(&["mousemove", "--window", &window, "20", "20"]);
+        tool(&["click", "3"]);
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        tool(&["key", "--delay", "150", "Down", "Down", "Return"]);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while calls.load(Ordering::SeqCst) == before {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        if code == 2 || code == 6 {
+            assert_eq!(std::fs::read(&destination).unwrap(), b"old pin file");
+            let dialog = find("^Save Screenshot$").expect("Pin error/retry dialog missing");
+            tool(&["windowfocus", "--sync", &dialog]);
+            if code == 6 {
+                *uris.lock().unwrap() = vec![format!("file://{}", destination.display())];
+                tool(&["key", "Return"]);
+            } else {
+                tool(&["key", "Escape"]);
+            }
+        }
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while find("^Save Screenshot$").is_some() {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap();
+        assert!(
+            child.0.try_wait().unwrap().is_none(),
+            "Save result closed the pin"
+        );
+        if code == 0 || code == 6 {
+            let data = std::fs::read(&destination).unwrap();
+            assert_eq!(
+                image::guess_format(&data).unwrap(),
+                image::ImageFormat::Jpeg
+            );
+            let pixels = image::load_from_memory(&data).unwrap().to_rgba8();
+            assert_eq!(pixels.dimensions(), (400, 300));
+            assert!(
+                pixels
+                    .get_pixel(200, 150)
+                    .0
+                    .into_iter()
+                    .zip([20, 40, 200, 255])
+                    .all(|(a, b)| (i32::from(a) - b).abs() <= 3)
+            );
+            assert!(!destination.with_extension("jpg").exists());
+        } else {
+            assert_eq!(std::fs::read(&destination).unwrap(), b"old pin file");
+        }
+        tool(&["windowfocus", "--sync", &window]);
+        tool(&["key", "Escape"]);
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if let Some(status) = child.0.try_wait().unwrap() {
+                    assert!(status.success());
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    println!(
+        "PASS: pinned-image SaveFile accepts exact names/filters and retains images after cancel, rejection and write retry"
+    );
 }
 
 async fn exercise_web_protocol(

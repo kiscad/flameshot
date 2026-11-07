@@ -104,6 +104,40 @@ pub async fn notify(connection: &zbus::Connection, title: &str, body: &str) -> R
     .context("Notification service timed out")?
     .map_err(Into::into)
 }
+/// Enqueue a notification without waiting for the desktop service to handle it.
+pub async fn notify_no_reply(connection: &zbus::Connection, title: &str, body: &str) -> Result<()> {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        let proxy = zbus::Proxy::new(
+            connection,
+            "org.freedesktop.Notifications",
+            "/org/freedesktop/Notifications",
+            "org.freedesktop.Notifications",
+        )
+        .await?;
+        let hints = std::collections::HashMap::from([(
+            "desktop-entry",
+            zbus::zvariant::Value::from("org.flameshot.Flameshot"),
+        )]);
+        proxy
+            .call_noreply(
+                "Notify",
+                &(
+                    "Flameshot",
+                    0_u32,
+                    "org.flameshot.Flameshot",
+                    title,
+                    body,
+                    Vec::<String>::new(),
+                    hints,
+                    -1_i32,
+                ),
+            )
+            .await
+    })
+    .await
+    .context("Notification transport timed out")?
+    .map_err(Into::into)
+}
 #[cfg(test)]
 mod tests {
     use super::*;

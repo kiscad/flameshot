@@ -3612,6 +3612,10 @@ Možná budete muset napsat před &apos;#&apos; opačné (obrácené) lomítko, 
         <source>Rectangle</source>
         <translation>Obdélník</translation>
     </message>
+    <message>
+        <source>Replace existing file?</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 
 <context>

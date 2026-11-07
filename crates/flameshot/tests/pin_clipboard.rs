@@ -167,7 +167,7 @@ async fn pin_copy_preserves_pixels_retries_failure_and_finishes_before_close() {
     .unwrap();
     tool(&root, &["windowfocus", "--sync", &window]);
     tokio::time::sleep(Duration::from_millis(300)).await;
-    menu(&root, &window, 2).await;
+    menu(&root, &window, 3).await;
     size(&root, &window, [300, 400]).await;
     tool(&root, &["mousemove", "--window", &window, "150", "200"]);
     tool(&root, &["click", "4"]);
@@ -189,13 +189,13 @@ async fn pin_copy_preserves_pixels_retries_failure_and_finishes_before_close() {
             image.get_pixel(x + w / 2, y + 3 * h / 4).0,
         ]
     };
-    menu(&root, &window, 5).await;
+    menu(&root, &window, 6).await;
     let pixels = opacity_pixels();
     assert!(
         (i32::from(pixels[0][0]) - 153).abs() <= 2 && (i32::from(pixels[1][1]) - 153).abs() <= 2,
         "{pixels:?}"
     );
-    menu(&root, &window, 6).await;
+    menu(&root, &window, 7).await;
     let pixels = opacity_pixels();
     assert!(
         (i32::from(pixels[0][0]) - 128).abs() <= 2 && (i32::from(pixels[1][1]) - 128).abs() <= 2,

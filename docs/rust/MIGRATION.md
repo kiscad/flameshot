@@ -3241,3 +3241,51 @@ the private D-Bus/native UI runner (including document-portal saves and the new 
 pin test), Simplified/Traditional Chinese windows, and Sway with Pinyin and actual pin
 clipboard persistence. GUI tests used private displays, buses and XDG directories.
 Pin file saving, hosted CI and the remaining migration gates are still pending.
+
+### Restore saving pinned images through the shared save workflow
+
+The pin menu now exposes Save to file. The screenshot editor's file browser and portal
+chooser have been extracted into a shared SaveDialog, retaining its asynchronous folder
+listing, format choices, portal filtering and write-error retry. Pins use that dialog in
+an independent native viewport, sized independently of the image. While it is open the
+pin surface is transparent/non-interactive and its topmost level is relaxed; normal pin
+input and presentation return after save or cancellation. Closing the save window leaves
+the image open. Parent close requests wait for the save operation to resolve.
+
+Saving snapshots the rotated source pixels without display zoom/opacity. Fixed-path
+settings use the existing non-clobbering writer directly, with dialog recovery on write
+failure. Successful saves remember the destination directory and honor path-copy and
+notification preferences. Notification sending does not wait for the desktop service's
+reply, and path-copy failures retry the path operation rather than rewriting the image.
+The save-time settings snapshot is retained for post-save actions.
+
+Manual saves now ask before replacing an existing file, defaulting to No. Confirmed
+replacement uses the exact-path atomic writer; portal selections continue to rely on
+the system chooser's authorization. Relative destinations use the actual working
+folder for listing and save-directory preferences. The confirmation prompt is registered
+in all catalogs with Chinese translations. Confirmation/dialog events are not replayed
+as editor or pin close actions within the same frame.
+
+The new private-Xvfb pin-save fixture covers cancellation, failure/retry, rotated pixels,
+confirmed/declined overwrite, relative paths, fixed-path BMP saves and copied paths after
+pin closure. The private portal fixture additionally exercises pin acceptance, cancellation,
+rejection and write retry while honoring exact extensionless names and the selected JPG
+filter. Sway now also saves a pin through the native Rust dialog before exercising its
+clipboard handoff. These additions address the previously missing pin save menu action;
+installed sandbox/provider and broader desktop acceptance remain separate gates.
+
+Directory remembering is shared by interactive editor and pin saves, including fixed
+GUI destinations; successful explicit CLI output paths keep their previous preference
+behavior. Widget-frame tests additionally verify that Enter/Escape in the format popup
+do not submit/cancel the save dialog, and renaming a destination without a suffix keeps
+the chosen format. Native tests cover both editor and pin directory preferences.
+
+Validation passed for the final shared workflow: the full Rust gate with Fish/Zsh
+checks, multi-pass format-widget tests, private portal/native UI tests with real
+document-portal editor saves, the new pin-save fixture, the complete Xvfb suite and
+Chinese window checks. Sway passed with Pinyin/default rendering and OpenGL, including
+native pin saving and restored visible pixels afterward; the X11 pin-save fixture also
+passed under OpenGL and checks restored opacity after cancellation. All GUI tests used
+private displays, buses and XDG directories. Pin-save behavior is implemented and these
+specified paths are verified; hosted CI, installed packaging and the other migration
+acceptance gates are still pending.

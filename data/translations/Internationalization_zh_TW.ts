@@ -3533,6 +3533,10 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
         <source>Rectangle</source>
         <translation>矩形</translation>
     </message>
+    <message>
+        <source>Replace existing file?</source>
+        <translation>取代現有檔案？</translation>
+    </message>
 </context>
 
 <context>
