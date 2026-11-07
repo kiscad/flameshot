@@ -124,3 +124,26 @@ fn vanished_internal_owner_exits_before_starting_capture() {
         .unwrap();
     assert!(!String::from_utf8_lossy(&help.stdout).contains("internal-parent"));
 }
+
+#[test]
+fn oversized_numeric_options_fail_before_desktop_services_or_configuration_writes() {
+    let temp = tempfile::tempdir().unwrap();
+    for args in [
+        vec!["gui", "--delay", "2147483648"],
+        vec!["full", "--delay", "18446744073709551615"],
+        vec!["screen", "--number", "2147483648"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("XDG_CONFIG_HOME", temp.path())
+            .env("DBUS_SESSION_BUS_ADDRESS", "not-a-valid-dbus-address")
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .args(&args)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(output.stdout.is_empty());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("2147483647"));
+    }
+    assert_eq!(std::fs::read_dir(temp.path()).unwrap().count(), 0);
+}

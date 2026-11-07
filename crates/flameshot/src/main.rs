@@ -38,6 +38,20 @@ use std::{
     time::Duration,
 };
 
+// QCommandLine's numeric checker used QString::toInt and required value >= 0.
+fn parse_cli_nonnegative(value: &str) -> Result<u64, String> {
+    value
+        .trim()
+        .parse::<i32>()
+        .ok()
+        .filter(|value| *value >= 0)
+        .map(|value| value as u64)
+        .ok_or_else(|| "Expected an integer between 0 and 2147483647".into())
+}
+fn parse_cli_screen_number(value: &str) -> Result<usize, String> {
+    parse_cli_nonnegative(value).map(|value| value as usize)
+}
+
 #[derive(Parser)]
 #[command(
     name = "flameshot",
@@ -92,13 +106,13 @@ enum Command {
         region: Option<flameshot_core::region::Spec>,
         #[arg(long)]
         pin: bool,
-        #[arg(short = 'n', long)]
+        #[arg(short = 'n', long, value_parser = parse_cli_screen_number)]
         number: Option<usize>,
         #[arg(short = 'e', long)]
         edit: bool,
         #[arg(short = 'p', long)]
         path: Option<PathBuf>,
-        #[arg(short = 'd', long, default_value_t = 0)]
+        #[arg(short = 'd', long, default_value_t = 0, value_parser = parse_cli_nonnegative)]
         delay: u64,
         #[arg(short = 'c', long)]
         clipboard: bool,
@@ -119,7 +133,7 @@ enum Command {
         pin: bool,
         #[arg(short = 'p', long)]
         path: Option<PathBuf>,
-        #[arg(short = 'd', long, default_value_t = 0)]
+        #[arg(short = 'd', long, default_value_t = 0, value_parser = parse_cli_nonnegative)]
         delay: u64,
         #[arg(short = 'c', long)]
         clipboard: bool,
@@ -130,7 +144,7 @@ enum Command {
     Full {
         #[arg(short = 'p', long)]
         path: Option<PathBuf>,
-        #[arg(short = 'd', long, default_value_t = 0)]
+        #[arg(short = 'd', long, default_value_t = 0, value_parser = parse_cli_nonnegative)]
         delay: u64,
         #[arg(short = 'c', long)]
         clipboard: bool,
@@ -617,5 +631,42 @@ fn unavailable(error: &portal::CaptureError) -> bool {
                 | "org.freedesktop.DBus.Error.UnknownInterface"
         ),
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod cli_numeric_tests {
+    use super::*;
+    #[test]
+    fn numeric_options_keep_legacy_i32_bounds_and_whitespace() {
+        for command in ["gui", "screen", "full"] {
+            for (value, expected) in [("0", 0), (" +42 ", 42), ("2147483647", 2147483647)] {
+                let cli = Cli::try_parse_from(["flameshot", command, "--delay", value]).unwrap();
+                let delay = match cli.command.unwrap() {
+                    Command::Gui { delay, .. }
+                    | Command::Screen { delay, .. }
+                    | Command::Full { delay, .. } => delay,
+                    _ => unreachable!(),
+                };
+                assert_eq!(delay, expected);
+            }
+            for value in ["2147483648", "18446744073709551615", "-1", "1.5", ""] {
+                assert!(
+                    Cli::try_parse_from(["flameshot", command, &format!("--delay={value}")])
+                        .is_err()
+                );
+            }
+        }
+        for (value, expected) in [("0", 0), (" +42 ", 42), ("2147483647", 2147483647)] {
+            let cli = Cli::try_parse_from(["flameshot", "screen", "--number", value]).unwrap();
+            assert!(
+                matches!(cli.command, Some(Command::Screen { number: Some(number), .. }) if number == expected)
+            );
+        }
+        for value in ["2147483648", "18446744073709551615", "-1", "1.5", ""] {
+            assert!(
+                Cli::try_parse_from(["flameshot", "screen", &format!("--number={value}")]).is_err()
+            );
+        }
     }
 }

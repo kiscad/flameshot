@@ -2664,3 +2664,24 @@ also pass with the input method enabled. Python syntax and diff checks pass. No
 production application changes were required. KDE-VALIDATION.md records versions,
 setup and limits, including untested candidate geometry/other engines/KDE 6. The
 container was stopped and removed after saving local evidence.
+
+### Preserve legacy command-line numeric bounds
+
+Source audit of main.cpp's numericChecker shows delay and screen number are parsed
+through QString::toInt and must be nonnegative. Rust's u64/usize parsing previously
+accepted values beyond that signed 32-bit range. All three delay options and the
+screen-number option now require 0..2147483647, while retaining surrounding whitespace
+and a leading plus sign. Oversized delays are rejected before capture waiting begins.
+The manual documents the bounds and the additional active-monitor requirement.
+
+Parser tests cover all capture commands, zero/max bounds, whitespace/plus, overflow,
+negative, fractional and empty inputs without executing large delays. Executable tests
+verify overflow fails with empty stdout before attempting a deliberately unavailable
+bus or writing configuration. All-feature parser/six CLI integration tests and Clippy
+pass. This restores accepted numeric values, not legacy parser failure statuses:
+Rust still reports Clap's nonzero rejection, whereas baseline parse failure can return
+zero. Repeated options and help/version trailing-argument behavior also remain in the
+CLI audit. In particular baseline value() selects the first repeated value; a generic
+last-value-wins override would not preserve that behavior.
+The same parser and six executable CLI tests pass with no default features.
+Formatting, diff checks and warning-free man-page rendering also pass.

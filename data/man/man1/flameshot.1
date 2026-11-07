@@ -60,7 +60,8 @@ Save to an existing directory or an image filename. Directories use the configur
 filename pattern. Existing images are not overwritten; a distinct filename is chosen.
 .TP
 .BR \-d , " " \-\-delay " " \fIMILLISECONDS\fR
-Delay capture by the given number of milliseconds. The default is zero.
+Delay capture by the given number of milliseconds, from 0 through 2147483647.
+The default is zero.
 .TP
 .BR \-c , " " \-\-clipboard
 Copy the resulting image to the clipboard. This can be combined with an output path.
@@ -105,7 +106,8 @@ PNG output takes priority.
 .SH SCREEN OPTIONS
 .TP
 .BR \-n , " " \-\-number " " \fIINDEX\fR
-Select a zero-based monitor index.
+Select a zero-based monitor index, from 0 through 2147483647.
+The selected index must identify an active monitor.
 .TP
 .BR \-e , " " \-\-edit
 Open the editor for the selected monitor.
