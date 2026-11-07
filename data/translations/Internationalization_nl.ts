@@ -3077,6 +3077,14 @@ Mogelijk moet je het &apos;#&apos;-teken insluiten. Voorbeeld: &apos;\#FFF&apos;
         <source>Screenshots history is empty</source>
         <translation type="unfinished">Er zijn nog geen schermfoto&apos;s gemaakt</translation>
     </message>
+    <message>
+        <source>Retry local cleanup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote image deleted; local history cleanup failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UploadLineItem</name>

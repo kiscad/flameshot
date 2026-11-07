@@ -3202,6 +3202,14 @@ Možná budete muset napsat před &apos;#&apos; opačné (obrácené) lomítko, 
         <source>Screenshots history is empty</source>
         <translation>Historie snímků obrazovky je prázdná</translation>
     </message>
+    <message>
+        <source>Retry local cleanup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote image deleted; local history cleanup failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UploadLineItem</name>

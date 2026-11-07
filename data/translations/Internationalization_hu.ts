@@ -3191,6 +3191,14 @@ Lehet, hogy meg kepp adnod egy &apos;\&apos; karaktert a &apos;#&apos; karakter 
         <source>Screenshots history is empty</source>
         <translation type="unfinished">Nincs korábbi képernyőmentésed</translation>
     </message>
+    <message>
+        <source>Retry local cleanup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote image deleted; local history cleanup failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UploadLineItem</name>

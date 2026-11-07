@@ -3168,6 +3168,14 @@ Anda mungkin perlu untuk escape dari tanda &apos;#&apos; seperti pada &apos;\#FF
         <source>Screenshots history is empty</source>
         <translation>Riwayat cuplikan layar kosong</translation>
     </message>
+    <message>
+        <source>Retry local cleanup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote image deleted; local history cleanup failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UploadLineItem</name>

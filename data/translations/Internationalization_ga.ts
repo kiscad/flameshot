@@ -3156,6 +3156,14 @@ B&apos;fhéidir go mbeidh ort éalú ón gcomhartha &apos;#&apos; mar atá i &ap
         <source>Screenshots history is empty</source>
         <translation>Tá stair na screenshots folamh</translation>
     </message>
+    <message>
+        <source>Retry local cleanup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote image deleted; local history cleanup failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UploadLineItem</name>

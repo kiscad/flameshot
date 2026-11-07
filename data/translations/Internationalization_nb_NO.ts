@@ -3119,6 +3119,14 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
         <source>Screenshots history is empty</source>
         <translation type="unfinished">Screenshots history is empty</translation>
     </message>
+    <message>
+        <source>Retry local cleanup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote image deleted; local history cleanup failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UploadLineItem</name>

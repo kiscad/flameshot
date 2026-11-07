@@ -168,6 +168,24 @@ mod tests {
         }
     }
     #[test]
+    fn history_cleanup_messages_keep_the_error_placeholder() {
+        let source = "Remote image deleted; local history cleanup failed: %1";
+        for locale in ["zh_CN", "zh_TW", "zh_HK"] {
+            let translator = Translator::new(locale);
+            let message = translator.translate("UploadHistory", source);
+            assert_ne!(message, source);
+            assert_eq!(message.matches("%1").count(), 1);
+            assert_ne!(
+                translator.translate("UploadHistory", "Retry local cleanup"),
+                "Retry local cleanup"
+            );
+        }
+        assert_eq!(
+            Translator::new("unknown").translate("UploadHistory", source),
+            source
+        );
+    }
+    #[test]
     fn unknown_locale_and_unfinished_entries_fall_back_to_source() {
         assert_eq!(
             Translator::new("unknown").translate("CopyTool", "Copy"),

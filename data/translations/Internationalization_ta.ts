@@ -2953,6 +2953,14 @@ You சி-வைகாசி need பெறுநர் escape the &apos;#&apos
         <source>Screenshots history is empty</source>
         <translation type="unfinished">L&apos;historial de captures de pantalla és buit</translation>
     </message>
+    <message>
+        <source>Retry local cleanup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote image deleted; local history cleanup failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UploadLineItem</name>

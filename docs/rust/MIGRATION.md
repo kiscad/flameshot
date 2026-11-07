@@ -2887,3 +2887,26 @@ Chinese history-window open/close checks pass, along with formatting/diff checks
 The frame tests do not establish native-window upload/clipboard/browser integration
 or every partial remote/local failure recovery path; those limits remain in the
 network/desktop audit.
+
+### Retry local history cleanup without repeating a confirmed remote deletion
+
+History deletion now distinguishes a failed remote request from remote success
+followed by local cleanup failure. The current window remembers confirmed remote
+success by record path, reports that partial result, and presents a translated
+“Retry local cleanup” action. That retry bypasses client creation and only removes
+the local file; it does not re-confirm or reissue the remote deletion. Successful
+cleanup removes the record and its remembered state. Unknown/disconnected worker
+outcomes are not guessed to be remote success.
+
+The widget-frame regression forces a local directory error after a successful
+loopback DELETE, then retries once while the error remains and again after repairing
+the path. No test API remains configured during either retry, so an attempted remote
+retry would fail the test guard. The record stays visible until local cleanup succeeds.
+The partial-result message and retry label are registered in all 49 catalogs, with
+Chinese translations and placeholder/fallback tests.
+
+All-feature and Imgur-only upload/history tests, all-feature workspace tests and
+Clippy pass. Native simplified/traditional Chinese history open/close checks, catalog
+tests, formatting and diff checks pass. No external requests or user history were
+used. The remembered remote-success state is scoped to the open window; persistent
+recovery after closing/crashing the application is not established by this change.

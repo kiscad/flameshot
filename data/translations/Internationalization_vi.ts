@@ -3147,6 +3147,14 @@ Bạn có thể cần phải thoát khỏi dấu &apos;#&apos; như trong &apos;
         <source>Screenshots history is empty</source>
         <translation>Lịch sử chụp màn hình trống</translation>
     </message>
+    <message>
+        <source>Retry local cleanup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote image deleted; local history cleanup failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>UploadLineItem</name>

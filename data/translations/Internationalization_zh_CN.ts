@@ -3228,6 +3228,14 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
         <source>Screenshots history is empty</source>
         <translation>屏幕截图历史为空</translation>
     </message>
+    <message>
+        <source>Retry local cleanup</source>
+        <translation>重试清理本地历史记录</translation>
+    </message>
+    <message>
+        <source>Remote image deleted; local history cleanup failed: %1</source>
+        <translation>远端图像已删除，但本地历史记录清理失败：%1</translation>
+    </message>
 </context>
 <context>
     <name>UploadLineItem</name>

@@ -256,11 +256,20 @@ pub fn history() -> anyhow::Result<()> {
                 entries,
                 confirm: None,
                 job: None,
+                remote_deleted: Default::default(),
                 message: String::new(),
             }))
         }),
     )
     .map_err(|e| anyhow::anyhow!("Upload history: {e}"))
+}
+enum DeleteOutcome {
+    Complete(usize),
+    Failed {
+        index: usize,
+        remote_deleted: bool,
+        message: String,
+    },
 }
 struct History {
     links: crate::links::LinkOpener,
@@ -271,7 +280,8 @@ struct History {
     clipboard: LinkClipboard,
     entries: Vec<crate::upload_history::Entry>,
     confirm: Option<usize>,
-    job: Option<mpsc::Receiver<Result<usize, String>>>,
+    job: Option<mpsc::Receiver<DeleteOutcome>>,
+    remote_deleted: std::collections::HashSet<std::path::PathBuf>,
     message: String,
 }
 impl History {
@@ -282,20 +292,41 @@ impl History {
         let result = match job.try_recv() {
             Ok(result) => result,
             Err(mpsc::TryRecvError::Empty) => return,
-            Err(mpsc::TryRecvError::Disconnected) => Err("Deletion worker stopped".into()),
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.job = None;
+                self.message = "Deletion worker stopped".into();
+                return;
+            }
         };
         self.job = None;
         match result {
-            Ok(index) => {
+            DeleteOutcome::Complete(index) => {
+                self.remote_deleted.remove(&self.entries[index].path);
                 self.textures.remove(&self.entries[index].path);
                 self.entries.remove(index);
                 self.confirm = None;
             }
-            Err(error) => self.message = error,
+            DeleteOutcome::Failed {
+                index,
+                remote_deleted,
+                message,
+            } => {
+                if remote_deleted {
+                    self.remote_deleted.insert(self.entries[index].path.clone());
+                    self.confirm = None;
+                    self.message = tr(
+                        "UploadHistory",
+                        "Remote image deleted; local history cleanup failed: %1",
+                    )
+                    .replace("%1", &message);
+                } else {
+                    self.message = message;
+                }
+            }
         }
     }
     fn request_delete(&mut self, index: usize) -> bool {
-        if self.confirmation_required {
+        if self.confirmation_required && !self.remote_deleted.contains(&self.entries[index].path) {
             self.confirm = Some(index);
             false
         } else {
@@ -304,6 +335,10 @@ impl History {
         }
     }
     fn start_delete(&mut self, ctx: &egui::Context, index: usize) {
+        if self.remote_deleted.contains(&self.entries[index].path) {
+            self.delete_with_client(ctx, index, None);
+            return;
+        }
         #[cfg(test)]
         {
             if let Some(api) = self.test_delete.take() {
@@ -323,27 +358,44 @@ impl History {
         }
     }
     fn begin_delete(&mut self, ctx: &egui::Context, index: usize, api: Imgur) {
+        self.delete_with_client(ctx, index, Some(api));
+    }
+    fn delete_with_client(&mut self, ctx: &egui::Context, index: usize, api: Option<Imgur>) {
         if self.job.is_some() {
             return;
         }
         self.message.clear();
         let entry = self.entries[index].clone();
+        let mut remote_deleted = self.remote_deleted.contains(&entry.path);
         let (sender, receiver) = mpsc::channel();
         self.job = Some(receiver);
         let ctx = ctx.clone();
         tokio::spawn(async move {
             let result = async {
-                api.delete(entry.deletehash.as_deref().unwrap()).await?;
+                if !remote_deleted {
+                    let api = api
+                        .as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("Missing deletion client"))?;
+                    api.delete(entry.deletehash.as_deref().unwrap()).await?;
+                    remote_deleted = true;
+                }
                 match std::fs::remove_file(&entry.path) {
                     Ok(()) => {}
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                     Err(error) => return Err(error.into()),
                 }
-                Ok::<_, anyhow::Error>(index)
+                Ok::<_, anyhow::Error>(())
             }
-            .await
-            .map_err(|e| e.to_string());
-            let _ = sender.send(result);
+            .await;
+            let outcome = match result {
+                Ok(()) => DeleteOutcome::Complete(index),
+                Err(error) => DeleteOutcome::Failed {
+                    index,
+                    remote_deleted,
+                    message: error.to_string(),
+                },
+            };
+            let _ = sender.send(outcome);
             ctx.request_repaint();
         });
     }
@@ -388,7 +440,11 @@ impl History {
                         && ui
                             .add_enabled(
                                 self.job.is_none(),
-                                egui::Button::new(tr("ImgUploaderBase", "Delete image")),
+                                egui::Button::new(if self.remote_deleted.contains(&entry.path) {
+                                    tr("UploadHistory", "Retry local cleanup")
+                                } else {
+                                    tr("ImgUploaderBase", "Delete image")
+                                }),
                             )
                             .clicked()
                     {
@@ -657,6 +713,7 @@ mod tests {
             }],
             confirm: None,
             job: None,
+            remote_deleted: Default::default(),
             message: String::new(),
         };
         click_label(&ctx, tr("ImgUploaderBase", "Delete image"), |ui| {
@@ -755,6 +812,7 @@ mod tests {
             }],
             confirm: None,
             job: None,
+            remote_deleted: Default::default(),
             message: String::new(),
         };
         click_label(&ctx, tr("ImgUploaderBase", "Delete image"), |ui| {
@@ -804,6 +862,26 @@ mod tests {
         }
         server.join().unwrap();
         assert!(path.is_dir() && history.entries.len() == 1 && !history.message.is_empty());
+        assert!(history.remote_deleted.contains(&path));
+        assert!(history.test_delete.is_none());
+        for repaired in [false, true] {
+            if repaired {
+                std::fs::remove_dir(&path).unwrap();
+            }
+            // No injected API remains. A remote retry would fail the test guard.
+            click_label(&ctx, tr("UploadHistory", "Retry local cleanup"), |ui| {
+                history.show(ui)
+            });
+            assert!(history.job.is_some() && history.confirm.is_none());
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while history.job.is_some() {
+                assert!(std::time::Instant::now() < deadline);
+                ui_frame(&ctx, vec![], &mut |ui| history.show(ui));
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert_eq!(history.entries.is_empty(), repaired);
+            assert_eq!(history.remote_deleted.contains(&path), !repaired);
+        }
     }
     #[test]
     fn stopped_clipboard_worker_releases_pending_state() {
@@ -921,6 +999,7 @@ mod tests {
             }],
             confirm: None,
             job: None,
+            remote_deleted: Default::default(),
             message: String::new(),
         };
         assert!(!history.request_delete(0));
