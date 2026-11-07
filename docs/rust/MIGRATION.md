@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak/Nix/Snap definitions migrated; sandbox/provider builds and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI and headless GNOME capture/editor cases pass; GNOME IME/multi-monitor and KDE acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI and headless GNOME capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2117,3 +2117,24 @@ Validation passed in final runs for both the basic no-Xwayland fixture and the
 clipboard-enabled fixture, including the existing capture/export/refusal cases.
 A post-run audit found no surviving private GNOME processes and no remaining fixture
 Xwayland/IBus crash reports. Diff checks passed; hosted CI remains unrun.
+
+
+### GNOME multi-monitor capture and fullscreen placement
+
+The private GNOME fixture accepts `--multi-monitor`, adding a 640x480 output beside
+its 1024x768 primary output. Distinct background colors identify each output. Tests
+verify the 1664x768 desktop capture, both numbered captures, and second-monitor
+selection through both `--region screen1` and the editor's number-key chooser.
+They check exported dimensions/pixels and the native window's actual monitor index
+and fullscreen rectangle, rather than inferring placement from exported data alone.
+
+The ordinary region/cancellation cases now explicitly select the first monitor when
+the chooser is present. The clipboard fixture derives full-desktop dimensions from
+the monitor layout, allowing both options to be combined. A timed-out editor also
+records a private compositor screenshot for diagnosis. This adds same-scale GNOME
+coverage; mixed scaling, negative origins, hotplug and IME are not established by it.
+
+Validation passed in both multi-monitor-only and combined multi-monitor/clipboard
+runs, including the existing capture, cancellation, refusal and clipboard checks.
+The post-run process audit found no private GNOME processes remaining. Diff checks
+passed. No production Rust changes were required; hosted CI remains unrun.

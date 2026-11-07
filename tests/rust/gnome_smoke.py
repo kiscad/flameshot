@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private headless GNOME Wayland fixture. Usage: gnome_smoke.py FLAMESHOT_BINARY [--clipboard]
+"""Private headless GNOME Wayland fixture. Usage: gnome_smoke.py FLAMESHOT_BINARY [--clipboard] [--multi-monitor]
 Requires GNOME Shell, GNOME/GTK portals, PyGObject and their normal runtime libraries.
 Debug input/evaluation is enabled only in the disposable private compositor.
 """
@@ -44,7 +44,7 @@ export default class TestInput extends Extension {
    move: (x,y) => pointer.notify_absolute_motion(GLib.get_monotonic_time(),x,y),
    button: (button, pressed) => pointer.notify_button(GLib.get_monotonic_time(),button,pressed ? Clutter.ButtonState.PRESSED : Clutter.ButtonState.RELEASED),
    hideOverview: () => Main.overview.hide(),
-   paint: () => { const background = new St.Widget({style:'background-color: rgb(32,64,96);',width:1024,height:768}); Main.layoutManager._backgroundGroup.add_child(background); global.flameshotTest.background=background; }
+   paint: () => { global.flameshotTest.backgrounds = Main.layoutManager.monitors.map((monitor,index) => { const color=index===0?'32,64,96':'160,80,32'; const background=new St.Widget({style:`background-color: rgb(${color});`,x:monitor.x,y:monitor.y,width:monitor.width,height:monitor.height}); Main.layoutManager._backgroundGroup.add_child(background); return background; }); }
 
   };
  }
@@ -75,7 +75,7 @@ export default class TestInput extends Extension {
             ibus=helpers/'ibus-daemon';ibus.write_text('#!/bin/sh\nexit 0\n');ibus.chmod(0o700)
             env['PATH']=str(helpers)+':'+env.get('PATH','')
 
-        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),*(['--clipboard'] if '--clipboard' in sys.argv else []),'--inside',str(root)],env=env,timeout=100)
+        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),*[flag for flag in ['--clipboard','--multi-monitor'] if flag in sys.argv],'--inside',str(root)],env=env,timeout=100)
         if result.returncode:
             for log in root.glob('*.log'):print(log.name,log.read_text(errors='replace')[-7000:],file=sys.stderr)
         sys.exit(result.returncode)
@@ -114,7 +114,7 @@ def key(value):
     evaluate(f'global.flameshotTest.key({value},true)');time.sleep(.05)
     evaluate(f'global.flameshotTest.key({value},false)')
 try:
-    shell=start('shell',['gnome-shell','--headless','--wayland','--virtual-monitor','1024x768','--wayland-display','flameshot-test',*([] if '--clipboard' in sys.argv else ['--no-x11']),'--sm-disable'])
+    shell=start('shell',['gnome-shell','--headless','--wayland','--virtual-monitor','1024x768',*(['--virtual-monitor','640x480'] if '--multi-monitor' in sys.argv else []),'--wayland-display','flameshot-test',*([] if '--clipboard' in sys.argv else ['--no-x11']),'--sm-disable'])
     print('Private GNOME shell PID:',shell.pid,flush=True)
     deadline=time.monotonic()+15
     while True:
@@ -153,6 +153,10 @@ try:
             call('org.freedesktop.portal.Desktop','/org/freedesktop/portal/desktop','org.freedesktop.DBus.Properties.Get','(ss)',('org.freedesktop.portal.Screenshot','version'));break
         except GLib.Error:
             assert time.monotonic()<deadline,'Screenshot portal unavailable';time.sleep(.1)
+    monitors=evaluate('Main.layoutManager.monitors.map(m=>({x:m.x,y:m.y,width:m.width,height:m.height}))')
+    print('Private GNOME outputs:',monitors,flush=True)
+    assert len(monitors)==(2 if '--multi-monitor' in sys.argv else 1)
+    desktop_size=(max(m['x']+m['width'] for m in monitors),max(m['y']+m['height'] for m in monitors))
     evaluate('global.flameshotTest.paint()')
     time.sleep(.3)
     capture=subprocess.Popen([str(binary),'full','--raw'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
@@ -174,8 +178,8 @@ try:
     (artifacts/'rust-gnome-full.png').write_bytes(out)
     assert Image.open(io.BytesIO(out)).getpixel((200,300))[:3]==(32,64,96)
     assert out[:8]==b'\x89PNG\r\n\x1a\n'
-    assert struct.unpack('>II',out[16:24])==(1024,768)
-    print('PASS: native GNOME screenshot portal exports 1024x768 PNG',flush=True)
+    assert struct.unpack('>II',out[16:24])==desktop_size
+    print('PASS: native GNOME screenshot portal exports',desktop_size,'PNG',flush=True)
     screen=subprocess.run([str(binary),'screen','--number','0','--raw'],env=env,capture_output=True,timeout=20)
     assert screen.returncode==0,screen.stderr.decode()
     assert screen.stdout[:8]==b'\x89PNG\r\n\x1a\n'
@@ -199,8 +203,14 @@ try:
             time.sleep(.1)
         evaluate("global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot').meta_window.activate(global.get_current_time())")
         time.sleep(.3)
+        if '--multi-monitor' in sys.argv:
+            key(49);time.sleep(.3)
         key(65293 if accept else 65307)
-        out,err=editor.communicate(timeout=10)
+        try:
+            out,err=editor.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            call('org.gnome.Shell.Screenshot','/org/gnome/Shell/Screenshot','org.gnome.Shell.Screenshot.Screenshot','(bbs)',(False,False,str(artifacts/'rust-gnome-ui-debug.png')))
+            raise
         assert editor.returncode==(0 if accept else 2),err.decode()
         if accept:
             assert out[:8]==b'\x89PNG\r\n\x1a\n'
@@ -209,6 +219,38 @@ try:
             (artifacts/'rust-gnome-region.png').write_bytes(out)
         else:assert not out
     print('PASS: GNOME screen capture, native Wayland editor export and Escape cancellation',flush=True)
+    if '--multi-monitor' in sys.argv:
+        assert monitors==[dict(x=0,y=0,width=1024,height=768),dict(x=1024,y=0,width=640,height=480)]
+        second=subprocess.run([str(binary),'screen','--number','1','--raw'],env=env,capture_output=True,timeout=20)
+        assert second.returncode==0,second.stderr.decode()
+        image=Image.open(io.BytesIO(second.stdout))
+        assert image.size==(640,480) and image.getpixel((200,300))[:3]==(160,80,32)
+        for interactive in [False,True]:
+            args=['gui','--raw','--region','80x60+200+300' if interactive else 'screen1']
+            editor=subprocess.Popen([str(binary),*args],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+            processes.append(editor)
+            deadline=time.monotonic()+12
+            while not evaluate("global.get_window_actors().some(a=>a.meta_window.get_title()==='Flameshot'&&a.mapped)"):
+                assert editor.poll() is None and time.monotonic()<deadline,'Second-monitor editor did not map'
+                time.sleep(.1)
+            evaluate("global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot').meta_window.activate(global.get_current_time())")
+            time.sleep(.3)
+            if interactive:key(50)
+            deadline=time.monotonic()+5
+            while True:
+                position=evaluate("(()=>{const w=global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot').meta_window;const r=w.get_frame_rect();return {monitor:w.get_monitor(),rect:{x:r.x,y:r.y,width:r.width,height:r.height}}})()")
+                if position['monitor']==1 and position['rect']==monitors[1]:break
+                assert time.monotonic()<deadline,position
+                time.sleep(.1)
+            time.sleep(.3)
+            key(65293)
+            out,err=editor.communicate(timeout=10)
+            assert editor.returncode==0,err.decode()
+            image=Image.open(io.BytesIO(out))
+            assert image.size==((80,60) if interactive else (640,480)),image.size
+            assert image.getpixel((40,30))[:3]==(160,80,32)
+        print('PASS: GNOME second-monitor crop, explicit/interactive selection and fullscreen placement',flush=True)
+
 
     if '--clipboard' in sys.argv:
         copied=subprocess.run([str(binary),'full','--clipboard'],env=env,capture_output=True,timeout=20)
@@ -265,7 +307,7 @@ try:
                 assert all(abs(a-b)<=tolerance for a,b in zip(pixel,(32,64,96))),pixel
             receiver.destroy()
             while context.pending():context.iteration(False)
-        read_native_clipboard(1024,768,(200,300))
+        read_native_clipboard(*desktop_size,(200,300))
         print('PASS: clipboard survives capture exit and crosses Xwayland into a native Wayland client',flush=True)
         editor=subprocess.Popen([str(binary),'gui','--region','80x60+200+300'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
         processes.append(editor)
@@ -275,6 +317,8 @@ try:
             time.sleep(.1)
         evaluate("global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot').meta_window.activate(global.get_current_time())")
         time.sleep(.3)
+        if '--multi-monitor' in sys.argv:
+            key(49);time.sleep(.3)
         evaluate('global.flameshotTest.key(65507,true)')
         key(99)
         evaluate('global.flameshotTest.key(65507,false)')
@@ -286,7 +330,7 @@ try:
         config.write_text(config.read_text()+'useJpgForClipboard=true\n')
         copied=subprocess.run([str(binary),'full','--clipboard'],env=env,capture_output=True,timeout=20)
         assert copied.returncode==0 and not copied.stdout,copied.stderr.decode()
-        read_native_clipboard(1024,768,(200,300),tolerance=2,mime='image/jpeg')
+        read_native_clipboard(*desktop_size,(200,300),tolerance=2,mime='image/jpeg')
         text='剪贴板 αβ\n第二行'
         call('org.flameshot.Flameshot','/','org.flameshot.Flameshot.attachTextToClipboard','(ss)',(text,''))
         read_native_clipboard(text=text,mime=None)

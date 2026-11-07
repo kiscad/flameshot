@@ -76,7 +76,9 @@ processes exit. The basic no-Xwayland mode suppresses IBus startup because the i
 crashes in that fixture; it is not an input-method test. Clipboard mode uses real
 IBus, the default renderer and a test-only acknowledgement
 of the otherwise absent systemd X11 session-services target. It does not modify the
-compositor clipboard bridge. IME and multi-monitor GNOME acceptance remain separate
+compositor clipboard bridge. Add `--multi-monitor` for a 1024x768 plus 640x480 virtual desktop, including
+second-output pixel checks and explicit/interactive editor placement. The flags can
+be combined. GNOME IME, mixed-scale and negative-origin acceptance remain separate
 checks; this fixture is not part of the hosted CI job yet.
 
 Desktop tests create private display/bus sessions and isolated XDG directories.
