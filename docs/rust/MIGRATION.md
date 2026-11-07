@@ -1849,3 +1849,27 @@ Info, Escape and clipboard persistence, and the headless Sway regression suite.
 The About clipboard interaction itself was exercised on X11; this does not establish
 native host tray rendering, complete translation coverage or GNOME/KDE acceptance.
 Open Save Path and monitor-selection tray actions remain in the compatibility audit.
+
+### Open Save Path tray action
+
+Restored the translated tray action through a hidden owned child command. Each
+activation reloads settings, so a changed savePath takes effect without restarting
+the daemon. An unset/empty savePath remains a no-op, matching the C++ action.
+Existing directories are dispatched to the desktop's default handler through GIO;
+relative paths are made absolute before launch to prevent option/URI interpretation.
+The launcher shares the bounded process wait used by Open With. The external file
+manager is independent of the Flameshot window/process registry. Missing directories
+produce a diagnostic and are not created automatically.
+
+A real GIO integration test installs a private directory MIME handler and verifies
+single-argument delivery of Unicode, spaces, shell metacharacters and leading-dash
+relative paths, unset configuration, and a missing directory. The private D-Bus tray
+test clicks the actual menu action after changing savePath while the daemon is
+running, with an isolated launcher recording the received arguments. English and
+Chinese menu labels and hidden public-help behavior are checked as well.
+
+Validation passed: all-feature workspace tests and all-target Clippy, formatting,
+and all-feature/no-default-feature private D-Bus tests plus real GIO dispatch tests.
+Existing package manifests already supply GIO. This establishes native desktop
+dispatch; sandbox OpenURI/AppChooser portal integration and installed Flatpak/Snap
+acceptance remain separate unfinished gates. Monitor-selection tray actions remain.

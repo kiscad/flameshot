@@ -43,10 +43,27 @@ fn from_paths(paths: Vec<PathBuf>) -> Vec<Application> {
 /// GIO performs Desktop Entry field-code expansion, D-Bus activation and terminal
 /// dispatch using the desktop's standard application launcher. No shell is used.
 pub fn launch(app: &Application, file: &Path) -> Result<()> {
-    let mut child = Command::new("gio")
-        .arg("launch")
-        .arg(&app.desktop_file)
-        .arg(file)
+    run_launcher(
+        Command::new("gio")
+            .arg("launch")
+            .arg(&app.desktop_file)
+            .arg(file),
+    )
+}
+/// Open a local directory with the desktop's configured file manager. Resolve
+/// relative paths before dispatch so names cannot be interpreted as URI schemes
+/// or command options. The external file manager is not owned by Flameshot.
+pub fn open_directory(directory: &Path) -> Result<()> {
+    let directory = std::path::absolute(directory)?;
+    ensure!(
+        directory.is_dir(),
+        "Save directory does not exist: {}",
+        directory.display()
+    );
+    run_launcher(Command::new("gio").arg("open").arg(directory))
+}
+fn run_launcher(command: &mut Command) -> Result<()> {
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

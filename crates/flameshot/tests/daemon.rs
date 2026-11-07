@@ -91,8 +91,19 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         "[General]\ncheckForUpdates=false\nshowDesktopNotification=false\n",
     )
     .unwrap();
+    // Keep tray dispatch isolated from the user's file manager and MIME setup.
+    let launcher_dir = temp.path().join("launchers");
+    std::fs::create_dir(&launcher_dir).unwrap();
+    let receipt = temp.path().join("opened-directory");
+    let gio = launcher_dir.join("gio");
+    std::fs::write(&gio, format!(
+        "#!/usr/bin/python3\nimport pathlib,sys\np=pathlib.Path({:?})\np.with_suffix('.tmp').write_text('\\n'.join(sys.argv[1:]))\np.with_suffix('.tmp').replace(p)\n", receipt.to_str().unwrap()
+    )).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&gio, std::fs::Permissions::from_mode(0o700)).unwrap();
     let mut daemon = ChildGuard(
         Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("PATH", &launcher_dir)
             .env("XDG_CONFIG_HOME", temp.path())
             .env("LANG", "C")
             .env("LC_ALL", "C")
@@ -199,6 +210,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         .unwrap();
     let mut labels = Vec::new();
     let mut quit = None;
+    let mut open_save = None;
     for child in children {
         let structure = Structure::try_from(child).unwrap();
         let mut fields = structure.into_fields();
@@ -206,6 +218,9 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         let properties: HashMap<String, OwnedValue> = fields.remove(0).downcast().unwrap();
         if let Some(label) = properties.get("label") {
             let label = <&str>::try_from(label).unwrap().to_string();
+            if label == "_Open Save Path" {
+                open_save = Some(id);
+            }
             if label == "_Quit" {
                 quit = Some(id);
             }
@@ -215,7 +230,35 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     assert!(labels.contains(&"_Take Screenshot".into()));
     assert!(labels.contains(&"_Configuration".into()));
     assert!(labels.contains(&"_About".into()));
+    assert!(labels.contains(&"_Open Save Path".into()));
     assert!(labels.contains(&"_Open Launcher".into()));
+    let saved = temp.path().join("截图 saved $(literal)");
+    std::fs::create_dir(&saved).unwrap();
+    std::fs::write(
+        temp.path().join("flameshot/flameshot.ini"),
+        format!(
+            "[General]\ncheckForUpdates=false\nshowDesktopNotification=false\nsavePath={}\n",
+            saved.display()
+        ),
+    )
+    .unwrap();
+    menu.call::<_, _, ()>(
+        "Event",
+        &(open_save.unwrap(), "clicked", Value::from(0_i32), 0_u32),
+    )
+    .await
+    .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !receipt.exists() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(&receipt).unwrap(),
+        format!("open\n{}", saved.display())
+    );
     menu.call::<_, _, ()>(
         "Event",
         &(quit.unwrap(), "clicked", Value::from(0_i32), 0_u32),
@@ -299,6 +342,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
             "打开启动器(_O)",
             "配置(_C)",
             "关于(_A)",
+            "打开保存路径(_O)",
             "退出(_Q)",
         ] {
             assert!(labels.iter().any(|label| label == expected), "{labels:?}");

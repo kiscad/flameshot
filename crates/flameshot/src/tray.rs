@@ -69,6 +69,12 @@ impl ksni::Tray for Tray {
                 ..Default::default()
             }
             .into(),
+            StandardItem {
+                label: crate::i18n::dbus_menu_label("TrayIcon", "&Open Save Path"),
+                activate: Box::new(|tray: &mut Self| tray.launch("internal-open-save-path")),
+                ..Default::default()
+            }
+            .into(),
             #[cfg(feature = "imgur")]
             StandardItem {
                 label: crate::i18n::dbus_menu_label("TrayIcon", "&Latest Uploads"),

@@ -81,6 +81,8 @@ enum Command {
     InternalPin,
     #[command(hide = true)]
     InternalAbout,
+    #[command(hide = true)]
+    InternalOpenSavePath,
     /// Capture a monitor (defaults to the monitor containing the pointer on X11).
     Screen {
         #[arg(long)]
@@ -198,6 +200,12 @@ async fn run(cli: Cli) -> Result<()> {
     #[cfg(feature = "update-check")]
     if matches!(command, Command::Updates) {
         return updates_ui::show();
+    }
+    if matches!(command, Command::InternalOpenSavePath) {
+        if let Some(directory) = settings::Settings::load()?.save_path {
+            flameshot_platform::applications::open_directory(&directory)?;
+        }
+        return Ok(());
     }
     if matches!(command, Command::InternalAbout) {
         return about::show();
@@ -357,6 +365,7 @@ async fn run(cli: Cli) -> Result<()> {
         #[cfg(feature = "imgur")]
         Command::History => unreachable!(),
         Command::InternalPin
+        | Command::InternalOpenSavePath
         | Command::InternalAbout
         | Command::Config { .. }
         | Command::Launcher => unreachable!(),
