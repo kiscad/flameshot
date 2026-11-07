@@ -1086,6 +1086,7 @@ dependencies = [
  "tokio",
  "url",
  "wayland-client",
+ "wayland-protocols-plasma",
  "wayland-protocols-wlr",
  "wl-clipboard-rs",
  "x11rb",

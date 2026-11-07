@@ -325,3 +325,6 @@ fcitx5-chinese-addons). It uses private profiles and disables Cloud Pinyin.
 The Sway `--ime` option runs the real Fcitx Wayland Pinyin engine with DISPLAY
 unset and Xwayland disabled, including composition cancellation and text copying.
 It requires the same Pinyin packages as the X11 IME fixture.
+
+For isolated KWin 5 portal/editor testing and its runtime setup, see
+[KDE-VALIDATION.md](KDE-VALIDATION.md).

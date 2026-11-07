@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin and headless GNOME capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE clipboard/IME/mixed-DPI acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2544,3 +2544,24 @@ These are local results; hosted CI and the remaining CLI behavior audit are not
 closed. The existing parser-status discrepancy remains: legacy parse rejection can
 return zero through main.cpp's finish label, while Clap rejects arguments nonzero.
 No blanket exit-status change was made during this verification pass.
+
+### Real KDE portal and native Wayland editor validation
+
+Added a guarded KWin input helper using the already-locked Plasma Wayland protocol
+crate as a test-only dependency, plus a private headless KWin fixture. In a disposable
+Ubuntu container, real KDE portal full and explicit-monitor screenshots match
+1024x768/background pixels; the native Wayland editor exports an accepted 80x60
+region; pending-request cancellation returns 2 with empty stdout. No host display,
+bus, XDG data or GPU device was shared. Details, versions, evidence limits and
+minimal-container setup are in KDE-VALIDATION.md.
+
+Environment issues were resolved inside the container: remove the unusable KWin
+file capability, install its separate virtual backend, use software OpenGL rather
+than QPainter, and provide the normal Plasma QML/theme/package components. The input
+helper is granted its interface through a private desktop entry, without disabling
+KWin interface checks. Final cleanup left no test desktop processes. Helper build,
+all-feature all-target Clippy, formatting, Python syntax and diff checks pass.
+
+This adds actual KDE 5 evidence to the acceptance matrix; it does not claim KDE 6,
+clipboard/IME/mixed-DPI acceptance or a complete Plasma desktop session. Cancellation
+can occur at the portal consent stage. Hosted execution remains unverified.

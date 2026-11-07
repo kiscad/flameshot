@@ -40,4 +40,5 @@ freedesktop-desktop-entry = { version = "0.8.4", default-features = false }
 workspace = true
 
 [dev-dependencies]
+wayland-protocols-plasma = { version = "0.3", features = ["client"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
