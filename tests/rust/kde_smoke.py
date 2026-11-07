@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER
+"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER [--clipboard]
 Requires KWin 5, KDE portal, Qt Wayland, PyQt5, Pillow and private-session tools.
 """
 import os
@@ -29,7 +29,7 @@ if '--inside' not in sys.argv:
         env=os.environ.copy()
         for key in ['DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','DBUS_SYSTEM_BUS_ADDRESS','SESSION_MANAGER']:env.pop(key,None)
         env.update(XDG_RUNTIME_DIR=str(root/'runtime'),XDG_CONFIG_HOME=str(root/'config'),XDG_DATA_HOME=str(root/'data'),XDG_CACHE_HOME=str(root/'cache'),TMPDIR=str(root/'tmp'),XDG_CURRENT_DESKTOP='KDE',XDG_SESSION_TYPE='wayland',QT_QPA_PLATFORM='wayland',LIBGL_ALWAYS_SOFTWARE='1',KWIN_COMPOSE='O2')
-        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),'--inside',str(root)],env=env,start_new_session=True)
+        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),*(['--clipboard'] if '--clipboard' in sys.argv else []),'--inside',str(root)],env=env,start_new_session=True)
         try:
             status=session.wait(timeout=100)
         except subprocess.TimeoutExpired:
@@ -96,6 +96,96 @@ try:
             artifacts=Path(os.environ['FLAMESHOT_TEST_ARTIFACT_DIR']);artifacts.mkdir(parents=True,exist_ok=True)
             (artifacts/('kde-'+command+'.png')).write_bytes(data)
         print('PASS: KWin/KDE real portal',command,size,'and background pixels',flush=True)
+    if '--clipboard' in sys.argv:
+        daemon=start('flameshot-daemon',[str(binary)])
+        wait_for(lambda:owned('org.flameshot.Flameshot'))
+        def copy_capture(name,args):
+            capture=start(name,[str(binary),*args],stdout=subprocess.PIPE)
+            deadline=time.monotonic()+20
+            while True:
+                try:
+                    out,_=capture.communicate(timeout=.4)
+                    break
+                except subprocess.TimeoutExpired:
+                    assert time.monotonic()<deadline,'Clipboard capture timed out'
+                    key(28)
+            assert capture.returncode==0 and not out,(capture.returncode,out[:100])
+        def read_clipboard(mime):
+            destination=root/'clipboard-received'
+            destination.unlink(missing_ok=True)
+            code="""import sys
+from pathlib import Path
+from PyQt5.QtWidgets import QApplication,QWidget
+from PyQt5.QtCore import QTimer
+app=QApplication([])
+assert app.platformName()=='wayland',app.platformName()
+w=QWidget();w.setWindowTitle('Private Wayland clipboard receiver');w.resize(240,120);w.show()
+clipboard=app.clipboard()
+def read():
+    data=clipboard.mimeData()
+    if data is None:return
+    if sys.argv[1]=='text':
+        if not data.hasText():return
+        payload=data.text().encode('utf-8')
+    else:
+        if not data.hasFormat(sys.argv[1]):return
+        payload=bytes(data.data(sys.argv[1]))
+    if payload:
+        Path(sys.argv[2]).write_bytes(payload)
+        app.quit()
+timer=QTimer();timer.timeout.connect(read);timer.start(100)
+QTimer.singleShot(8000,lambda:app.exit(2))
+sys.exit(app.exec_())
+"""
+            receiver=start('clipboard-receiver',['/usr/bin/python3','-c',code,mime,str(destination)])
+            assert receiver.wait(timeout=12)==0,'Native Qt receiver did not obtain clipboard data'
+            return destination.read_bytes()
+        for name,args,size,mime,tolerance in [
+            ('clipboard-full',['full','--clipboard'],(1024,768),'image/png',0),
+            ('clipboard-editor',['gui','--region','80x60+500+450','--clipboard'],(80,60),'image/png',0),
+            ('clipboard-jpeg',['full','--clipboard'],(1024,768),'image/jpeg',2),
+        ]:
+            if mime=='image/jpeg':
+                with (root/'config/flameshot/flameshot.ini').open('a') as config:config.write('useJpgForClipboard=true\n')
+            copy_capture(name,args)
+            payload=read_clipboard(mime)
+            decoded=Image.open(io.BytesIO(payload))
+            assert decoded.format==('JPEG' if mime=='image/jpeg' else 'PNG'),decoded.format
+            image=decoded.convert('RGB')
+            assert image.size==size,image.size
+            assert all(abs(a-b)<=tolerance for a,b in zip(image.getpixel((20,20)),(32,64,96))),image.getpixel((20,20))
+            print('PASS: KWin native Wayland receiver reads',mime,size,'after capture process exits',flush=True)
+        text='KDE 剪贴板 — Unicode 🦀'
+        result=subprocess.run(['gdbus','call','--session','--dest','org.flameshot.Flameshot','--object-path','/','--method','org.flameshot.Flameshot.attachTextToClipboard',text,''],env=env,capture_output=True,timeout=10)
+        assert result.returncode==0,result.stderr
+        assert read_clipboard('text').decode('utf-8')==text
+        print('PASS: KWin native Wayland clipboard preserves Unicode text',flush=True)
+        with (root/'config/flameshot/flameshot.ini').open('a') as config:config.write('autoCloseIdleDaemon=true\n')
+        time.sleep(1.5)
+        assert daemon.poll() is None,'Daemon discarded clipboard ownership while idle'
+        replaced=root/'clipboard-replaced'
+        writer_code="""import sys
+from pathlib import Path
+from PyQt5.QtWidgets import QApplication,QWidget
+app=QApplication([])
+assert app.platformName()=='wayland'
+class Writer(QWidget):
+    def keyPressEvent(self,event):
+        app.clipboard().setText('Replacement from native Wayland receiver')
+        Path(sys.argv[1]).touch()
+w=Writer();w.resize(240,120);w.show()
+app.exec_()
+"""
+        start('clipboard-writer',['/usr/bin/python3','-c',writer_code,str(replaced)])
+        time.sleep(.5)
+        key(57) # A real private-seat key event supplies a selection serial.
+        wait_for(replaced.exists)
+        assert daemon.wait(timeout=8)==0,'Idle daemon did not exit after ownership transfer'
+        assert not owned('org.flameshot.Flameshot')
+        assert read_clipboard('text').decode('utf-8')=='Replacement from native Wayland receiver'
+        print('PASS: KWin clipboard replacement releases the Rust owner and allows idle daemon exit',flush=True)
+
+
 finally:
     for process in reversed(processes):
         if process.poll() is None:

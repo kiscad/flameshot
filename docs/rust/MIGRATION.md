@@ -22,7 +22,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway and headless GNOME capture cases pass; broader compositor acceptance remains |
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; remaining object-editing parity pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
-| Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway and the GNOME Xwayland bridge; X11 INCR tested; other compositor paths remain |
+| Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, configuration flags, completions and manual implemented/tested; final syntax/exit-code and shell acceptance remain |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE clipboard/IME/mixed-DPI acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE IME/mixed-DPI acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2565,3 +2565,19 @@ all-feature all-target Clippy, formatting, Python syntax and diff checks pass.
 This adds actual KDE 5 evidence to the acceptance matrix; it does not claim KDE 6,
 clipboard/IME/mixed-DPI acceptance or a complete Plasma desktop session. Cancellation
 can occur at the portal consent stage. Hosted execution remains unverified.
+
+### Native KWin clipboard ownership and transfer
+
+Extended the private KDE fixture with --clipboard. A tracked daemon owns the private
+session clipboard; independent Qt clients explicitly verify they use Wayland.
+After the capture/editor process exits, receivers validate PNG/JPEG MIME, actual
+encoding, dimensions and pixels, plus exact Unicode text sent through the legacy
+D-Bus method. No DISPLAY or Xwayland fallback is available in the fixture.
+
+The test then enables idle auto-close, verifies the Rust owner remains alive while
+holding the selection, and replaces it using a separate native client and private-seat
+keyboard event. The daemon releases its bus name and exits with status zero; another
+reader obtains the replacement text. All cases passed against KWin 5.27.11, with
+no desktop processes left in the disposable container. Python syntax and diff checks
+pass. KDE-VALIDATION.md records reproduction and limits; IME/mixed-DPI, other KWin
+versions and installed sandbox behavior remain unverified.

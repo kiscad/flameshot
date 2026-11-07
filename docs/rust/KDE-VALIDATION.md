@@ -27,6 +27,28 @@ Artifacts are local under `target/kde-artifacts` and `target/kde-smoke.log`.
 The prepared test-only environment was cached as `flameshot-test-kde:5.27`.
 It contains synthetic fixtures and is not a release image.
 
+## Native Wayland clipboard follow-up
+
+The `--clipboard` extension passed in another disposable container from the cached
+KDE environment. It starts a tracked Rust daemon on the private bus and uses an
+independent PyQt5 client that asserts its platform is `wayland`. DISPLAY remains
+absent and no Xwayland server is enabled.
+
+- Full-capture PNG and 80×60 editor PNG transfer after the capture process exits.
+- JPEG MIME transfer, actual JPEG decoding, dimensions and pixel tolerance.
+- Exact Unicode text including Chinese, punctuation and an emoji over the legacy
+  D-Bus clipboard method and native Wayland selection.
+- With autoCloseIdleDaemon enabled, the daemon stays alive while owning data.
+  A separate Qt Wayland writer uses a private-seat key event to replace the
+  selection; the Rust daemon then exits successfully and releases its bus name.
+  Another native reader verifies the replacement text remains available.
+
+This verifies native KDE 5 ownership and handoff, including capture-process exit;
+it does not exercise the GNOME Xwayland bridge or an installed sandbox. Logs are
+in `target/kde-clipboard.log` and `target/kde-clipboard-artifacts`. No test processes
+remained after cleanup. Use the latest checkout's script when reusing the cached
+environment image, which is a dependency cache rather than the authoritative test.
+
 ## Reproduce
 
 Build the application and guarded input helper:
@@ -39,7 +61,7 @@ cargo build --locked -p flameshot-platform --example kde_input
 On a complete KDE 5 test system with its normal runtime packages:
 
 ```sh
-python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input
+python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input --clipboard
 ```
 
 The script creates private XDG trees, a private session bus, a virtual 1024×768
@@ -75,11 +97,11 @@ that container:
 QML2_IMPORT_PATH=/validation/workspace-extracted/usr/lib/x86_64-linux-gnu/qt5/qml \
 QT_PLUGIN_PATH=/validation/workspace-extracted/usr/lib/x86_64-linux-gnu/qt5/plugins \
 FLAMESHOT_TEST_ARTIFACT_DIR=/validation/kde-artifacts \
-python3 /validation/kde_smoke.py /usr/bin/flameshot /validation/kde_input
+python3 /validation/kde_smoke.py /usr/bin/flameshot /validation/kde_input --clipboard
 ```
 
 No real terminal, browser, uploader or user desktop is invoked. Remaining KDE
-coverage includes clipboard ownership, native IME, mixed-scale/negative-origin
+coverage includes native IME, mixed-scale/negative-origin
 outputs, hotplug and installed sandbox behavior. The plain `screen` command cannot
 infer the pointer's monitor on this Wayland backend; the existing diagnostic asks
 for `--number`. Hosted CI has not run this fixture.
