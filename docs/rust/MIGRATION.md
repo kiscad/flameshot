@@ -3027,3 +3027,32 @@ fixtures used private displays, D-Bus sessions and XDG directories. Enabled-grid
 validation is currently X11; the Wayland regression does not establish enabled-grid
 behavior at every scale or monitor origin. Hosted CI and final migration acceptance
 remain pending.
+
+### Validate enabled grids on native scaled Wayland outputs
+
+The Sway fixture now exercises enabled-grid rendering and drawing at 1.5x and 2x,
+with monitor origins -853 and -640. It compares complete exported PNG pixels against
+independently positioned reference strokes, checks that an unsnapped stroke differs,
+and verifies the same result when entering through the monitor chooser. A preview
+patch away from annotations verifies the grid is visible while absent from export.
+The existing private virtual-pointer helper now accepts an explicit desktop extent
+and separate press/release commands for accurate multi-monitor drags.
+
+The fixture waits for virtual-keyboard focus and parks the pointer at the same
+position before each capture, so portal cursor pixels cannot masquerade as a drawing
+difference. It accounts for the side panel moving upward on a shorter logical output.
+
+Concurrent renderer runs exposed a backend fixture limitation: portal-wlr 0.7.1
+[hard-codes `/tmp/out.png`](https://github.com/emersion/xdg-desktop-portal-wlr/blob/v0.7.1/src/screenshot/screenshot.c),
+so private buses alone do not isolate screenshot files. A per-user advisory lock now
+serializes these tests and remains held until fixture cleanup completes.
+The backend and application are unchanged; this is test coordination, not a production
+portal concurrency fix.
+
+Validation passed: complete Sway runs using the default renderer with Fcitx Pinyin
+and the OpenGL fallback, including all new grid scenarios. A simultaneous launch
+verified one runner waiting on the lock while the other ran; both then completed
+successfully in sequence. The virtual-pointer example build and focused Clippy,
+formatting and diff checks pass. This extends native grid coverage to Sway at the
+specified scales/origins, not every compositor or output arrangement. Hosted CI
+and the remaining migration acceptance gates are still pending.

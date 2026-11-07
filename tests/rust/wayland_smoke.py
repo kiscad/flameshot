@@ -20,6 +20,12 @@ artifact_dir=Path(os.environ.get('FLAMESHOT_TEST_ARTIFACT_DIR',str(binary.parent
 artifact_dir.mkdir(parents=True,exist_ok=True)
 helper_dir=Path(os.environ.get('FLAMESHOT_TEST_HELPER_DIR',str(binary.parent/'examples')))
 if '--inside' not in sys.argv:
+    # portal-wlr 0.7.1 writes every capture to /tmp/out.png even on private
+    # buses. Serialize this fixture across renderer variants and callers.
+    import fcntl
+    portal_lock=os.open(f'/tmp/flameshot-wayland-smoke-{os.getuid()}.lock',os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+    assert os.fstat(portal_lock).st_uid==os.getuid(),'Unexpected portal test lock owner'
+    fcntl.flock(portal_lock,fcntl.LOCK_EX)
     with tempfile.TemporaryDirectory(prefix='flameshot-wayland-') as directory:
         directory=Path(directory)
         runtime=directory/'runtime';runtime.mkdir(mode=0o700)
@@ -38,7 +44,7 @@ if '--inside' not in sys.argv:
         env['LD_LIBRARY_PATH']=str(root/'usr/lib/x86_64-linux-gnu')+':'+env.get('LD_LIBRARY_PATH','')
         env['PATH']=str(root/'usr/bin')+':'+env['PATH']
         if '--ime' in sys.argv:env['FLAMESHOT_TEST_WAYLAND_IME']='1'
-        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(root),str(binary),'--inside',str(directory)],env=env,timeout=120)
+        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(root),str(binary),'--inside',str(directory)],env=env,timeout=180,pass_fds=(portal_lock,))
         if result.returncode:
             for log in directory.glob('*.log'):print(log.name,log.read_text(errors='replace')[-5000:],file=sys.stderr)
         sys.exit(result.returncode)
@@ -321,6 +327,65 @@ try:
         red,green,blue=pixels.getpixel((0 if index==0 else pixels.width-1,20))
         assert (blue-red>30 if index==0 else red-blue>30),(index,'wrong monitor at shared boundary')
     print('PASS: fractional-scale negative-origin crops have no overlapping neighbor columns',flush=True)
+
+    # Compare exported annotations against independently positioned reference
+    # strokes on native negative-origin outputs at fractional and integer scale.
+    data=struct.pack('>II',127,11)+b'QList<int>\0'+struct.pack('>I',0)
+    variant='@Variant('+''.join(chr(92)+'x'+format(byte,'02x') for byte in data)+')'
+    capture_config.write_text('[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\nshowSelectionGeometry=0\nbuttons='+variant+'\n')
+    for output_scale,origin,width in [(1.5,-853,853),(2,-640,640)]:
+        result=call(str(root/'usr/bin/swaymsg'),f'output HEADLESS-2 scale {output_scale} position {origin} 0')
+        assert result.returncode==0,result.stderr.decode()
+        time.sleep(.4)
+        def grid_point(x,y):
+            point(f'move-in {x} {y} {1024+width} 768')
+        def grid_click(x,y):
+            grid_point(x,y);point('left');time.sleep(.2)
+        def grid_key(*args):
+            result=call(str(root/'usr/bin/wtype'),'-s','200',*args)
+            assert result.returncode==0,result.stderr.decode()
+            time.sleep(.2)
+        exports=[]
+        for mode in ['snapped','reference','unsnapped','chooser']:
+            grid_point(610,100);time.sleep(.4) # Keep portal cursor pixels identical in each source capture.
+            editor=subprocess.Popen([str(binary),'gui','--region','all' if mode=='chooser' else 'screen1','--raw'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE);processes.append(editor)
+            if mode=='chooser':
+                wait_for(lambda:editor_output() is not None,20)
+                call(str(root/'usr/bin/swaymsg'),f'[pid={editor.pid}] focus')
+                grid_key('2')
+            wait_for(lambda:editor_output()=='HEADLESS-2',20)
+            call(str(root/'usr/bin/swaymsg'),f'[pid={editor.pid}] focus');time.sleep(.4)
+            if mode in ('snapped','chooser'):
+                # egui shifts the panel up on the 640x480 logical output.
+                grid_click(210,85);grid_click(34,300 if output_scale==1.5 else 200)
+                preview=call(str(root/'usr/bin/grim'),'-o','HEADLESS-2','-')
+                assert preview.returncode==0,preview.stderr.decode()
+                (artifact_dir/f'rust-wayland-grid-{output_scale}-{mode}-preview.png').write_bytes(preview.stdout)
+            grid_key('d')
+            x1,y1,x2,y2=383,363,573,423
+            if mode=='reference':
+                x1=round((x1+origin)/10)*10-origin;y1=round(y1/10)*10
+                x2=round((x2+origin)/10)*10-origin;y2=round(y2/10)*10
+            grid_point(x1,y1);point('down');time.sleep(.15)
+            grid_point(x2,y2);time.sleep(.2);point('up');time.sleep(.3)
+            grid_key('-k','Return')
+            after=call(str(root/'usr/bin/grim'),'-o','HEADLESS-2','-')
+            if after.returncode==0:(artifact_dir/f'rust-wayland-grid-{output_scale}-{mode}-after.png').write_bytes(after.stdout)
+            out,err=editor.communicate(timeout=15)
+            assert editor.returncode==0,err.decode()
+            pixels=Image.open(BytesIO(out)).convert('RGB');assert pixels.size==(1280,960),pixels.size
+            (artifact_dir/f'rust-wayland-grid-{output_scale}-{mode}.png').write_bytes(out)
+            exports.append(pixels)
+            time.sleep(.4)
+        assert exports[0].tobytes()==exports[1].tobytes(),(output_scale,'Grid does not snap to global logical coordinates or leaked into export')
+        assert exports[0].tobytes()!=exports[2].tobytes(),(output_scale,'Grid snapping had no effect')
+        assert exports[0].tobytes()==exports[3].tobytes(),(output_scale,'Monitor chooser changed grid mapping')
+        from PIL import ImageChops
+        overlay=Image.open(artifact_dir/f'rust-wayland-grid-{output_scale}-snapped-preview.png').convert('RGB')
+        patch=tuple(round(value*output_scale) for value in (400,330,600,350))
+        assert ImageChops.difference(overlay.crop(patch),exports[0].crop(patch)).getbbox(),(output_scale,'Grid overlay missing outside annotations')
+    print('PASS: native Wayland grid snapping and grid-free export at 1.5x/2x negative-origin outputs',flush=True)
+
 
 
 finally:

@@ -43,6 +43,13 @@ fn main() -> anyhow::Result<()> {
         let words: Vec<_> = line.split_whitespace().collect();
         match words.as_slice() {
             ["move", x, y] => pointer.motion_absolute(1, x.parse()?, y.parse()?, 1024, 768),
+            ["move-in", x, y, width, height] => {
+                let (width, height): (u32, u32) = (width.parse()?, height.parse()?);
+                anyhow::ensure!(width > 0 && height > 0, "Pointer extent must be positive");
+                pointer.motion_absolute(1, x.parse()?, y.parse()?, width, height);
+            }
+            ["down"] => pointer.button(4, 272, wl_pointer::ButtonState::Pressed),
+            ["up"] => pointer.button(5, 272, wl_pointer::ButtonState::Released),
             ["right"] => {
                 pointer.button(2, 273, wl_pointer::ButtonState::Pressed);
                 pointer.frame();
