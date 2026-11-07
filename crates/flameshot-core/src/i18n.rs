@@ -127,7 +127,7 @@ mod tests {
                 .iter()
                 .filter(|(context, _, _)| *context == "RustConfig")
                 .collect();
-            assert_eq!(messages.len(), 79, "{locale}");
+            assert_eq!(messages.len(), 81, "{locale}");
             for (_, source, translated) in messages {
                 assert_ne!(source, translated, "{locale}: {source}");
                 assert_eq!(

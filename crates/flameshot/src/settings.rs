@@ -182,6 +182,7 @@ impl Settings {
     pub fn update_form(
         values: &[(&str, String)],
         shortcuts: &std::collections::BTreeMap<String, String>,
+        check: impl FnOnce(&Self, &Self) -> Result<()>,
     ) -> Result<()> {
         crate::shortcuts::validate_overrides(shortcuts).map_err(anyhow::Error::msg)?;
         let path = dirs::config_dir()
@@ -191,7 +192,11 @@ impl Settings {
             .iter()
             .map(|(key, value)| (key.as_str(), value.clone()))
             .collect();
-        Self::update_sections_at(&path, &[("General", values), ("Shortcuts", &shortcuts)])
+        Self::update_sections_checked(
+            &path,
+            &[("General", values), ("Shortcuts", &shortcuts)],
+            |source, merged| check(&Self::parse(source)?, merged),
+        )
     }
     fn update_at(path: &std::path::Path, values: &[(&str, String)]) -> Result<()> {
         Self::update_section_at(path, "General", values)
@@ -206,6 +211,13 @@ impl Settings {
     fn update_sections_at(
         path: &std::path::Path,
         sections: &[(&str, &[(&str, String)])],
+    ) -> Result<()> {
+        Self::update_sections_checked(path, sections, |_, _| Ok(()))
+    }
+    fn update_sections_checked(
+        path: &std::path::Path,
+        sections: &[(&str, &[(&str, String)])],
+        check: impl FnOnce(&str, &Self) -> Result<()>,
     ) -> Result<()> {
         use std::io::Write;
         let parent = path.parent().context("Invalid configuration path")?;
@@ -233,7 +245,7 @@ impl Settings {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(e.into()),
         };
-        let mut ini = IniDocument::parse(source);
+        let mut ini = IniDocument::parse(source.clone());
         for &(section, values) in sections {
             for (key, value) in values {
                 if section == "General" && *key == "buttons" {
@@ -271,6 +283,9 @@ impl Settings {
         {
             crate::shortcuts::validate_overrides(&merged.shortcuts).map_err(anyhow::Error::msg)?;
         }
+        // Keep comparison and publication in the same cooperating-writer lock.
+        // Plain updates need not parse the old source, so they can still repair it.
+        check(&source, &merged)?;
         let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
         if let Ok(metadata) = std::fs::metadata(path) {
             temporary
@@ -494,6 +509,44 @@ pub fn default_palette(large: bool) -> Vec<Option<[u8; 4]>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn form_guard_runs_under_lock_and_rejection_preserves_entire_file() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("flameshot.ini");
+        let original =
+            "; keep\r\n[General]\r\nfilenamePattern=external\r\n[Shortcuts]\r\nTYPE_COPY=F9\r\n";
+        std::fs::write(&path, original).unwrap();
+        let general = [("filenamePattern", "draft".to_owned())];
+        let shortcuts = [("TYPE_COPY", "F10".to_owned())];
+        let result = Settings::update_sections_checked(
+            &path,
+            &[("General", &general), ("Shortcuts", &shortcuts)],
+            |source, merged| {
+                assert_eq!(source, original);
+                assert_eq!(merged.filename_pattern, "draft");
+                let lock = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(root.path().join("flameshot.ini.rust-lock"))?;
+                assert!(
+                    lock.try_lock().is_err(),
+                    "guard must run while the transaction lock is held"
+                );
+                anyhow::bail!("conflicting edit")
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        Settings::update_sections_checked(
+            &path,
+            &[("General", &general), ("Shortcuts", &shortcuts)],
+            |_, _| Ok(()),
+        )
+        .unwrap();
+        let loaded = Settings::parse(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(loaded.filename_pattern, "draft");
+        assert_eq!(loaded.shortcuts["TYPE_COPY"], "F10");
+    }
     #[test]
     fn form_updates_preserve_opaque_future_fields_and_shortcuts() {
         let root = tempfile::tempdir().unwrap();

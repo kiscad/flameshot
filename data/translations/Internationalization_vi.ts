@@ -3861,5 +3861,13 @@ Bạn có thể cần phải thoát khỏi dấu &apos;#&apos; như trong &apos;
         <source>Decrease size</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Discard edits and reload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings changed outside this window. Reload saved settings before saving.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

@@ -110,6 +110,7 @@ pub fn show() -> anyhow::Result<()> {
     )
     .map_err(|e| anyhow::anyhow!("Configuration window: {e}"))
 }
+#[derive(Clone)]
 struct Config {
     settings: Settings,
     initial_language: String,
@@ -124,6 +125,38 @@ struct Config {
     reload_error: Option<String>,
 }
 impl Config {
+    fn validate_external_changes(
+        &self,
+        current: &Settings,
+        proposed: &Settings,
+    ) -> anyhow::Result<()> {
+        let mut latest = self.clone();
+        latest.reload_saved(current.clone());
+        let mut desired = self.clone();
+        desired.reload_saved(proposed.clone());
+        let general_conflict = self.changes().iter().any(|(key, _)| {
+            latest.baseline.get(key) != self.baseline.get(key)
+                && latest.baseline.get(key) != desired.baseline.get(key)
+        });
+        let shortcut_conflict = self.shortcut_changes().keys().any(|key| {
+            let value = |map: &std::collections::BTreeMap<String, String>| {
+                map.get(key).cloned().unwrap_or_default()
+            };
+            !crate::shortcuts::equivalent(
+                &value(&latest.shortcut_baseline),
+                &value(&self.shortcut_baseline),
+            ) && !crate::shortcuts::equivalent(
+                &value(&latest.shortcut_baseline),
+                &value(&desired.shortcut_baseline),
+            )
+        });
+        anyhow::ensure!(
+            !general_conflict && !shortcut_conflict,
+            "{}",
+            tr("Settings changed outside this window. Reload saved settings before saving.")
+        );
+        Ok(())
+    }
     fn is_dirty(&self) -> bool {
         !self.changes().is_empty()
             || !self.shortcut_changes().is_empty()
@@ -569,8 +602,24 @@ impl eframe::App for Config {
                     });
                 }
             });
-            let save_requested = ui.button(tr("Save settings")).clicked();
-            if save_requested {
+            let (save_requested, reload_requested) = ui
+                .horizontal(|ui| {
+                    (
+                        ui.button(tr("Save settings")).clicked(),
+                        ui.button(tr("Discard edits and reload")).clicked(),
+                    )
+                })
+                .inner;
+            if reload_requested {
+                match Settings::load() {
+                    Ok(settings) => {
+                        self.reload_saved(settings);
+                        self.reload_error = None;
+                        self.status.clear();
+                    }
+                    Err(error) => self.reload_error = Some(error.to_string()),
+                }
+            } else if save_requested {
                 let values = self.changes();
                 let shortcuts = self.shortcut_changes();
                 let unchanged = values.is_empty()
@@ -582,7 +631,9 @@ impl eframe::App for Config {
                         if values.is_empty() && shortcuts.is_empty() {
                             Ok(())
                         } else {
-                            Settings::update_form(&values, &shortcuts)
+                            Settings::update_form(&values, &shortcuts, |current, proposed| {
+                                self.validate_external_changes(current, proposed)
+                            })
                         }
                     })
                     .map(|()| self.remember_file())
@@ -656,6 +707,42 @@ mod tests {
         };
         form.remember();
         form
+    }
+    #[test]
+    fn form_conflicts_preserve_drafts_and_allow_unrelated_or_matching_updates() {
+        let mut form = form();
+        form.settings.filename_pattern = "draft".into();
+        let mut current = Settings {
+            filename_pattern: "external".into(),
+            ..Settings::default()
+        };
+        let mut proposed = current.clone();
+        proposed.filename_pattern = "draft".into();
+        assert!(form.validate_external_changes(&current, &proposed).is_err());
+        assert_eq!(form.settings.filename_pattern, "draft");
+        current.filename_pattern = Settings::default().filename_pattern;
+        current.extension = "jpg".into();
+        assert!(form.validate_external_changes(&current, &proposed).is_ok());
+        current.filename_pattern = "draft".into();
+        assert!(form.validate_external_changes(&current, &proposed).is_ok());
+        form.settings
+            .shortcuts
+            .insert("TYPE_ACCEPT".into(), "F9".into());
+        current.shortcuts.insert("TYPE_ACCEPT".into(), "F10".into());
+        proposed.shortcuts.insert("TYPE_ACCEPT".into(), "F9".into());
+        assert!(form.validate_external_changes(&current, &proposed).is_err());
+        current.shortcuts.insert("TYPE_ACCEPT".into(), "F9".into());
+        assert!(form.validate_external_changes(&current, &proposed).is_ok());
+        form.settings
+            .shortcuts
+            .insert("TYPE_ACCEPT".into(), "Ctrl+F9".into());
+        current
+            .shortcuts
+            .insert("TYPE_ACCEPT".into(), "Control+F9".into());
+        proposed
+            .shortcuts
+            .insert("TYPE_ACCEPT".into(), "Ctrl+F9".into());
+        assert!(form.validate_external_changes(&current, &proposed).is_ok());
     }
     #[test]
     fn background_refresh_preserves_every_kind_of_unsaved_draft() {

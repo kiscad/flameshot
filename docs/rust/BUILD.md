@@ -41,6 +41,7 @@ FLAMESHOT_COMPLETION_TOOL_ROOT=/ scripts/check-rust.sh
 cargo build --locked -p flameshot --all-features
 cargo build --locked -p flameshot-platform --examples
 python3 tests/rust/desktop_smoke.py / target/debug/flameshot
+python3 tests/rust/config_conflict_smoke.py / target/debug/flameshot
 python3 tests/rust/localization_smoke.py / target/debug/flameshot
 python3 tests/rust/text_format_smoke.py / target/debug/flameshot
 python3 tests/rust/arrow_style_smoke.py / target/debug/flameshot

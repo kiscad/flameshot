@@ -3150,5 +3150,13 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
         <source>Decrease size</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Discard edits and reload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings changed outside this window. Reload saved settings before saving.</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 </TS>

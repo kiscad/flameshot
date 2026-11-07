@@ -117,6 +117,10 @@ fn parse(sequence: &str) -> Result<Vec<Chord>, String> {
     }
     Ok(chords)
 }
+pub(crate) fn equivalent(left: &str, right: &str) -> bool {
+    left == right || matches!((parse(left), parse(right)), (Ok(left), Ok(right)) if left == right)
+}
+
 struct Binding {
     name: String,
     chords: Vec<Chord>,

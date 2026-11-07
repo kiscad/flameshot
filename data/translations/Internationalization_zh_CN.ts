@@ -3942,5 +3942,13 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
         <source>Decrease size</source>
         <translation>减小尺寸</translation>
     </message>
+    <message>
+        <source>Discard edits and reload</source>
+        <translation>放弃修改并重新加载</translation>
+    </message>
+    <message>
+        <source>Settings changed outside this window. Reload saved settings before saving.</source>
+        <translation>设置已在其他地方更改，请重新加载已保存的设置后再保存。</translation>
+    </message>
 </context>
 </TS>

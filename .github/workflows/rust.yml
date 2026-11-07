@@ -57,6 +57,8 @@ jobs:
           cargo build --locked -p flameshot-platform --examples
       - name: Real X11 smoke
         run: python3 tests/rust/desktop_smoke.py / target/debug/flameshot
+      - name: Configuration conflict handling
+        run: python3 tests/rust/config_conflict_smoke.py / target/debug/flameshot
       - name: Simplified and traditional Chinese desktop UI
         run: python3 tests/rust/localization_smoke.py / target/debug/flameshot
       - name: Text formatting preview and export

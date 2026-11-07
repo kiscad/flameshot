@@ -26,7 +26,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, numeric/repetition/help rules, parse statuses and completions implemented/tested; final command/shell behavior audit remains |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
-| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures/atomic updates and idle-window reload tested; concurrent-edit/semantic gaps remain |
+| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures, atomic updates, idle reload and locked form conflict checks tested; remaining semantic audit pending |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
@@ -2825,3 +2825,35 @@ The export was inspected. All-feature workspace tests, all-feature all-target Cl
 formatting, Python syntax and diff checks pass. The fixture is listed in BUILD.md
 and Rust CI; hosted execution remains unverified. This closes selected-arrow style
 editing, not the remaining global configuration semantics/parity audit.
+
+### Detect conflicting configuration drafts under the write lock
+
+Configuration Save now compares changed fields against the last loaded baseline and
+the current/proposed settings while the existing persistent write lock is held. A
+same-field conflict rejects the entire General/Shortcuts transaction before publication,
+retaining both the external file and local draft. Unrelated external fields are merged;
+a current value already equal to the proposed value is accepted. Shortcut comparisons
+use parsed chords so equivalent Ctrl/Control spellings do not create false conflicts.
+Plain CLI/other updates retain their existing path, including the ability to repair
+invalid old values without first parsing the entire old document.
+
+An explicit “Discard edits and reload” action lets users adopt saved settings and
+reset the baseline. Read failures preserve the draft. The conflict message and action
+are registered in all 49 catalogs, with Simplified/Traditional Chinese translations.
+Startup desktop-entry handling remains its separate rollback-protected transaction.
+As with the existing lock, this coordinates cooperating Rust writers; it cannot make
+an uncooperative editor's writes participate in that protocol.
+
+Tests verify the guard runs under the lock, rejects without changing any INI bytes,
+allows successful atomic General/Shortcuts updates, preserves drafts and handles
+unrelated/same-value/chord-equivalent updates. The private Xvfb config_conflict_smoke.py
+edits a real form, modifies the same field through another CLI process, verifies the
+file and draft survive rejection, clicks Reload, then saves a new edit while preserving
+an unrelated external change and an unknown key. The fixture is added to BUILD.md
+and Rust CI; hosted execution is unverified.
+
+The complete Rust gate passed, followed by focused full/minimal-feature conflict
+checks including shortcut equivalence and all-feature Clippy. Full Xvfb desktop and
+Simplified/Traditional Chinese UI regressions passed. Catalog tests, formatting,
+Python syntax and diff checks passed. This closes same-field draft overwrite handling,
+not the remaining configuration fallback/live-capture semantics audit.
