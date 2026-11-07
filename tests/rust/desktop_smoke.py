@@ -452,10 +452,11 @@ print('PASS: capture lock is released after a killed editor')
         tool('mousemove','--window',window,'300','100')
         tool('click','--repeat','60','--delay','10','4')
         time.sleep(.4)
-        tool('mousemove','--window',window,'50','57')
+        language_offset=0 if b'updates' in help_text else 21
+        tool('mousemove','--window',window,'50',str(57-language_offset))
         tool('click','1')
         time.sleep(.2)
-        tool('mousemove','--window',window,'35','104')
+        tool('mousemove','--window',window,'35',str(104-language_offset))
         tool('click','1') # First catalog after Auto is ar.
         time.sleep(.2)
         tool('mousemove','--window',window,'300','300')

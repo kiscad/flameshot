@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak/Nix/Snap definitions migrated; sandbox/provider builds and clean-distro installs pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin and headless GNOME capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -2322,3 +2322,18 @@ were needed. Rust CI now requests this option, but hosted CI remains unrun. This
 establishes the tested native Wayland/Sway/Fcitx path; GNOME input-method integration,
 other engines, candidate-window placement and broad language coverage remain separate
 acceptance requirements.
+
+
+### Current Debian package clean-root installation
+
+Built the current vendored snapshot through the Debian recipe and installed the
+result in a new signed Ubuntu Base 24.04.5 filesystem, using APT to resolve declared
+runtime dependencies. Installed CLI checks, payload verification and the complete
+Xvfb desktop suite passed without Qt runtime packages. Purge/reinstall preserved
+user configuration and restored the verified package payload.
+
+The test container required an init process for orphan reaping. The desktop fixture
+now accounts for the absent update-check row in distro builds when selecting a
+language. DEBIAN-INSTALL-VALIDATION.md records hashes, root-image provenance, build
+and install distinctions, and remaining platform gates. Test containers were removed;
+no host installation was replaced.
