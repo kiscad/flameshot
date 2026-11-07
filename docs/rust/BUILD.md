@@ -79,8 +79,9 @@ store. Python Pillow verifies rendered pixels. The workflows install these tools
 without Qt development packages.
 
 The Sway fixture also checks grid display and snapping at 1.5x/2x on a negative-origin
-output, through explicit monitor selection and the monitor chooser. Its default and
-OpenGL runs are serialized by a per-user test lock: portal-wlr 0.7.1 uses the shared
+output, through explicit monitor selection and the monitor chooser. It also checks
+confirmed and held-pixel color grabbing on those scaled outputs. Default and OpenGL
+runs are serialized by a per-user test lock: portal-wlr 0.7.1 uses the shared
 `/tmp/out.png` screenshot path even with separate D-Bus sessions. This lock coordinates
 these fixtures; it does not change the installed portal backend.
 

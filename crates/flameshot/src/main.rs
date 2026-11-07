@@ -4,6 +4,7 @@ mod buttons;
 mod children;
 mod drawing_grid;
 mod geometry_overlay;
+mod precision_pick;
 mod size_keyboard;
 mod text_edit;
 mod theme;

@@ -58,6 +58,10 @@ try:
     def drag(x1,y1,x2,y2):
         tool('mousemove','--window',window,str(x1),str(y1));tool('mousedown','1')
         tool('mousemove','--window',window,str(x2),str(y2));time.sleep(.2);tool('mouseup','1');time.sleep(.3)
+    def saved_color():
+        import re
+        match=re.search(r'(?m)^drawColor=(.*)$',config.read_text())
+        return match.group(1).strip('"').lower() if match else None
     def colors(name):
         pixels=snapshot(name)
         return pixels.getpixel((68,68)),pixels.getpixel((248,68))
@@ -95,8 +99,46 @@ try:
     tool('mousemove','--window',window,'850','600');keys('g','Return')
     assert process.poll() is None,'Accepting a color with Return exported the capture'
     assert colors('rust-grab-default.png')==((0,0,255),(0,0,255)),'Drawing default pick recolored an existing object'
-    assert '#000000' in config.read_text()
+    assert saved_color()=='#000000ff'
     click(200,37);click(850,630)
+    keys('r');click(40,60);drag(650,480,652,560)
+    precise_source=snapshot('rust-grab-precision-source.png')
+    assert precise_source.getpixel((149,68))==(0,255,0)
+    assert precise_source.getpixel((177,68))==(0,0,0)
+    click(77,60)
+    before=config.read_text()
+    tool('mousemove','--window',window,'649','520');keys('g')
+    tool('mousedown','1');time.sleep(.3)
+    tool('mousemove','--window',window,'679','520');time.sleep(.3)
+    held=snapshot('rust-grab-precision-held.png')
+    assert held.tobytes()!=precise_source.tobytes(),'Held-button pixel grid was not displayed'
+    assert config.read_text()==before,'Holding a precision pick committed early'
+    tool('mouseup','1');time.sleep(.3)
+    assert saved_color()=='#00ff00ff','Zoomed cell did not select source pixel 651'
+    assert snapshot('rust-grab-precision-release.png').tobytes()==precise_source.tobytes(),'Precision pick changed document pixels'
+    before=config.read_text()
+    tool('mousemove','--window',window,'649','520');keys('g')
+    tool('mousedown','1');time.sleep(.2);tool('mousemove','--window',window,'679','520');time.sleep(.2)
+    keys('Escape');tool('mouseup','1');time.sleep(.3)
+    assert config.read_text()==before
+    assert snapshot('rust-grab-precision-cancel.png').tobytes()==precise_source.tobytes(),'Cancelling a held pick drew an annotation'
+    click(77,60)
+    tool('mousemove','--window',window,'649','520');keys('g')
+    tool('mousedown','1');time.sleep(.2);tool('mousemove','--window',window,'679','520');time.sleep(.2)
+    keys('Return');tool('mouseup','1');time.sleep(.3)
+    assert process.poll() is None and saved_color()=='#00ff00ff'
+    assert snapshot('rust-grab-precision-enter.png').tobytes()==precise_source.tobytes(),'Enter confirmation leaked the held mouse release'
+    before=config.read_text()
+    tool('mousemove','--window',window,'649','520');keys('g')
+    tool('mousedown','1');time.sleep(.2);tool('mousemove','--window',window,'850','600');time.sleep(.2)
+    tool('mouseup','1');time.sleep(.3)
+    assert config.read_text()==before,'Leaving the precision grid committed a different pixel'
+    keys('Escape')
+    tool('mousemove','--window',window,'1023','767');keys('g')
+    tool('mousedown','1');time.sleep(.2);tool('mousemove','--window',window,'1008','752');time.sleep(.2)
+    tool('mouseup','1');time.sleep(.3)
+    assert saved_color()=='#000000ff','Edge-clipped precision pick failed'
+    assert snapshot('rust-grab-precision-edge.png').tobytes()==precise_source.tobytes()
     expected=snapshot('rust-grab-export-preview.png')
     keys('Return');out,err=process.communicate(timeout=10)
     assert process.returncode==0,err.decode()
@@ -104,7 +146,7 @@ try:
     difference=ImageChops.difference(exported.crop((2,2,398,198)),expected)
     assert exported.size==(400,200) and all(max(pixel)<=1 for pixel in difference.getdata())
     Path(artifacts,'rust-grab-export.png').write_bytes(out)
-    print('PASS: color-grab preview/cancel, selected-object recolor, undo/redo, button activation, default-only pick and export')
+    print('PASS: color-grab preview/cancel, selected-object recolor, undo/redo, button activation, default-only pick, held pixel selection/cancel/edge handling and export')
 
 finally:
     if process.poll() is None:process.kill();process.wait()

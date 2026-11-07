@@ -384,7 +384,48 @@ try:
         overlay=Image.open(artifact_dir/f'rust-wayland-grid-{output_scale}-snapped-preview.png').convert('RGB')
         patch=tuple(round(value*output_scale) for value in (400,330,600,350))
         assert ImageChops.difference(overlay.crop(patch),exports[0].crop(patch)).getbbox(),(output_scale,'Grid overlay missing outside annotations')
+
+        # Precision color picking uses logical pointer positions but chooses
+        # individual source-image pixels, including on scaled outputs.
+        import re
+        config_source=re.sub(r'(?m)^drawColor=.*\n?', '',capture_config.read_text())
+        capture_config.write_text(config_source+'drawColor=#0000ff\n')
+        def picked_color():
+            match=re.search(r'(?m)^drawColor=(.*)$',capture_config.read_text())
+            return match.group(1).strip('"').lower() if match else None
+        grid_point(610,100);time.sleep(.3)
+        editor=subprocess.Popen([str(binary),'gui','--region','screen1','--raw'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE);processes.append(editor)
+        wait_for(lambda:editor_output()=='HEADLESS-2',20)
+        call(str(root/'usr/bin/swaymsg'),f'[pid={editor.pid}] focus');time.sleep(.4)
+        grid_key('r')
+        grid_point(400,350);point('down');time.sleep(.15)
+        grid_point(402,400);time.sleep(.2);point('up');time.sleep(.3)
+        grid_point(610,100);grid_key('g');grid_key('-k','Return')
+        assert editor.poll() is None,'Color confirmation exported the capture'
+        assert picked_color()!='#0000ffff','Background color was not picked'
+        before=capture_config.read_text()
+        grid_point(399,375);grid_key('g');point('down');time.sleep(.2)
+        grid_point(444,375);time.sleep(.2)
+        assert capture_config.read_text()==before,'Held pick committed before release'
+        preview=call(str(root/'usr/bin/grim'),'-o','HEADLESS-2','-')
+        assert preview.returncode==0,preview.stderr.decode()
+        (artifact_dir/f'rust-wayland-precision-{output_scale}.png').write_bytes(preview.stdout)
+        point('up');time.sleep(.3)
+        assert picked_color()=='#0000ffff',(output_scale,'Precision cell did not pick the narrow blue stripe',picked_color())
+        before=capture_config.read_text()
+        grid_point(399,375);grid_key('g');point('down');time.sleep(.2)
+        grid_point(444,375);grid_key('-k','Escape');point('up');time.sleep(.3)
+        assert capture_config.read_text()==before,'Cancelled held pick changed settings'
+        grid_key('-k','Return')
+        out,err=editor.communicate(timeout=15)
+        assert editor.returncode==0,err.decode()
+        pixels=Image.open(BytesIO(out)).convert('RGB');assert pixels.size==(1280,960)
+        assert pixels.getpixel((round(401*output_scale),round(375*output_scale)))==(0,0,255)
+        assert pixels.getpixel((round(444*output_scale),round(375*output_scale)))!=(0,0,255),'Precision overlay leaked into export'
+        (artifact_dir/f'rust-wayland-precision-{output_scale}-export.png').write_bytes(out)
+        time.sleep(.4)
     print('PASS: native Wayland grid snapping and grid-free export at 1.5x/2x negative-origin outputs',flush=True)
+    print('PASS: native Wayland color confirmation and held-pixel selection/cancellation at 1.5x/2x',flush=True)
 
 
 

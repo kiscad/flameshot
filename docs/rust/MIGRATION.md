@@ -3084,3 +3084,33 @@ drawing-grid and text-format fixtures, the full Xvfb suite, and Sway with Pinyin
 the scaled negative-origin grid scenarios. All GUI checks used private displays,
 D-Bus sessions and XDG directories. Native color-grab-specific coverage is X11;
 Wayland picking and the held-button precision mode remain acceptance work.
+
+### Add held-button pixel selection to color grabbing
+
+Holding the primary button while picking now freezes an 11×11 source-pixel crop.
+Each pixel occupies a 15×15 logical cell; moving inside the enlarged region selects
+that source pixel, and release or Enter confirms. The initial pixel stays under the
+cursor when the crop is clipped at image edges. Leaving the enlarged region resumes
+ordinary picking without committing a dragged release. Escape discards the frozen
+region. Confirmation/cancellation while the button remains held suppresses subsequent
+release handling so it cannot accidentally draw or change the selection.
+
+The precision region is rendered from its frozen pixels as an overlay, independently
+of the document image. The existing translated held-click instruction is now shown.
+Unit tests use distinct source pixels to check cell mapping, clipping, bounds and
+frozen-source behavior. The Xvfb fixture uses a narrow green stripe to distinguish a
+selected enlarged cell from the black image pixel physically under the cursor; it
+also checks release/Enter confirmation, held cancellation, leaving the region, edge
+selection, settings timing and unchanged document/export pixels.
+
+The Sway fixture is extended with corresponding narrow-stripe picking at 1.5x and 2x,
+plus Enter confirmation, held cancellation and exclusion of the precision overlay
+from exported screenshots. This addresses the held-button interaction left open by
+the preceding color-grab change.
+
+Validation passed: the complete Rust gate with Fish/Zsh completion checks, the expanded
+Xvfb color-grab fixture, the full Xvfb desktop suite, and complete Sway runs with the
+default renderer/Pinyin and OpenGL fallback. Both Wayland runs passed precision picking
+at 1.5x and 2x along with the existing grid cases. GUI validation used private displays,
+D-Bus sessions and XDG directories. This establishes the tested X11/Sway interactions;
+other compositor/version acceptance and the overall migration gates remain pending.

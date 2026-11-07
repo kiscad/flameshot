@@ -217,6 +217,8 @@ struct Editor {
     size_keyboard: crate::size_keyboard::SizeKeyboard,
     grid: crate::drawing_grid::DrawingGrid,
     color_grab: bool,
+    precision_pick: Option<crate::precision_pick::PrecisionPick>,
+    grab_release_pending: bool,
     grab_magnifier: bool,
     grab_input_frame: Option<u64>,
     counter_override: Option<u16>,
@@ -303,6 +305,8 @@ impl Editor {
             size_keyboard: Default::default(),
             grid: Default::default(),
             color_grab: false,
+            precision_pick: None,
+            grab_release_pending: false,
             grab_magnifier: false,
             grab_input_frame: None,
             counter_override: None,
@@ -1374,8 +1378,14 @@ impl eframe::App for Editor {
                 ctx.request_repaint();
             }
         }
+        if self.grab_release_pending {
+            self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
+            self.grab_release_pending = ctx.input(|input| input.pointer.primary_down());
+        }
         if self.color_grab && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             self.color_grab = false;
+            self.precision_pick = None;
+            self.grab_release_pending = ctx.input(|input| input.pointer.primary_down());
             self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
             self.shortcuts.reset();
             self.size_keyboard.reset();
@@ -1832,12 +1842,25 @@ impl eframe::App for Editor {
         }
         if self.color_grab && self.grab_input_frame != Some(ctx.cumulative_frame_nr()) {
             self.grab_input_frame = Some(ctx.cumulative_frame_nr());
-            if response.secondary_clicked()
-                || ctx.input(|input| input.key_pressed(egui::Key::Space))
+            if self.precision_pick.is_none()
+                && (response.secondary_clicked()
+                    || ctx.input(|input| input.key_pressed(egui::Key::Space)))
             {
                 self.grab_magnifier = !self.grab_magnifier;
                 ctx.request_repaint();
             }
+        }
+        if self.color_grab
+            && self.precision_pick.is_none()
+            && response.hovered()
+            && ctx.input(|input| input.pointer.primary_pressed())
+            && let Some(pointer) = ctx.input(|input| input.pointer.press_origin())
+            && let Some(rendered) = &self.rendered
+        {
+            let x = ((pointer.x - rect.min.x) / scale).floor().max(0.0) as u32;
+            let y = ((pointer.y - rect.min.y) / scale).floor().max(0.0) as u32;
+            self.precision_pick =
+                crate::precision_pick::PrecisionPick::new(rendered, x, y, pointer);
         }
         let mut sampled_color = None;
         if response.hovered()
@@ -1848,13 +1871,14 @@ impl eframe::App for Editor {
             let y = ((pointer.y - rect.min.y) / scale).floor().max(0.0) as u32;
             if let Some(sample) = flameshot_core::inspection::sample(rendered, x, y, 7) {
                 if self.color_grab
+                    && self.precision_pick.is_none()
                     && (response.clicked()
                         || ctx.input(|input| input.key_pressed(egui::Key::Enter)))
                 {
                     sampled_color = Some(sample.rgba);
                 }
                 if if self.color_grab {
-                    self.grab_magnifier
+                    self.grab_magnifier && self.precision_pick.is_none()
                 } else {
                     self.magnifier
                 } {
@@ -1952,10 +1976,25 @@ impl eframe::App for Editor {
             }
         }
         if self.color_grab {
+            if let Some(pick) = &self.precision_pick
+                && let Some(pointer) = ctx.input(|input| input.pointer.latest_pos())
+            {
+                if let Some(rgba) = pick.sample(pointer) {
+                    pick.paint(&ctx, pointer);
+                    if ctx.input(|input| {
+                        input.pointer.primary_released() || input.key_pressed(egui::Key::Enter)
+                    }) {
+                        sampled_color = Some(rgba);
+                    }
+                } else {
+                    self.precision_pick = None;
+                    ctx.request_repaint();
+                }
+            }
             self.keyboard_frame = Some(ctx.cumulative_frame_nr());
             ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
             egui::Area::new(egui::Id::unique("color-grab-help"))
-                .fixed_pos(egui::pos2(20.0, available.max.y - 75.0))
+                .fixed_pos(egui::pos2(20.0, available.max.y - 95.0))
                 .interactable(false)
                 .show(&ctx, |ui| {
                     egui::Frame::popup(ui.style()).show(ui, |ui| {
@@ -1963,6 +2002,11 @@ impl eframe::App for Editor {
                             "{}: {}",
                             tr("ColorGrabWidget", "Enter or Left Click"),
                             tr("ColorGrabWidget", "Accept color")
+                        ));
+                        ui.label(format!(
+                            "{}: {}",
+                            tr("ColorGrabWidget", "Hold Left Click"),
+                            tr("ColorGrabWidget", "Precisely select color")
                         ));
                         ui.label(format!(
                             "{}: {}",
@@ -1980,6 +2024,8 @@ impl eframe::App for Editor {
                 self.color = Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]);
                 self.persist_color();
                 self.color_grab = false;
+                self.precision_pick = None;
+                self.grab_release_pending = ctx.input(|input| input.pointer.primary_down());
                 self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
                 ctx.request_repaint();
             }
