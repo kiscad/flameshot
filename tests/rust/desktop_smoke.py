@@ -426,6 +426,30 @@ print('PASS: capture lock is released after a killed editor')
             assert time.monotonic()<deadline,'Changed form field was not saved'
             time.sleep(.1)
         assert saved_form.get('General','filenamePattern').strip(chr(34))=='%F-external','Saving a local change overwrote a newer unrelated CLI value'
+        before_language_notice=config_status_pixels('rust-config-language-before.png')
+        tool('mousemove','--window',window,'300','100')
+        tool('click','--repeat','60','--delay','10','4')
+        time.sleep(.4)
+        tool('mousemove','--window',window,'50','57')
+        tool('click','1')
+        time.sleep(.2)
+        tool('mousemove','--window',window,'35','104')
+        tool('click','1') # First catalog after Auto is ar.
+        time.sleep(.2)
+        tool('mousemove','--window',window,'300','300')
+        tool('click','--repeat','60','--delay','10','5')
+        time.sleep(.5)
+        tool('mousemove','--window',window,'45','393')
+        tool('click','1')
+        deadline=time.monotonic()+5
+        while True:
+            saved_language=configparser.ConfigParser(interpolation=None,strict=False)
+            saved_language.read(test_config)
+            if saved_language.get('General','uiLanguage',fallback='').strip(chr(34))=='ar': break
+            assert time.monotonic()<deadline,'Language selection was not saved'
+            time.sleep(.1)
+        time.sleep(.5)
+        assert config_status_pixels('rust-config-language-notice.png')!=before_language_notice,'Language restart notice was not brought into view'
         latest_config=test_config.read_text()
         tool('key','Escape')
         out,err=process.communicate(timeout=10)
@@ -433,7 +457,7 @@ print('PASS: capture lock is released after a killed editor')
         assert test_config.read_text()==latest_config
         test_config.write_text(original_config)
         process=None
-        print('PASS: unchanged and edited configuration forms preserve newer unrelated CLI settings')
+        print('PASS: configuration saves preserve external values and show the language restart notice')
         for mode in ('cancel','raw','geometry','both','autosave','adjust','magnifier','save-retry','save-cancel','preset','last','lastconfig','lastoverride','fixed','shortcut','shortcutmeta','shortcutdefault','openwith','toolsize','undolimit','color','opacity','textedit','objectmove','constraints','counterdelete','layers','palette','uploadcancel','buttons','geometryoverlay','pixelatesafe','pixelateinsecure','quitresume','quitconfirm','quitdisable','monitors','monitoroverride','monitordelay'):
             if mode=='uploadcancel' and b'history' not in help_text: continue
             cancel = mode in ('cancel','quitconfirm','quitdisable')

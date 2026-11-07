@@ -28,6 +28,7 @@ pub fn show() -> anyhow::Result<()> {
                 .collect::<Vec<_>>()
                 .join(", ");
             let mut config = Config {
+                initial_language: settings.language.clone(),
                 buttons_reset: false,
                 baseline: Default::default(),
                 shortcut_baseline: Default::default(),
@@ -45,6 +46,7 @@ pub fn show() -> anyhow::Result<()> {
 }
 struct Config {
     settings: Settings,
+    initial_language: String,
     path: String,
     palette: String,
     buttons_reset: bool,
@@ -54,6 +56,11 @@ struct Config {
     status: String,
 }
 impl Config {
+    fn language_restart_needed(&self) -> bool {
+        self.baseline
+            .get("uiLanguage")
+            .is_some_and(|language| language != &self.initial_language)
+    }
     fn values(&self) -> Vec<(&'static str, String)> {
         let mut values = vec![
             (
@@ -445,7 +452,8 @@ impl eframe::App for Config {
                     });
                 }
             });
-            if ui.button("Save settings").clicked() {
+            let save_requested = ui.button("Save settings").clicked();
+            if save_requested {
                 let values = self.changes();
                 let shortcuts = self.shortcut_changes();
                 let unchanged = values.is_empty()
@@ -480,6 +488,15 @@ impl eframe::App for Config {
                 };
             }
             ui.label(&self.status);
+            if self.language_restart_needed() {
+                let notice = ui.label(crate::i18n::tr(
+                    "VisualsEditor",
+                    "Flameshot must be restarted to apply these changes!",
+                ));
+                if save_requested {
+                    notice.scroll_to_me(Some(egui::Align::BOTTOM));
+                }
+            }
         });
     }
 }
@@ -489,6 +506,7 @@ mod tests {
     use super::*;
     fn form() -> Config {
         let mut form = Config {
+            initial_language: Settings::default().language,
             settings: Settings::default(),
             path: String::new(),
             palette: "red, blue, picker".into(),
@@ -500,6 +518,29 @@ mod tests {
         };
         form.remember();
         form
+    }
+    #[test]
+    fn restart_notice_tracks_committed_language_not_unsaved_edits() {
+        let mut form = form();
+        assert!(!form.language_restart_needed());
+        form.settings.language = "zh_CN".into();
+        assert!(!form.language_restart_needed());
+        form.remember_file(); // Also covers a committed INI followed by startup failure.
+        assert!(form.language_restart_needed());
+        form.remember(); // A subsequent unchanged save must not hide the notice.
+        assert!(form.language_restart_needed());
+        form.settings.language = form.initial_language.clone();
+        assert!(form.language_restart_needed());
+        form.remember_file();
+        assert!(!form.language_restart_needed());
+        let translated = flameshot_core::i18n::Translator::new("zh_CN").translate(
+            "VisualsEditor",
+            "Flameshot must be restarted to apply these changes!",
+        );
+        assert_ne!(
+            translated,
+            "Flameshot must be restarted to apply these changes!"
+        );
     }
     #[test]
     fn unchanged_fields_do_not_overwrite_newer_external_values() {

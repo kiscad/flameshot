@@ -1807,3 +1807,22 @@ requirement. The configuration notice and remaining UI translation coverage stil
 need completion. The source audit also confirms additional baseline tray actions
 (About, Open Save Path and monitor selection) that are not supplied by this translation
 change and must remain in the complete tray-compatibility audit.
+
+### Language restart notice in configuration
+
+Restored the baseline VisualsEditor restart instruction using its existing translated
+message. The form compares its initial language with the last committed INI snapshot:
+unsaved selections do not trigger the notice, repeated/no-op saves do not hide it,
+and saving the original language clears it. The notice also survives an autostart
+failure after the INI was successfully committed. It scrolls into view on Save rather
+than forcing the user to discover a message below the viewport.
+
+Model tests cover the commit/revert lifecycle and catalog lookup. The native X11
+configuration test selects a different catalog through the actual language dropdown,
+saves it, checks the stored value and visible notice pixels, and the resulting
+screenshot was inspected. This retains restart-required language behavior; it does
+not add live translation switching or finish the remaining UI translation coverage.
+
+Validation passed: no-default-feature form tests, all-feature workspace tests,
+all-target Clippy with warnings denied, formatting and the complete isolated Xvfb
+suite, including preservation of newer external settings while saving language.
