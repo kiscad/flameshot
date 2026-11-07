@@ -3367,4 +3367,324 @@ Mogelijk moet je het &apos;#&apos;-teken insluiten. Voorbeeld: &apos;\#FFF&apos;
         <translation type="unfinished"></translation>
     </message>
 </context>
+
+<context>
+    <name>RustConfig</name>
+    <message>
+        <source>Flameshot Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save directory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use fixed save directory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filename pattern</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>JPEG quality</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable tray icon</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show capture help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Launch at startup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smooth pinned image zoom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow multiple capture editors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo limit (0 = unlimited): </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Main UI color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Contrast UI color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Palette (3–17 colors or picker, separated by commas)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Small default palette</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Large default palette</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Capture monitor under pointer (X11)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use direct X11 capture instead of the portal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Insecure pixelation (retains image information)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upload without confirmation</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Copy URL after upload</source>
+        <translation>URL kopiëren na uploaden</translation>
+    </message>
+    <message>
+        <source>Confirm history image deletion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notify when screenshot is aborted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show startup tray message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask before quitting capture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close daemon after clipboard and windows are released</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use JPEG for clipboard images</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save image after copy</source>
+        <translation>Afbeelding opslaan na kopiëren</translation>
+    </message>
+    <message>
+        <source>Copy file path after save</source>
+        <translation>Bestandspad kopiëren na opslaan</translation>
+    </message>
+    <message>
+        <source>Copy on double-click inside selection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use last region for GUI mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Outside selection opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show objects panel button</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Selection geometry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Geometry timeout (ms, 0 = always): </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show magnifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Square magnifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Counter outline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toolbar buttons</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore default toolbar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation>Sneltoetsen</translation>
+    </message>
+    <message>
+        <source>Save settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No changes to save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings saved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot reload settings: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pencil</source>
+        <translation>Potlood</translation>
+    </message>
+    <message>
+        <source>Line</source>
+        <translation>Lijn</translation>
+    </message>
+    <message>
+        <source>Arrow</source>
+        <translation>Cursor</translation>
+    </message>
+    <message>
+        <source>Outline rectangle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filled rectangle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ellipse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Marker</source>
+        <translation>Markeerstift</translation>
+    </message>
+    <message>
+        <source>Text</source>
+        <translation>Tekst</translation>
+    </message>
+    <message>
+        <source>Pixelate</source>
+        <translation>Pixelvorming</translation>
+    </message>
+    <message>
+        <source>Invert</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Circle counter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move selection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>Ongedaan mken</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation>Opnieuw</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Kopiëren</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Opslaan</translation>
+    </message>
+    <message>
+        <source>Upload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accept</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open with</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Increase size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decrease size</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

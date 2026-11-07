@@ -119,6 +119,29 @@ mod tests {
         );
     }
     #[test]
+    fn chinese_configuration_catalogs_cover_labels_and_error_placeholder() {
+        for locale in ["zh_CN", "zh_TW", "zh_HK"] {
+            let catalog = CATALOGS.iter().find(|c| c.language == locale).unwrap();
+            let messages: Vec<_> = catalog
+                .messages
+                .iter()
+                .filter(|(context, _, _)| *context == "RustConfig")
+                .collect();
+            assert_eq!(messages.len(), 79, "{locale}");
+            for (_, source, translated) in messages {
+                assert_ne!(source, translated, "{locale}: {source}");
+                assert_eq!(
+                    source.matches("%1").count(),
+                    translated.matches("%1").count()
+                );
+            }
+        }
+        assert_eq!(
+            Translator::new("unknown").translate("RustConfig", "Save settings"),
+            "Save settings"
+        );
+    }
+    #[test]
     fn unknown_locale_and_unfinished_entries_fall_back_to_source() {
         assert_eq!(
             Translator::new("unknown").translate("CopyTool", "Copy"),

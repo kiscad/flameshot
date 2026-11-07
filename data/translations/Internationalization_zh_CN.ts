@@ -3519,4 +3519,324 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
         <translation>选择要编辑的屏幕。可用数字键 1–9 选择。</translation>
     </message>
 </context>
+
+<context>
+    <name>RustConfig</name>
+    <message>
+        <source>Flameshot Configuration</source>
+        <translation>Flameshot 配置</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>检查更新</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>语言</translation>
+    </message>
+    <message>
+        <source>Auto</source>
+        <translation>自动</translation>
+    </message>
+    <message>
+        <source>Save directory</source>
+        <translation>保存目录</translation>
+    </message>
+    <message>
+        <source>Use fixed save directory</source>
+        <translation>使用固定保存目录</translation>
+    </message>
+    <message>
+        <source>Filename pattern</source>
+        <translation>文件名格式</translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation>格式</translation>
+    </message>
+    <message>
+        <source>JPEG quality</source>
+        <translation>JPEG 质量</translation>
+    </message>
+    <message>
+        <source>Disable tray icon</source>
+        <translation>禁用托盘图标</translation>
+    </message>
+    <message>
+        <source>Desktop notifications</source>
+        <translation>桌面通知</translation>
+    </message>
+    <message>
+        <source>Show capture help</source>
+        <translation>显示截图帮助</translation>
+    </message>
+    <message>
+        <source>Launch at startup</source>
+        <translation>开机启动</translation>
+    </message>
+    <message>
+        <source>Smooth pinned image zoom</source>
+        <translation>平滑缩放贴图</translation>
+    </message>
+    <message>
+        <source>Allow multiple capture editors</source>
+        <translation>允许同时打开多个截图编辑器</translation>
+    </message>
+    <message>
+        <source>Undo limit (0 = unlimited): </source>
+        <translation>撤销次数上限（0 表示不限）：</translation>
+    </message>
+    <message>
+        <source>Main UI color</source>
+        <translation>界面主色</translation>
+    </message>
+    <message>
+        <source>Contrast UI color</source>
+        <translation>界面对比色</translation>
+    </message>
+    <message>
+        <source>Palette (3–17 colors or picker, separated by commas)</source>
+        <translation>调色板（3–17 个颜色或 picker，以逗号分隔）</translation>
+    </message>
+    <message>
+        <source>Small default palette</source>
+        <translation>默认小调色板</translation>
+    </message>
+    <message>
+        <source>Large default palette</source>
+        <translation>默认大调色板</translation>
+    </message>
+    <message>
+        <source>Capture monitor under pointer (X11)</source>
+        <translation>截取鼠标所在的显示器（X11）</translation>
+    </message>
+    <message>
+        <source>Use direct X11 capture instead of the portal</source>
+        <translation>使用 X11 直接截图代替桌面门户</translation>
+    </message>
+    <message>
+        <source>Insecure pixelation (retains image information)</source>
+        <translation>不安全的像素化（保留图像信息）</translation>
+    </message>
+    <message>
+        <source>Upload without confirmation</source>
+        <translation>上传时无需确认</translation>
+    </message>
+    <message>
+        <source>Copy URL after upload</source>
+        <translation>上传后复制链接</translation>
+    </message>
+    <message>
+        <source>Confirm history image deletion</source>
+        <translation>删除历史图像前确认</translation>
+    </message>
+    <message>
+        <source>Notify when screenshot is aborted</source>
+        <translation>取消截图时通知</translation>
+    </message>
+    <message>
+        <source>Show startup tray message</source>
+        <translation>显示启动托盘消息</translation>
+    </message>
+    <message>
+        <source>Ask before quitting capture</source>
+        <translation>退出截图前询问</translation>
+    </message>
+    <message>
+        <source>Close daemon after clipboard and windows are released</source>
+        <translation>剪贴板和窗口释放后关闭后台进程</translation>
+    </message>
+    <message>
+        <source>Use JPEG for clipboard images</source>
+        <translation>剪贴板图像使用 JPEG 格式</translation>
+    </message>
+    <message>
+        <source>Save image after copy</source>
+        <translation>复制后保存图像</translation>
+    </message>
+    <message>
+        <source>Copy file path after save</source>
+        <translation>保存后复制文件路径</translation>
+    </message>
+    <message>
+        <source>Copy on double-click inside selection</source>
+        <translation>双击选区内时复制</translation>
+    </message>
+    <message>
+        <source>Use last region for GUI mode</source>
+        <translation>截图界面使用上次选区</translation>
+    </message>
+    <message>
+        <source>Outside selection opacity</source>
+        <translation>选区外不透明度</translation>
+    </message>
+    <message>
+        <source>Show objects panel button</source>
+        <translation>显示对象面板按钮</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>无</translation>
+    </message>
+    <message>
+        <source>Top left</source>
+        <translation>左上</translation>
+    </message>
+    <message>
+        <source>Top right</source>
+        <translation>右上</translation>
+    </message>
+    <message>
+        <source>Bottom left</source>
+        <translation>左下</translation>
+    </message>
+    <message>
+        <source>Bottom right</source>
+        <translation>右下</translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation>居中</translation>
+    </message>
+    <message>
+        <source>Selection geometry</source>
+        <translation>选区尺寸显示位置</translation>
+    </message>
+    <message>
+        <source>Geometry timeout (ms, 0 = always): </source>
+        <translation>尺寸显示时长（毫秒，0 表示始终显示）：</translation>
+    </message>
+    <message>
+        <source>Show magnifier</source>
+        <translation>显示放大镜</translation>
+    </message>
+    <message>
+        <source>Square magnifier</source>
+        <translation>方形放大镜</translation>
+    </message>
+    <message>
+        <source>Counter outline</source>
+        <translation>序号轮廓</translation>
+    </message>
+    <message>
+        <source>Toolbar buttons</source>
+        <translation>工具栏按钮</translation>
+    </message>
+    <message>
+        <source>Restore default toolbar</source>
+        <translation>恢复默认工具栏</translation>
+    </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation>快捷键</translation>
+    </message>
+    <message>
+        <source>Save settings</source>
+        <translation>保存设置</translation>
+    </message>
+    <message>
+        <source>No changes to save</source>
+        <translation>没有需要保存的更改</translation>
+    </message>
+    <message>
+        <source>Settings saved</source>
+        <translation>设置已保存</translation>
+    </message>
+    <message>
+        <source>Cannot reload settings: %1</source>
+        <translation>无法重新加载设置：%1</translation>
+    </message>
+    <message>
+        <source>Pencil</source>
+        <translation>铅笔</translation>
+    </message>
+    <message>
+        <source>Line</source>
+        <translation>直线</translation>
+    </message>
+    <message>
+        <source>Arrow</source>
+        <translation>箭头</translation>
+    </message>
+    <message>
+        <source>Outline rectangle</source>
+        <translation>矩形边框</translation>
+    </message>
+    <message>
+        <source>Filled rectangle</source>
+        <translation>填充矩形</translation>
+    </message>
+    <message>
+        <source>Ellipse</source>
+        <translation>椭圆</translation>
+    </message>
+    <message>
+        <source>Marker</source>
+        <translation>荧光笔</translation>
+    </message>
+    <message>
+        <source>Text</source>
+        <translation>文字</translation>
+    </message>
+    <message>
+        <source>Pixelate</source>
+        <translation>像素化</translation>
+    </message>
+    <message>
+        <source>Invert</source>
+        <translation>反色</translation>
+    </message>
+    <message>
+        <source>Circle counter</source>
+        <translation>圆形序号</translation>
+    </message>
+    <message>
+        <source>Move selection</source>
+        <translation>移动选区</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>撤销</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation>重做</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>复制</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message>
+        <source>Upload</source>
+        <translation>上传</translation>
+    </message>
+    <message>
+        <source>Accept</source>
+        <translation>确认</translation>
+    </message>
+    <message>
+        <source>Open with</source>
+        <translation>打开方式</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Pin</source>
+        <translation>贴图</translation>
+    </message>
+    <message>
+        <source>Increase size</source>
+        <translation>增大尺寸</translation>
+    </message>
+    <message>
+        <source>Decrease size</source>
+        <translation>减小尺寸</translation>
+    </message>
+</context>
 </TS>

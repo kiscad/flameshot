@@ -2426,3 +2426,25 @@ The private Xvfb fixture additionally checks rendered fields change after an ext
 CLI filename update without clicking Save and verifies the INI remains unchanged.
 The full Xvfb suite and all seven no-default-feature form tests passed, along with
 formatting and diff checks.
+
+### Localize configuration controls and shortcut descriptions
+
+The configuration window now translates its title, field labels, choices, toolbar
+names, save status and reload-error prefix. All 79 RustConfig messages are registered
+in all 49 existing catalogs; Simplified/Traditional Chinese entries are supplied,
+and 822 unambiguous existing translations are reused across other locales. Remaining
+unfinished entries retain source-text fallback. No Qt translation build dependency
+or runtime converter is introduced. Shortcut settings display human-readable action
+names, reusing legacy ShortcutsWidget translations for selection operations, instead
+of exposing internal TYPE identifiers. Stored shortcut keys and INI syntax are unchanged.
+
+Catalog tests check Chinese coverage and error placeholders; configuration tests
+ensure every configurable shortcut has a readable label. All-feature form tests and
+all-target Clippy pass. Private Xvfb localization checks cover simplified/traditional
+titles, scrolling, Save/Escape and unchanged INI, alongside launcher/history checks.
+Rendered top/bottom configuration screenshots were inspected. The fixture's pointer
+was moved inside the narrower Chinese content area so wheel events actually scroll.
+Backend diagnostic details and other editor windows still need translation review;
+this is not completion of full application translation coverage.
+The eight no-default-feature form tests, formatting and diff checks also passed.
+The rendered Chinese unchanged-save status was inspected after clicking Save.

@@ -1,6 +1,70 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::settings::Settings;
 use eframe::egui;
+fn tr(source: &str) -> &str {
+    crate::i18n::tr("RustConfig", source)
+}
+fn shortcut_label(name: &str) -> &str {
+    match name {
+        "TYPE_PENCIL" => tr("Pencil"),
+        "TYPE_DRAWER" => tr("Line"),
+        "TYPE_ARROW" => tr("Arrow"),
+        "TYPE_SELECTION" => tr("Outline rectangle"),
+        "TYPE_RECTANGLE" => tr("Filled rectangle"),
+        "TYPE_CIRCLE" => tr("Ellipse"),
+        "TYPE_MARKER" => tr("Marker"),
+        "TYPE_MOVESELECTION" => tr("Move selection"),
+        "TYPE_UNDO" => tr("Undo"),
+        "TYPE_COPY" => tr("Copy"),
+        "TYPE_SAVE" => tr("Save"),
+        "TYPE_ACCEPT" => tr("Accept"),
+        "TYPE_IMAGEUPLOADER" => tr("Upload"),
+        "TYPE_OPEN_APP" => tr("Open with"),
+        "TYPE_PIXELATE" => tr("Pixelate"),
+        "TYPE_INVERT" => tr("Invert"),
+        "TYPE_REDO" => tr("Redo"),
+        "TYPE_TEXT" => tr("Text"),
+        "TYPE_PIN" => tr("Pin"),
+        "TYPE_SIZEINCREASE" => tr("Increase size"),
+        "TYPE_SIZEDECREASE" => tr("Decrease size"),
+        "TYPE_CIRCLECOUNT" => tr("Circle counter"),
+        "TYPE_TOGGLE_PANEL" => crate::i18n::tr("ShortcutsWidget", "Toggle side panel"),
+        "TYPE_GRAB_COLOR" => crate::i18n::tr("ShortcutsWidget", "Grab a color from the screen"),
+        "TYPE_RESIZE_LEFT" => crate::i18n::tr("ShortcutsWidget", "Resize selection left 1px"),
+        "TYPE_RESIZE_RIGHT" => crate::i18n::tr("ShortcutsWidget", "Resize selection right 1px"),
+        "TYPE_RESIZE_UP" => crate::i18n::tr("ShortcutsWidget", "Resize selection up 1px"),
+        "TYPE_RESIZE_DOWN" => crate::i18n::tr("ShortcutsWidget", "Resize selection down 1px"),
+        "TYPE_SYM_RESIZE_LEFT" => {
+            crate::i18n::tr("ShortcutsWidget", "Symmetrically decrease width by 2px")
+        }
+        "TYPE_SYM_RESIZE_RIGHT" => {
+            crate::i18n::tr("ShortcutsWidget", "Symmetrically increase width by 2px")
+        }
+        "TYPE_SYM_RESIZE_UP" => {
+            crate::i18n::tr("ShortcutsWidget", "Symmetrically increase height by 2px")
+        }
+        "TYPE_SYM_RESIZE_DOWN" => {
+            crate::i18n::tr("ShortcutsWidget", "Symmetrically decrease height by 2px")
+        }
+        "TYPE_SELECT_ALL" => crate::i18n::tr("ShortcutsWidget", "Select entire screen"),
+        "TYPE_MOVE_LEFT" => crate::i18n::tr("ShortcutsWidget", "Move selection left 1px"),
+        "TYPE_MOVE_RIGHT" => crate::i18n::tr("ShortcutsWidget", "Move selection right 1px"),
+        "TYPE_MOVE_UP" => crate::i18n::tr("ShortcutsWidget", "Move selection up 1px"),
+        "TYPE_MOVE_DOWN" => crate::i18n::tr("ShortcutsWidget", "Move selection down 1px"),
+        "TYPE_COMMIT_CURRENT_TOOL" => {
+            crate::i18n::tr("ShortcutsWidget", "Commit text in text area")
+        }
+        "TYPE_DELETE_CURRENT_TOOL" => {
+            crate::i18n::tr("ShortcutsWidget", "Delete selected drawn object")
+        }
+        "TYPE_CANCEL" => crate::i18n::tr("ShortcutsWidget", "Cancel current selection"),
+        "TYPE_CLOSE_ACTIVE_PIN_WINDOW" => {
+            crate::i18n::tr("ShortcutsWidget", "Close Active Pinned Window")
+        }
+        "TYPE_EXIT" => crate::i18n::tr("QObject", "Quit capture"),
+        _ => name,
+    }
+}
 pub fn show() -> anyhow::Result<()> {
     let settings = Settings::load()?;
     let path = settings
@@ -9,7 +73,7 @@ pub fn show() -> anyhow::Result<()> {
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_default();
     eframe::run_native(
-        "Flameshot Configuration",
+        tr("Flameshot Configuration"),
         eframe::NativeOptions {
             viewport: crate::app_ui::viewport().with_inner_size([520.0, 420.0]),
             ..Default::default()
@@ -285,25 +349,25 @@ impl eframe::App for Config {
         }
         egui::ScrollArea::vertical().show(ui, |ui| {
             #[cfg(feature = "update-check")]
-            ui.checkbox(&mut self.settings.check_updates, "Check for updates");
+            ui.checkbox(&mut self.settings.check_updates, tr("Check for updates"));
             ui.heading(crate::i18n::tr("ConfigWindow", "Configuration"));
-            egui::ComboBox::from_label("Language")
+            egui::ComboBox::from_label(tr("Language"))
                 .selected_text(&self.settings.language)
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.settings.language, "auto".into(), "Auto");
+                    ui.selectable_value(&mut self.settings.language, "auto".into(), tr("Auto"));
                     for language in flameshot_core::i18n::languages() {
                         ui.selectable_value(&mut self.settings.language, language.into(), language);
                     }
                 });
-            ui.label("Save directory");
+            ui.label(tr("Save directory"));
             ui.text_edit_singleline(&mut self.path);
             ui.checkbox(
                 &mut self.settings.save_path_fixed,
-                "Use fixed save directory",
+                tr("Use fixed save directory"),
             );
-            ui.label("Filename pattern");
+            ui.label(tr("Filename pattern"));
             ui.text_edit_singleline(&mut self.settings.filename_pattern);
-            egui::ComboBox::from_label("Format")
+            egui::ComboBox::from_label(tr("Format"))
                 .selected_text(&self.settings.extension)
                 .show_ui(ui, |ui| {
                     for &value in crate::output::EXTENSIONS {
@@ -315,40 +379,44 @@ impl eframe::App for Config {
                     }
                 });
             ui.add(
-                egui::Slider::new(&mut self.settings.jpeg_quality, 0..=100).text("JPEG quality"),
+                egui::Slider::new(&mut self.settings.jpeg_quality, 0..=100)
+                    .text(tr("JPEG quality")),
             );
-            ui.checkbox(&mut self.settings.disabled_tray, "Disable tray icon");
-            ui.checkbox(&mut self.settings.notifications, "Desktop notifications");
-            ui.checkbox(&mut self.settings.show_help, "Show capture help");
-            ui.checkbox(&mut self.settings.startup_launch, "Launch at startup");
+            ui.checkbox(&mut self.settings.disabled_tray, tr("Disable tray icon"));
+            ui.checkbox(
+                &mut self.settings.notifications,
+                tr("Desktop notifications"),
+            );
+            ui.checkbox(&mut self.settings.show_help, tr("Show capture help"));
+            ui.checkbox(&mut self.settings.startup_launch, tr("Launch at startup"));
             ui.checkbox(
                 &mut self.settings.antialias_pin_zoom,
-                "Smooth pinned image zoom",
+                tr("Smooth pinned image zoom"),
             );
             ui.checkbox(
                 &mut self.settings.allow_multiple_gui,
-                "Allow multiple capture editors",
+                tr("Allow multiple capture editors"),
             );
             ui.add(
                 egui::DragValue::new(&mut self.settings.undo_limit)
                     .range(0..=999)
-                    .prefix("Undo limit (0 = unlimited): "),
+                    .prefix(tr("Undo limit (0 = unlimited): ")),
             );
             ui.horizontal(|ui| {
-                ui.label("Main UI color");
+                ui.label(tr("Main UI color"));
                 ui.color_edit_button_srgba_unmultiplied(&mut self.settings.ui_color);
-                ui.label("Contrast UI color");
+                ui.label(tr("Contrast UI color"));
                 ui.color_edit_button_srgba_unmultiplied(&mut self.settings.contrast_ui_color);
             });
             crate::theme::Theme::from_settings(&self.settings).apply(ui.ctx());
-            ui.label("Palette (3–17 colors or picker, separated by commas)");
+            ui.label(tr("Palette (3–17 colors or picker, separated by commas)"));
             ui.text_edit_singleline(&mut self.palette);
             ui.horizontal(|ui| {
                 for (label, large) in [
                     ("Small default palette", false),
                     ("Large default palette", true),
                 ] {
-                    if ui.button(label).clicked() {
+                    if ui.button(tr(label)).clicked() {
                         self.settings.large_palette = large;
                         self.palette = crate::settings::default_palette(large)
                             .iter()
@@ -364,71 +432,74 @@ impl eframe::App for Config {
             });
             ui.checkbox(
                 &mut self.settings.capture_active_monitor,
-                "Capture monitor under pointer (X11)",
+                tr("Capture monitor under pointer (X11)"),
             );
             ui.checkbox(
                 &mut self.settings.use_x11_legacy_screenshot,
-                "Use direct X11 capture instead of the portal",
+                tr("Use direct X11 capture instead of the portal"),
             );
             ui.checkbox(
                 &mut self.settings.insecure_pixelate,
-                "Insecure pixelation (retains image information)",
+                tr("Insecure pixelation (retains image information)"),
             );
             #[cfg(feature = "imgur")]
             {
                 ui.checkbox(
                     &mut self.settings.upload_without_confirmation,
-                    "Upload without confirmation",
+                    tr("Upload without confirmation"),
                 );
                 ui.checkbox(
                     &mut self.settings.copy_url_after_upload,
-                    "Copy URL after upload",
+                    tr("Copy URL after upload"),
                 );
                 ui.checkbox(
                     &mut self.settings.history_confirmation_to_delete,
-                    "Confirm history image deletion",
+                    tr("Confirm history image deletion"),
                 );
             }
             ui.checkbox(
                 &mut self.settings.abort_notifications,
-                "Notify when screenshot is aborted",
+                tr("Notify when screenshot is aborted"),
             );
             ui.checkbox(
                 &mut self.settings.startup_message,
-                "Show startup tray message",
+                tr("Show startup tray message"),
             );
             ui.checkbox(
                 &mut self.settings.show_quit_prompt,
-                "Ask before quitting capture",
+                tr("Ask before quitting capture"),
             );
             ui.checkbox(
                 &mut self.settings.auto_close_idle,
-                "Close daemon after clipboard and windows are released",
+                tr("Close daemon after clipboard and windows are released"),
             );
             ui.checkbox(
                 &mut self.settings.jpeg_clipboard,
-                "Use JPEG for clipboard images",
+                tr("Use JPEG for clipboard images"),
             );
-            ui.checkbox(&mut self.settings.save_after_copy, "Save image after copy");
+            ui.checkbox(
+                &mut self.settings.save_after_copy,
+                tr("Save image after copy"),
+            );
             ui.checkbox(
                 &mut self.settings.copy_path_after_save,
-                "Copy file path after save",
+                tr("Copy file path after save"),
             );
             ui.checkbox(
                 &mut self.settings.copy_on_double_click,
-                "Copy on double-click inside selection",
+                tr("Copy on double-click inside selection"),
             );
             ui.checkbox(
                 &mut self.settings.use_last_region,
-                "Use last region for GUI mode",
+                tr("Use last region for GUI mode"),
             );
             ui.add(
                 egui::Slider::new(&mut self.settings.contrast_opacity, 0..=255)
-                    .text("Outside selection opacity"),
+                    .text(tr("Outside selection opacity")),
             );
             ui.checkbox(
                 &mut self.settings.show_side_panel_button,
-                "Show objects panel button",
+                tr("Show objects panel button"),
             );
             const GEOMETRY: [&str; 6] = [
                 "None",
@@ -438,26 +509,26 @@ impl eframe::App for Config {
                 "Bottom right",
                 "Center",
             ];
-            egui::ComboBox::from_label("Selection geometry")
-                .selected_text(GEOMETRY[self.settings.selection_geometry as usize])
+            egui::ComboBox::from_label(tr("Selection geometry"))
+                .selected_text(tr(GEOMETRY[self.settings.selection_geometry as usize]))
                 .show_ui(ui, |ui| {
                     for (index, label) in GEOMETRY.iter().enumerate() {
                         ui.selectable_value(
                             &mut self.settings.selection_geometry,
                             index as u8,
-                            *label,
+                            tr(label),
                         );
                     }
                 });
             ui.add(
                 egui::DragValue::new(&mut self.settings.selection_geometry_timeout)
                     .range(0..=i32::MAX as u64)
-                    .prefix("Geometry timeout (ms, 0 = always): "),
+                    .prefix(tr("Geometry timeout (ms, 0 = always): ")),
             );
-            ui.checkbox(&mut self.settings.magnifier, "Show magnifier");
-            ui.checkbox(&mut self.settings.square_magnifier, "Square magnifier");
-            ui.checkbox(&mut self.settings.counter_outline, "Counter outline");
-            ui.collapsing("Toolbar buttons", |ui| {
+            ui.checkbox(&mut self.settings.magnifier, tr("Show magnifier"));
+            ui.checkbox(&mut self.settings.square_magnifier, tr("Square magnifier"));
+            ui.checkbox(&mut self.settings.counter_outline, tr("Counter outline"));
+            ui.collapsing(tr("Toolbar buttons"), |ui| {
                 let mut selected = self
                     .settings
                     .buttons
@@ -468,7 +539,7 @@ impl eframe::App for Config {
                         continue;
                     }
                     let mut enabled = selected.contains(id);
-                    if ui.checkbox(&mut enabled, *label).changed() {
+                    if ui.checkbox(&mut enabled, tr(label)).changed() {
                         if enabled {
                             selected.push(*id);
                         } else {
@@ -477,12 +548,12 @@ impl eframe::App for Config {
                         self.settings.buttons = Some(crate::buttons::normalize(selected.clone()));
                     }
                 }
-                if ui.button("Restore default toolbar").clicked() {
+                if ui.button(tr("Restore default toolbar")).clicked() {
                     self.settings.buttons = Some(crate::buttons::defaults());
                     self.buttons_reset = true;
                 }
             });
-            ui.collapsing("Shortcuts", |ui| {
+            ui.collapsing(tr("Shortcuts"), |ui| {
                 for (name, default) in crate::shortcuts::DEFAULTS {
                     let mut value = self
                         .settings
@@ -491,14 +562,14 @@ impl eframe::App for Config {
                         .cloned()
                         .unwrap_or_else(|| (*default).into());
                     ui.horizontal(|ui| {
-                        ui.label(name.trim_start_matches("TYPE_"));
+                        ui.label(shortcut_label(name));
                         if ui.text_edit_singleline(&mut value).changed() {
                             self.settings.shortcuts.insert((*name).into(), value);
                         }
                     });
                 }
             });
-            let save_requested = ui.button("Save settings").clicked();
+            let save_requested = ui.button(tr("Save settings")).clicked();
             if save_requested {
                 let values = self.changes();
                 let shortcuts = self.shortcut_changes();
@@ -525,16 +596,19 @@ impl eframe::App for Config {
                     Ok(()) => {
                         self.remember();
                         let message = if unchanged {
-                            "No changes to save"
+                            tr("No changes to save")
                         } else {
-                            "Settings saved"
+                            tr("Settings saved")
                         };
                         match Settings::load() {
                             Ok(settings) => {
                                 self.reload_saved(settings);
                                 message.into()
                             }
-                            Err(error) => format!("{message}; cannot reload settings: {error}"),
+                            Err(error) => format!(
+                                "{message}; {}",
+                                tr("Cannot reload settings: %1").replace("%1", &error.to_string())
+                            ),
                         }
                     }
                     Err(e) => e.to_string(),
@@ -542,7 +616,7 @@ impl eframe::App for Config {
             }
             ui.label(&self.status);
             if let Some(error) = &self.reload_error {
-                ui.label(format!("Cannot reload settings: {error}"));
+                ui.label(tr("Cannot reload settings: %1").replace("%1", error));
             }
             if self.language_restart_needed() {
                 let notice = ui.label(crate::i18n::tr(
@@ -560,6 +634,12 @@ impl eframe::App for Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn every_configurable_shortcut_has_a_readable_label() {
+        for (name, _) in crate::shortcuts::DEFAULTS {
+            assert_ne!(shortcut_label(name), *name);
+        }
+    }
     fn form() -> Config {
         let mut form = Config {
             initial_language: Settings::default().language,

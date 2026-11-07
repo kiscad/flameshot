@@ -3447,4 +3447,324 @@ B&apos;fhéidir go mbeidh ort éalú ón gcomhartha &apos;#&apos; mar atá i &ap
         <translation type="unfinished"></translation>
     </message>
 </context>
+
+<context>
+    <name>RustConfig</name>
+    <message>
+        <source>Flameshot Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>Seiceáil le haghaidh nuashonruithe</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Auto</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save directory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use fixed save directory</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filename pattern</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>JPEG quality</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Disable tray icon</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Desktop notifications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show capture help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Launch at startup</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Smooth pinned image zoom</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Allow multiple capture editors</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo limit (0 = unlimited): </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Main UI color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Contrast UI color</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Palette (3–17 colors or picker, separated by commas)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Small default palette</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Large default palette</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Capture monitor under pointer (X11)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use direct X11 capture instead of the portal</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Insecure pixelation (retains image information)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Upload without confirmation</source>
+        <translation>Uaslódáil gan deimhniú</translation>
+    </message>
+    <message>
+        <source>Copy URL after upload</source>
+        <translation>Cóipeáil URL tar éis uaslódáil</translation>
+    </message>
+    <message>
+        <source>Confirm history image deletion</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Notify when screenshot is aborted</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show startup tray message</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ask before quitting capture</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close daemon after clipboard and windows are released</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use JPEG for clipboard images</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save image after copy</source>
+        <translation>Sábháil íomhá tar éis cóipeála</translation>
+    </message>
+    <message>
+        <source>Copy file path after save</source>
+        <translation>Cóipeáil cosán an chomhaid tar éis sábháil</translation>
+    </message>
+    <message>
+        <source>Copy on double-click inside selection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use last region for GUI mode</source>
+        <translation>Úsáid an réigiún deireanach le haghaidh mód comhéadain</translation>
+    </message>
+    <message>
+        <source>Outside selection opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show objects panel button</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>Dada</translation>
+    </message>
+    <message>
+        <source>Top left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Top right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom left</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Bottom right</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation>Lár</translation>
+    </message>
+    <message>
+        <source>Selection geometry</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Geometry timeout (ms, 0 = always): </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show magnifier</source>
+        <translation>Taispeáin formhéadaitheoir</translation>
+    </message>
+    <message>
+        <source>Square magnifier</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Counter outline</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Toolbar buttons</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restore default toolbar</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation>Aicearraí</translation>
+    </message>
+    <message>
+        <source>Save settings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No changes to save</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Settings saved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cannot reload settings: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pencil</source>
+        <translation>Peann luaidhe</translation>
+    </message>
+    <message>
+        <source>Line</source>
+        <translation>Líne</translation>
+    </message>
+    <message>
+        <source>Arrow</source>
+        <translation>Saighead</translation>
+    </message>
+    <message>
+        <source>Outline rectangle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filled rectangle</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ellipse</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Marker</source>
+        <translation>Marcóir</translation>
+    </message>
+    <message>
+        <source>Text</source>
+        <translation>Téacs</translation>
+    </message>
+    <message>
+        <source>Pixelate</source>
+        <translation>Picteilín</translation>
+    </message>
+    <message>
+        <source>Invert</source>
+        <translation>Inbhéartaigh</translation>
+    </message>
+    <message>
+        <source>Circle counter</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Move selection</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>Cealaigh</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation>Athdhéanamh</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Cóipeáil</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Sábháil</translation>
+    </message>
+    <message>
+        <source>Upload</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Accept</source>
+        <translation>Glac leis</translation>
+    </message>
+    <message>
+        <source>Open with</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cuir ar ceal</translation>
+    </message>
+    <message>
+        <source>Pin</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Increase size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decrease size</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

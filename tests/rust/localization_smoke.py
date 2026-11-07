@@ -67,6 +67,36 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
         out,err=process.communicate()
         if process.returncode:print(err.decode(),file=sys.stderr)
     print('PASS:',locale,'launcher title, capture/cancel lifecycle and rendered screenshot')
+    config_title={'zh_CN':'Flameshot 配置','zh_TW':'Flameshot 設定'}[locale]
+    original_config=config.read_bytes()
+    process=subprocess.Popen([binary,'config'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    try:
+        identifier=window('^'+config_title+'$')
+        tool('windowfocus','--sync',identifier)
+        time.sleep(.5)
+        for section in ['top','bottom']:
+            if section=='bottom':
+                tool('mousemove','--window',identifier,'150','300')
+                tool('click','--repeat','60','--delay','10','5')
+                time.sleep(.5)
+            captured=subprocess.run([binary,'full','--raw'],capture_output=True,timeout=10)
+            assert captured.returncode==0,captured.stderr.decode()
+            Path(artifacts,f'rust-config-{locale}-{section}.png').write_bytes(captured.stdout)
+            if section=='top':top_capture=captured.stdout
+            else:assert captured.stdout!=top_capture,'Configuration did not scroll'
+        tool('mousemove','--window',identifier,'35','393')
+        tool('click','1')
+        time.sleep(.5)
+        captured=subprocess.run([binary,'full','--raw'],capture_output=True,timeout=10)
+        assert captured.returncode==0,captured.stderr.decode()
+        Path(artifacts,f'rust-config-{locale}-saved.png').write_bytes(captured.stdout)
+        tool('key','Escape')
+        out,err=process.communicate(timeout=10)
+        assert process.returncode==0,err.decode()
+        assert config.read_bytes()==original_config
+    finally:
+        if process.poll() is None:process.kill();process.wait()
+    print('PASS:',locale,'localized configuration title, scrolling, Escape and unchanged INI')
     if b'history' in subprocess.run([binary,'--help'],capture_output=True,timeout=5).stdout:
         from PIL import Image
         history=Path(os.environ['XDG_CACHE_HOME'])/'flameshot/history'
@@ -92,6 +122,6 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
         print('PASS:',locale,'localized history title and intact local record')
 
 '''
-        subprocess.run(['dbus-run-session','--config-file',str(config),'--',sys.executable,'-c',driver,str(binary),str(root/'usr/bin/xdotool'),str(artifacts)],env=env,check=True,timeout=50)
+        subprocess.run(['dbus-run-session','--config-file',str(config),'--',sys.executable,'-c',driver,str(binary),str(root/'usr/bin/xdotool'),str(artifacts)],env=env,check=True,timeout=75)
     finally:
         display.terminate();display.wait(timeout=5)

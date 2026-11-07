@@ -3453,4 +3453,324 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
         <translation>選擇要編輯的螢幕。可用數字鍵 1–9 選擇。</translation>
     </message>
 </context>
+
+<context>
+    <name>RustConfig</name>
+    <message>
+        <source>Flameshot Configuration</source>
+        <translation>Flameshot 設定</translation>
+    </message>
+    <message>
+        <source>Check for updates</source>
+        <translation>檢查更新</translation>
+    </message>
+    <message>
+        <source>Language</source>
+        <translation>語言</translation>
+    </message>
+    <message>
+        <source>Auto</source>
+        <translation>自動</translation>
+    </message>
+    <message>
+        <source>Save directory</source>
+        <translation>儲存目錄</translation>
+    </message>
+    <message>
+        <source>Use fixed save directory</source>
+        <translation>使用固定儲存目錄</translation>
+    </message>
+    <message>
+        <source>Filename pattern</source>
+        <translation>檔案名格式</translation>
+    </message>
+    <message>
+        <source>Format</source>
+        <translation>格式</translation>
+    </message>
+    <message>
+        <source>JPEG quality</source>
+        <translation>JPEG 品質</translation>
+    </message>
+    <message>
+        <source>Disable tray icon</source>
+        <translation>停用系統匣圖示</translation>
+    </message>
+    <message>
+        <source>Desktop notifications</source>
+        <translation>桌面通知</translation>
+    </message>
+    <message>
+        <source>Show capture help</source>
+        <translation>顯示截圖說明</translation>
+    </message>
+    <message>
+        <source>Launch at startup</source>
+        <translation>開機啟動</translation>
+    </message>
+    <message>
+        <source>Smooth pinned image zoom</source>
+        <translation>平滑縮放貼圖</translation>
+    </message>
+    <message>
+        <source>Allow multiple capture editors</source>
+        <translation>允許同時開啟多個截圖編輯器</translation>
+    </message>
+    <message>
+        <source>Undo limit (0 = unlimited): </source>
+        <translation>復原次數上限（0 表示不限）：</translation>
+    </message>
+    <message>
+        <source>Main UI color</source>
+        <translation>介面主色</translation>
+    </message>
+    <message>
+        <source>Contrast UI color</source>
+        <translation>介面對比色</translation>
+    </message>
+    <message>
+        <source>Palette (3–17 colors or picker, separated by commas)</source>
+        <translation>調色板（3–17 個顏色或 picker，以逗號分隔）</translation>
+    </message>
+    <message>
+        <source>Small default palette</source>
+        <translation>預設小調色板</translation>
+    </message>
+    <message>
+        <source>Large default palette</source>
+        <translation>預設大調色板</translation>
+    </message>
+    <message>
+        <source>Capture monitor under pointer (X11)</source>
+        <translation>截取滑鼠所在的顯示器（X11）</translation>
+    </message>
+    <message>
+        <source>Use direct X11 capture instead of the portal</source>
+        <translation>使用 X11 直接截圖代替桌面門戶</translation>
+    </message>
+    <message>
+        <source>Insecure pixelation (retains image information)</source>
+        <translation>不安全的像素化（保留影像資訊）</translation>
+    </message>
+    <message>
+        <source>Upload without confirmation</source>
+        <translation>上傳時無需確認</translation>
+    </message>
+    <message>
+        <source>Copy URL after upload</source>
+        <translation>上傳後複製連結</translation>
+    </message>
+    <message>
+        <source>Confirm history image deletion</source>
+        <translation>刪除歷史影像前確認</translation>
+    </message>
+    <message>
+        <source>Notify when screenshot is aborted</source>
+        <translation>取消截圖時通知</translation>
+    </message>
+    <message>
+        <source>Show startup tray message</source>
+        <translation>顯示啟動系統匣訊息</translation>
+    </message>
+    <message>
+        <source>Ask before quitting capture</source>
+        <translation>退出截圖前詢問</translation>
+    </message>
+    <message>
+        <source>Close daemon after clipboard and windows are released</source>
+        <translation>剪貼簿和視窗釋放後關閉背景程序</translation>
+    </message>
+    <message>
+        <source>Use JPEG for clipboard images</source>
+        <translation>剪貼簿影像使用 JPEG 格式</translation>
+    </message>
+    <message>
+        <source>Save image after copy</source>
+        <translation>複製後儲存影像</translation>
+    </message>
+    <message>
+        <source>Copy file path after save</source>
+        <translation>儲存後複製檔案路徑</translation>
+    </message>
+    <message>
+        <source>Copy on double-click inside selection</source>
+        <translation>雙擊選區內時複製</translation>
+    </message>
+    <message>
+        <source>Use last region for GUI mode</source>
+        <translation>截圖介面使用上次選區</translation>
+    </message>
+    <message>
+        <source>Outside selection opacity</source>
+        <translation>選區外不透明度</translation>
+    </message>
+    <message>
+        <source>Show objects panel button</source>
+        <translation>顯示對象面板按鈕</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>無</translation>
+    </message>
+    <message>
+        <source>Top left</source>
+        <translation>左上</translation>
+    </message>
+    <message>
+        <source>Top right</source>
+        <translation>右上</translation>
+    </message>
+    <message>
+        <source>Bottom left</source>
+        <translation>左下</translation>
+    </message>
+    <message>
+        <source>Bottom right</source>
+        <translation>右下</translation>
+    </message>
+    <message>
+        <source>Center</source>
+        <translation>居中</translation>
+    </message>
+    <message>
+        <source>Selection geometry</source>
+        <translation>選區尺寸顯示位置</translation>
+    </message>
+    <message>
+        <source>Geometry timeout (ms, 0 = always): </source>
+        <translation>尺寸顯示時長（毫秒，0 表示始終顯示）：</translation>
+    </message>
+    <message>
+        <source>Show magnifier</source>
+        <translation>顯示放大鏡</translation>
+    </message>
+    <message>
+        <source>Square magnifier</source>
+        <translation>方形放大鏡</translation>
+    </message>
+    <message>
+        <source>Counter outline</source>
+        <translation>序號輪廓</translation>
+    </message>
+    <message>
+        <source>Toolbar buttons</source>
+        <translation>工具欄按鈕</translation>
+    </message>
+    <message>
+        <source>Restore default toolbar</source>
+        <translation>恢復預設工具欄</translation>
+    </message>
+    <message>
+        <source>Shortcuts</source>
+        <translation>快捷鍵</translation>
+    </message>
+    <message>
+        <source>Save settings</source>
+        <translation>儲存設定</translation>
+    </message>
+    <message>
+        <source>No changes to save</source>
+        <translation>沒有需要儲存的變更</translation>
+    </message>
+    <message>
+        <source>Settings saved</source>
+        <translation>設定已儲存</translation>
+    </message>
+    <message>
+        <source>Cannot reload settings: %1</source>
+        <translation>無法重新載入設定：%1</translation>
+    </message>
+    <message>
+        <source>Pencil</source>
+        <translation>鉛筆</translation>
+    </message>
+    <message>
+        <source>Line</source>
+        <translation>直線</translation>
+    </message>
+    <message>
+        <source>Arrow</source>
+        <translation>箭頭</translation>
+    </message>
+    <message>
+        <source>Outline rectangle</source>
+        <translation>矩形邊框</translation>
+    </message>
+    <message>
+        <source>Filled rectangle</source>
+        <translation>填充矩形</translation>
+    </message>
+    <message>
+        <source>Ellipse</source>
+        <translation>橢圓</translation>
+    </message>
+    <message>
+        <source>Marker</source>
+        <translation>熒光筆</translation>
+    </message>
+    <message>
+        <source>Text</source>
+        <translation>文字</translation>
+    </message>
+    <message>
+        <source>Pixelate</source>
+        <translation>像素化</translation>
+    </message>
+    <message>
+        <source>Invert</source>
+        <translation>反色</translation>
+    </message>
+    <message>
+        <source>Circle counter</source>
+        <translation>圓形序號</translation>
+    </message>
+    <message>
+        <source>Move selection</source>
+        <translation>移動選區</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>復原</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation>重做</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>複製</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>儲存</translation>
+    </message>
+    <message>
+        <source>Upload</source>
+        <translation>上傳</translation>
+    </message>
+    <message>
+        <source>Accept</source>
+        <translation>確認</translation>
+    </message>
+    <message>
+        <source>Open with</source>
+        <translation>開啟方式</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <source>Pin</source>
+        <translation>貼圖</translation>
+    </message>
+    <message>
+        <source>Increase size</source>
+        <translation>增大尺寸</translation>
+    </message>
+    <message>
+        <source>Decrease size</source>
+        <translation>減小尺寸</translation>
+    </message>
+</context>
 </TS>
