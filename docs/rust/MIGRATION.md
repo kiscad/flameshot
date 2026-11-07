@@ -2152,3 +2152,20 @@ All-feature workspace tests, all-target Clippy, no-default-feature compilation,
 formatting and diff checks passed. No live update endpoint was contacted for this
 change. Native long-message layout and complete interactive update-server scenarios
 remain part of the UI acceptance work; these state tests do not establish them.
+
+### Open With completion/close temporary-file ownership
+
+Closing Open With now consumes a buffered cancellation/failure before releasing its
+temporary image. A worker completing after the receiver is gone removes an image
+that was never accepted. A shared completion lock closes the race between checking
+an empty receiver and dropping it. It is held only for result handoff/cleanup, never
+while launching an application or awaiting a portal response. Successful launches,
+including an earlier success followed by another failed attempt, retain their image
+for the external consumer. Unknown outcomes after process termination or worker
+failure still conservatively retain the file.
+
+Tests cover buffered and late completions, success/cancellation/failure and prior
+acceptance. These and the combined isolated D-Bus/Xvfb UI suite passed, including
+Open With cancellation, keep-open behavior and file lifetime. All-target all-feature
+Clippy passed; no real external application or browser was launched by the UI suite.
+No-default-feature compilation, formatting and diff checks also passed.

@@ -4,6 +4,7 @@ use eframe::egui;
 use flameshot_platform::applications::{self, Application};
 use std::{io::Write, path::PathBuf, sync::mpsc, time::Duration};
 pub struct OpenWith {
+    completion_lock: std::sync::Arc<std::sync::Mutex<()>>,
     image: image::RgbaImage,
     apps: Vec<Application>,
     portal: bool,
@@ -15,6 +16,21 @@ pub struct OpenWith {
     keep_open: bool,
     query: String,
     error: String,
+}
+fn finish_launch(
+    sender: mpsc::Sender<Result<bool, String>>,
+    result: Result<bool, String>,
+    file: &std::path::Path,
+    previously_launched: bool,
+    completion_lock: &std::sync::Mutex<()>,
+) {
+    let _guard = completion_lock.lock().unwrap_or_else(|e| e.into_inner());
+    if let Err(result) = sender.send(result)
+        && !previously_launched
+        && !matches!(result.0, Ok(true))
+    {
+        let _ = std::fs::remove_file(file);
+    }
 }
 enum Launch {
     Native(Application),
@@ -33,6 +49,7 @@ impl OpenWith {
             Some(receiver)
         };
         Self {
+            completion_lock: Default::default(),
             image,
             apps: Vec::new(),
             listing,
@@ -156,13 +173,20 @@ impl OpenWith {
                     self.error.clear();
                     ctx.request_repaint();
                     let ctx = ctx.clone();
+                    let previously_launched = self.launched;
+                    let completion_lock = self.completion_lock.clone();
                     match launch {
                         Launch::Native(app) => {
                             std::thread::spawn(move || {
-                                let _ = sender.send(
-                                    applications::launch(&app, &file)
-                                        .map(|()| true)
-                                        .map_err(|e| e.to_string()),
+                                let result = applications::launch(&app, &file)
+                                    .map(|()| true)
+                                    .map_err(|e| e.to_string());
+                                finish_launch(
+                                    sender,
+                                    result,
+                                    &file,
+                                    previously_launched,
+                                    &completion_lock,
                                 );
                                 ctx.request_repaint();
                             });
@@ -186,8 +210,13 @@ impl OpenWith {
                                     .await
                                 }
                                 .await;
-                                let _ =
-                                    sender.send(result.map_err(|e: anyhow::Error| e.to_string()));
+                                finish_launch(
+                                    sender,
+                                    result.map_err(|e: anyhow::Error| e.to_string()),
+                                    &file,
+                                    previously_launched,
+                                    &completion_lock,
+                                );
                                 ctx.request_repaint();
                             });
                         }
@@ -214,11 +243,70 @@ impl OpenWith {
 }
 impl Drop for OpenWith {
     fn drop(&mut self) {
+        let _guard = self
+            .completion_lock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let unaccepted = match self.job.take() {
+            None => true,
+            Some(job) => matches!(job.try_recv(), Ok(Ok(false) | Err(_))),
+        };
         if !self.launched
-            && self.job.is_none()
+            && unaccepted
             && let Some(path) = &self.file
         {
             let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn late_completion_cleans_only_images_never_accepted_by_an_application() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("image.png");
+        for previously_launched in [false, true] {
+            for result in [Ok(true), Ok(false), Err("launch failed".into())] {
+                std::fs::write(&path, b"image").unwrap();
+                let keep = previously_launched || matches!(result, Ok(true));
+                let (sender, receiver) = mpsc::channel();
+                drop(receiver);
+                finish_launch(
+                    sender,
+                    result,
+                    &path,
+                    previously_launched,
+                    &std::sync::Mutex::new(()),
+                );
+                assert_eq!(path.exists(), keep);
+            }
+        }
+    }
+    #[test]
+    fn closing_with_a_buffered_result_preserves_success_and_cleans_failure() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("image.png");
+        for accepted in [false, true] {
+            std::fs::write(&path, b"image").unwrap();
+            let (sender, receiver) = mpsc::channel();
+            sender.send(Ok(accepted)).unwrap();
+            drop(OpenWith {
+                completion_lock: Default::default(),
+                image: image::RgbaImage::new(1, 1),
+                apps: Vec::new(),
+                portal: true,
+                start_portal: false,
+                listing: None,
+                job: Some(receiver),
+                file: Some(path.clone()),
+                launched: false,
+                keep_open: false,
+                query: String::new(),
+                error: String::new(),
+            });
+            assert_eq!(path.exists(), accepted);
         }
     }
 }
