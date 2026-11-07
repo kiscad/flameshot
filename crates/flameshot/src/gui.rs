@@ -247,6 +247,7 @@ struct Editor {
     property_pointer_down: bool,
     constrain_drawing: bool,
     counter_outline: bool,
+    last_render_refresh: std::time::Instant,
     rendered: Option<RgbaImage>,
     magnifier: bool,
     square_magnifier: bool,
@@ -265,6 +266,12 @@ impl Editor {
         let size = [image.width(), image.height()];
         let settings = crate::settings::Settings::load()?;
         let screen_image = (options.screens.len() > 1).then(|| image.clone());
+        let mut document = Document::new(image, settings.undo_limit)?;
+        document.set_render_options(flameshot_core::editor::RenderOptions {
+            reverse_arrows: Some(settings.reverse_arrow),
+            counter_outline: Some(settings.counter_outline),
+            insecure_pixelate: Some(settings.insecure_pixelate),
+        });
         Ok(Self {
             show_quit_prompt: settings.show_quit_prompt,
             quit_prompt: false,
@@ -301,7 +308,7 @@ impl Editor {
             pending_monitor: None,
             #[cfg(feature = "imgur")]
             upload_dialog: None,
-            document: Document::new(image, settings.undo_limit)?,
+            document,
             size,
             texture: None,
             dirty: true,
@@ -325,6 +332,7 @@ impl Editor {
             property_pointer_down: false,
             constrain_drawing: false,
             counter_outline: settings.counter_outline,
+            last_render_refresh: std::time::Instant::now(),
             rendered: None,
             magnifier: settings.magnifier,
             square_magnifier: settings.square_magnifier,
@@ -405,6 +413,7 @@ impl Editor {
                 .and_then(|r| flameshot_core::region::Region::from_pixels(r).ok())
                 .and_then(|r| r.clip(self.size));
             self.document = Document::new(crop, self.undo_limit).expect("validated monitor crop");
+            self.sync_render_options();
             self.texture = None;
             self.rendered = None;
             self.dirty = true;
@@ -810,6 +819,21 @@ impl Editor {
         }
         self.save_dialog = Some(dialog);
     }
+    fn sync_render_options(&mut self) {
+        if self
+            .document
+            .set_render_options(flameshot_core::editor::RenderOptions {
+                reverse_arrows: Some(self.reverse_arrow),
+                counter_outline: Some(self.counter_outline),
+                insecure_pixelate: Some(self.insecure_pixelate),
+            })
+        {
+            self.dirty = true;
+            if let Some(editor) = &mut self.text_editor {
+                editor.invalidate_preview();
+            }
+        }
+    }
     fn selected_arrow_controls(&mut self, ui: &mut egui::Ui) {
         if self.tool != Tool::Move {
             return;
@@ -1170,6 +1194,17 @@ impl eframe::App for Editor {
         }
     }
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        let interval = std::time::Duration::from_secs(1);
+        if self.last_render_refresh.elapsed() >= interval {
+            self.last_render_refresh = std::time::Instant::now();
+            if let Ok(settings) = crate::settings::Settings::load() {
+                self.reverse_arrow = settings.reverse_arrow;
+                self.counter_outline = settings.counter_outline;
+                self.insecure_pixelate = settings.insecure_pixelate;
+                self.sync_render_options();
+            }
+        }
+        ui.ctx().request_repaint_after(interval);
         if let Some((index, started)) = self.pending_monitor {
             // Bound the wait because compositor fullscreen requests are advisory.
             if ui.input(|input| input.viewport().fullscreen) != Some(false)
@@ -1587,9 +1622,13 @@ impl eframe::App for Editor {
                     if self.tool==Tool::Arrow {
                         let changed=ui.checkbox(&mut self.curved_arrow,tr("RustEditor", "Curved arrow head")).changed() | ui.checkbox(&mut self.reverse_arrow,tr("RustEditor", "Reverse arrow")).changed();
                         if changed && let Err(error)=crate::settings::Settings::update(&[("arrowStyle",u8::from(self.curved_arrow).to_string()),("reverseArrow",self.reverse_arrow.to_string())]) {self.error=error.to_string();}
+                        if changed { self.sync_render_options(); }
                     }
 
-                    if self.tool==Tool::Counter {ui.checkbox(&mut self.counter_outline,tr("RustEditor", "Counter outline"));}
+                    if self.tool==Tool::Counter && ui.checkbox(&mut self.counter_outline,tr("RustEditor", "Counter outline")).changed() {
+                        if let Err(error)=crate::settings::Settings::update(&[("drawCircleCounterOutline",self.counter_outline.to_string())]) {self.error=error.to_string();}
+                        self.sync_render_options();
+                    }
                     if self.tool == Tool::Text {
                         ui.label(tr("RustEditor", "Click the image to enter text, or type here to place repeated labels"));
                         ui.text_edit_multiline(&mut self.text);

@@ -2939,3 +2939,33 @@ all-feature Clippy also pass after adding the Ignore-write failure case. Formatt
 and diff checks pass. These are widget-frame and loopback transport checks, not proof
 of native update-window networking on every desktop; that integration scope remains
 explicitly separate.
+
+### Keep existing annotations in sync with global rendering preferences
+
+The legacy arrow, counter and pixelation implementations read `reverseArrow`,
+`drawCircleCounterOutline` and `insecurePixelate` while painting. The Rust document
+now supports equivalent global render overrides, shared by preview, export and
+rendered hit testing. Changing these preferences leaves annotation data and undo/redo
+history intact. Per-object curved arrow style remains an editable annotation property.
+
+The editor refreshes these three preferences from valid settings once per second,
+including when otherwise idle. Toolbar reverse-arrow and counter-outline changes
+persist and repaint immediately. Active text drafts invalidate their document preview
+cache when these preferences change. Monitor selection initializes the replacement
+document with the same preferences. This is a targeted live-settings correction;
+it does not establish live reload parity for all configuration keys.
+
+Core regressions compare effective rendering with independently configured annotations,
+exercise picking at a reversed arrowhead, verify preview/export agreement, and verify
+that global changes do not create undo entries. Pixelation tests check switching an
+existing region between secure and insecure rendering without editing the annotation.
+The private-Xvfb `global_render_smoke.py` edits an isolated INI file while an editor
+is open, verifies both arrows and the counter repaint, exercises undo/redo, changes
+preferences during text entry, cancels that draft, and compares exported pixels.
+The fixture is registered in the Rust workflow and build instructions.
+
+Validation passed: the complete `scripts/check-rust.sh` gate with Fish/Zsh completion
+checks, the new live-render fixture, the full Xvfb desktop suite, text-format and
+selected-arrow fixtures, X11 Fcitx Pinyin, and Sway Wayland with Pinyin and mixed-scale
+monitor cases. Desktop checks used isolated displays, sessions and XDG directories.
+Hosted CI and remaining migration acceptance gates are still pending.

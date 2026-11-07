@@ -125,8 +125,53 @@ struct Change {
     before: Vec<Annotation>,
     after: Vec<Annotation>,
 }
+/// Live document-wide preferences; `None` preserves each annotation's value.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RenderOptions {
+    pub reverse_arrows: Option<bool>,
+    pub counter_outline: Option<bool>,
+    pub insecure_pixelate: Option<bool>,
+}
+impl RenderOptions {
+    fn apply<'a>(self, annotation: &'a Annotation) -> std::borrow::Cow<'a, Annotation> {
+        match annotation {
+            Annotation::Arrow { reversed, .. }
+                if self.reverse_arrows.is_some_and(|value| value != *reversed) =>
+            {
+                let mut changed = annotation.clone();
+                if let Annotation::Arrow { reversed, .. } = &mut changed {
+                    *reversed = self.reverse_arrows.unwrap();
+                }
+                std::borrow::Cow::Owned(changed)
+            }
+            Annotation::Counter { outline, .. }
+                if self.counter_outline.is_some_and(|value| value != *outline) =>
+            {
+                let mut changed = annotation.clone();
+                if let Annotation::Counter { outline, .. } = &mut changed {
+                    *outline = self.counter_outline.unwrap();
+                }
+                std::borrow::Cow::Owned(changed)
+            }
+            Annotation::Pixelate { insecure, .. }
+                if self
+                    .insecure_pixelate
+                    .is_some_and(|value| value != *insecure) =>
+            {
+                let mut changed = annotation.clone();
+                if let Annotation::Pixelate { insecure, .. } = &mut changed {
+                    *insecure = self.insecure_pixelate.unwrap();
+                }
+                std::borrow::Cow::Owned(changed)
+            }
+            _ => std::borrow::Cow::Borrowed(annotation),
+        }
+    }
+}
+
 pub struct Document {
     base: RgbaImage,
+    render_options: RenderOptions,
     annotations: Vec<Annotation>,
     undo: Vec<Change>,
     redo: Vec<Change>,
@@ -141,6 +186,7 @@ impl Document {
         }
         Ok(Self {
             base,
+            render_options: RenderOptions::default(),
             annotations: vec![],
             undo: vec![],
             redo: vec![],
@@ -148,6 +194,12 @@ impl Document {
             transaction: None,
             text_renderer: std::cell::RefCell::new(None),
         })
+    }
+    /// Global rendering preferences do not mutate annotations or undo history.
+    pub fn set_render_options(&mut self, options: RenderOptions) -> bool {
+        let changed = self.render_options != options;
+        self.render_options = options;
+        changed
     }
     pub fn annotations(&self) -> &[Annotation] {
         &self.annotations
@@ -280,7 +332,9 @@ impl Document {
         }
         let mut masks = std::collections::BTreeMap::new();
         for radius in [3, 5] {
-            for (index, annotation) in self.annotations.iter().enumerate().rev() {
+            for (index, original) in self.annotations.iter().enumerate().rev() {
+                let effective = self.render_options.apply(original);
+                let annotation = effective.as_ref();
                 let text = matches!(annotation, Annotation::Text { .. });
                 if text && radius == 5 {
                     continue;
@@ -460,7 +514,9 @@ impl Document {
         mut image: RgbaImage,
         annotations: impl Iterator<Item = &'a Annotation>,
     ) -> Result<RgbaImage, EditError> {
-        for annotation in annotations {
+        for original in annotations {
+            let effective = self.render_options.apply(original);
+            let annotation = effective.as_ref();
             match annotation {
                 Annotation::Counter {
                     center,
@@ -1135,6 +1191,107 @@ mod tests {
             filled: true,
             radius: 0.0,
         }
+    }
+    #[test]
+    fn global_pixelation_preference_repaints_existing_regions_without_editing_them() {
+        let base = RgbaImage::from_fn(80, 80, |x, y| {
+            Rgba([(x * 3) as u8, (y * 3) as u8, 100, 255])
+        });
+        let mut doc = Document::new(base, 10).unwrap();
+        doc.add(Annotation::Pixelate {
+            region: PixelRect {
+                x: 10,
+                y: 10,
+                width: 50,
+                height: 50,
+            },
+            block_size: 8,
+            insecure: false,
+        })
+        .unwrap();
+        let annotations = doc.annotations().to_vec();
+        let secure = doc.render().unwrap();
+        doc.set_render_options(RenderOptions {
+            insecure_pixelate: Some(true),
+            ..Default::default()
+        });
+        assert_ne!(doc.render().unwrap(), secure);
+        assert_eq!(doc.annotations(), annotations);
+        doc.set_render_options(RenderOptions {
+            insecure_pixelate: Some(false),
+            ..Default::default()
+        });
+        assert_eq!(doc.render().unwrap(), secure);
+        assert!(doc.undo());
+        assert!(doc.annotations().is_empty());
+    }
+    #[test]
+    fn global_render_options_preserve_history_and_share_preview_export_and_picking() {
+        let base = RgbaImage::new(300, 120);
+        let arrow = Annotation::Arrow {
+            start: Point { x: 20.0, y: 50.0 },
+            end: Point { x: 100.0, y: 50.0 },
+            style: Style {
+                color: [255, 0, 0, 255],
+                width: 8.0,
+            },
+            curved: false,
+            reversed: false,
+        };
+        let counter = Annotation::Counter {
+            center: Point { x: 200.0, y: 50.0 },
+            tip: Point { x: 225.0, y: 75.0 },
+            number: 1,
+            radius: 20.0,
+            color: [255, 0, 0, 255],
+            outline: false,
+        };
+        let mut doc = Document::new(base.clone(), 10).unwrap();
+        doc.add(arrow.clone()).unwrap();
+        doc.add(counter.clone()).unwrap();
+        let original = doc.annotations().to_vec();
+        let plain = doc.render().unwrap();
+        assert_eq!(doc.hit_test(Point { x: 51.0, y: 40.0 }), None);
+        let options = RenderOptions {
+            reverse_arrows: Some(true),
+            counter_outline: Some(true),
+            ..Default::default()
+        };
+        assert!(doc.set_render_options(options));
+        assert!(!doc.set_render_options(options));
+        let mut expected = Document::new(base, 10).unwrap();
+        let mut reversed = arrow.clone();
+        if let Annotation::Arrow { reversed, .. } = &mut reversed {
+            *reversed = true;
+        }
+        let mut outlined = counter;
+        if let Annotation::Counter { outline, .. } = &mut outlined {
+            *outline = true;
+        }
+        expected.add(reversed).unwrap();
+        expected.add(outlined).unwrap();
+        let rendered = doc.render().unwrap();
+        assert_ne!(rendered, plain);
+        assert_eq!(rendered, expected.render().unwrap());
+        assert_eq!(doc.annotations(), original);
+        assert_eq!(doc.preview(None).unwrap(), rendered);
+        assert_eq!(
+            doc.export(PixelRect {
+                x: 0,
+                y: 0,
+                width: 300,
+                height: 120
+            })
+            .unwrap(),
+            rendered
+        );
+        assert_eq!(doc.hit_test(Point { x: 51.0, y: 40.0 }), Some(0));
+        assert!(doc.undo());
+        assert_eq!(doc.annotations(), &[arrow]);
+        assert!(doc.redo());
+        assert_eq!(doc.render().unwrap(), rendered);
+        doc.set_render_options(RenderOptions::default());
+        assert_eq!(doc.render().unwrap(), plain);
     }
     #[test]
     fn moving_layers_changes_composition_and_picking_and_is_reversible() {

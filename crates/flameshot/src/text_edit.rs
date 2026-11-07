@@ -32,6 +32,9 @@ pub struct TextEdit {
     error: String,
 }
 impl TextEdit {
+    pub fn invalidate_preview(&mut self) {
+        self.previewed = None;
+    }
     pub fn creation_defaults(&self) -> Option<(f32, String, TextStyle)> {
         if self.index.is_some() {
             return None;
