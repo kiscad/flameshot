@@ -498,6 +498,33 @@ pub fn default_palette(large: bool) -> Vec<Option<[u8; 4]>> {
 mod tests {
     use super::*;
     #[test]
+    fn form_updates_preserve_opaque_future_fields_and_shortcuts() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("flameshot.ini");
+        let original = "[General]\r\nfilenamePattern=before\r\nfutureValue=@Variant(\\x00opaque)\r\n[Shortcuts]\r\nTYPE_COPY=F9\r\nFUTURE_ACTION=Ctrl+UnknownKey\r\n[Vendor]\r\ncustom=keep this\r\n";
+        std::fs::write(&path, original).unwrap();
+        let loaded = Settings::parse(original).unwrap();
+        assert!(!loaded.shortcuts.contains_key("FUTURE_ACTION"));
+        Settings::update_sections_at(
+            &path,
+            &[
+                ("General", &[("filenamePattern", "after".into())]),
+                ("Shortcuts", &[("TYPE_COPY", "F10".into())]),
+            ],
+        )
+        .unwrap();
+        let expected = original
+            .replace("filenamePattern=before", "filenamePattern=\"after\"")
+            .replace("TYPE_COPY=F9", "TYPE_COPY=\"F10\"");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+        // A later rejected edit must preserve both the known and opaque fields.
+        assert!(
+            Settings::update_sections_at(&path, &[("Shortcuts", &[("TYPE_SAVE", "F10".into())])])
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(path).unwrap(), expected);
+    }
+    #[test]
     fn form_changes_and_shortcuts_commit_together_or_not_at_all() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("flameshot.ini");

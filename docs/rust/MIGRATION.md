@@ -2377,3 +2377,17 @@ language notice. They and the full isolated Xvfb suite passed, along with all-fe
 all-target Clippy. This is post-save synchronization, not completion of background
 refresh or same-field concurrent-edit handling while a local draft is pending.
 No-default-feature form tests, formatting and diff checks also passed.
+
+### Opaque configuration preservation regression
+
+Added a transaction-level regression for CRLF INI files containing an opaque future
+General QVariant value, an unrecognized shortcut and an application-specific group.
+Updating a known General setting and known shortcut changes only those lines. The
+unknown shortcut is not activated, and a subsequent conflicting shortcut edit leaves
+the complete file unchanged. The existing implementation passed; no production
+behavior change was needed.
+
+All settings tests and all-feature all-target Clippy passed. This verifies opaque
+preservation during writes, not that the diagnostic config checker must accept
+unknown keys or that future shortcut formats are supported.
+The focused no-default-feature test, formatting and diff checks also passed.
