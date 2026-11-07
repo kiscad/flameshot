@@ -142,7 +142,7 @@ struct SaveDialog {
 impl SaveDialog {
     fn refresh_folder(&mut self, folder: &std::path::Path, ctx: &egui::Context) {
         if let Some(receiver) = &self.listing_task
-            && let Ok(result) = receiver.try_recv()
+            && let Some(result) = crate::jobs::poll(receiver, "Folder listing worker stopped")
         {
             self.listed_folder = self.pending_folder.take();
             self.listing_task = None;
@@ -625,7 +625,7 @@ impl Editor {
         let mut dialog = self.save_dialog.take().unwrap();
         if dialog.portal {
             if let Some(task) = &dialog.portal_task
-                && let Ok(result) = task.try_recv()
+                && let Some(result) = crate::jobs::poll(task, "File chooser worker stopped")
             {
                 dialog.portal_task = None;
                 match result {

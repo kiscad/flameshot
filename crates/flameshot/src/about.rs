@@ -98,7 +98,7 @@ impl eframe::App for About {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
         if let Some(job) = &self.job
-            && let Ok(result) = job.try_recv()
+            && let Some(result) = crate::jobs::poll(job, "Clipboard worker stopped")
         {
             self.job = None;
             self.error = result.err().unwrap_or_default();

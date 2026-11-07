@@ -12,6 +12,7 @@ mod config_ui;
 mod daemon;
 mod gui;
 mod i18n;
+mod jobs;
 mod launcher;
 #[cfg(any(feature = "imgur", feature = "update-check"))]
 mod links;

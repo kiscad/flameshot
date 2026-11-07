@@ -2169,3 +2169,17 @@ acceptance. These and the combined isolated D-Bus/Xvfb UI suite passed, includin
 Open With cancellation, keep-open behavior and file lifetime. All-target all-feature
 Clippy passed; no real external application or browser was launched by the UI suite.
 No-default-feature compilation, formatting and diff checks also passed.
+
+### Disconnected save/copy workers
+
+The save portal, native folder listing and About clipboard job now treat a dropped
+worker channel as a terminal error instead of an indefinitely pending operation.
+This releases pending controls through their existing error paths. A shared polling
+helper distinguishes a live empty channel, a buffered success/error, normal portal
+cancellation and disconnection; buffered results retain priority over sender exit.
+
+Validation passed: channel-state tests, all-feature workspace tests, all-target
+Clippy, no-default-feature compilation and the isolated D-Bus/Xvfb UI suite covering
+normal portal cancellation, saving/retry, Open With and history links. Formatting
+and diff checks passed. These checks do not complete the remaining desktop or
+packaging acceptance gates.
