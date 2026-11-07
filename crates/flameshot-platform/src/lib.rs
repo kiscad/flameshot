@@ -7,6 +7,8 @@ pub mod desktop;
 #[cfg(feature = "imgur")]
 pub mod imgur;
 #[cfg(target_os = "linux")]
+pub mod open_portal;
+#[cfg(target_os = "linux")]
 pub mod portal;
 #[cfg(target_os = "linux")]
 pub mod screens;

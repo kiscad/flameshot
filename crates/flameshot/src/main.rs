@@ -203,7 +203,17 @@ async fn run(cli: Cli) -> Result<()> {
     }
     if matches!(command, Command::InternalOpenSavePath) {
         if let Some(directory) = settings::Settings::load()?.save_path {
-            flameshot_platform::applications::open_directory(&directory)?;
+            if app_ui::restricted_bus_names() {
+                let connection = daemon::session_connection().await?;
+                flameshot_platform::open_portal::open_directory(
+                    &connection,
+                    &directory,
+                    Duration::from_secs(120),
+                )
+                .await?;
+            } else {
+                flameshot_platform::applications::open_directory(&directory)?;
+            }
         }
         return Ok(());
     }

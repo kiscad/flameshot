@@ -25,6 +25,10 @@ Features:
 - `imgur` is disabled by default. Enable with `--features imgur`.
 - `--all-features` builds both optional integrations.
 
+In Flatpak/Snap, opening the configured save directory uses the OpenURI portal
+with a directory file descriptor. The desktop must provide a compatible portal and
+file manager; native installations use GIO.
+
 On Wayland, install the desktop's Screenshot portal backend. A wlr backend also
 needs a compatible Access backend (such as GTK). Native windowless clipboard
 ownership uses data-control when available; XWayland is the current fallback on

@@ -1902,3 +1902,31 @@ test, formatting and the headless Sway regression suite. Actual tray activation 
 tested on X11; Sway validation covers the shared Wayland capture/monitor paths rather
 than native host tray rendering. Full GNOME/KDE, sandbox and release-package acceptance
 remain unfinished, as does final removal of the C++ reference implementation.
+
+### Portal dispatch for opening the save directory
+
+Flatpak/Snap directory actions now use the OpenURI portal's OpenFile method with
+a directory descriptor; native desktop launches retain GIO. This opens the directory
+itself. OpenDirectory has different semantics: it reveals the supplied item in its
+parent. The choice follows the [official OpenURI interface](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.OpenURI.html).
+No path string is interpreted by a shell or passed as a file URI. The opened descriptor
+is checked to refer to a directory, and the tray request has no parent window.
+
+The request subscribes before calling, carries a unique handle token, distinguishes
+user cancellation from rejection, rejects mismatched handles and invalid statuses,
+and closes timed-out requests with bounded cleanup. Cancellation returns silently;
+portal errors are reported without falling back to a local launcher. The helper
+retains the connection until completion, with a two-minute production timeout.
+
+A private-bus mock verifies the received descriptor's device/inode and directory
+type, immediate responses preceding method replies, cancellation, rejection, invalid
+status/handle and timeout Close. CLI integration covers both sandbox markers with
+GIO unavailable and confirms success, quiet cancellation and rejection diagnostics.
+Missing paths and non-directory paths are rejected locally. The protocol test is
+included in scripts/check-rust.sh. This proves protocol and routing behavior, not
+installed Flatpak/Snap confinement or a real host file-manager launch through a portal;
+those environment acceptance gates remain open alongside FileChooser/AppChooser work.
+
+Validation passed: all-feature workspace tests, all-target Clippy with warnings
+denied, formatting, private-bus daemon/portal tests, and no-default-feature portal
+and native GIO directory-dispatch tests. No user desktop file manager was launched.
