@@ -19,7 +19,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Area | Required evidence | Status |
 | --- | --- | --- |
 | Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
-| Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway and headless GNOME capture cases pass; broader compositor acceptance remains |
+| Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway, headless GNOME and KWin 5 capture cases pass; broader compositor acceptance remains |
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; remaining object-editing parity pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE IME/mixed-DPI acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE IME/fractional-scale/hotplug acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2581,3 +2581,26 @@ reader obtains the replacement text. All cases passed against KWin 5.27.11, with
 no desktop processes left in the disposable container. Python syntax and diff checks
 pass. KDE-VALIDATION.md records reproduction and limits; IME/mixed-DPI, other KWin
 versions and installed sandbox behavior remain unverified.
+
+### Fix interactive monitor switching on KWin and verify mixed scaling
+
+A two-output KWin fixture now verifies scales 1/2 and the compositor's actual layout,
+full-desktop and individual-monitor pixels, explicit second-screen selection, and
+interactive keyboard selection. A guarded test helper reads native window geometry,
+so accepted export pixels alone cannot conceal a window on the wrong monitor.
+KWin normalizes negative requested positions; this is not negative-origin evidence.
+
+The new check found that interactive selection changed the screenshot but left the
+fullscreen editor on the first monitor. On Wayland the editor now leaves fullscreen,
+waits for the reported state transition, then targets the chosen monitor. A bounded
+wait avoids indefinite stalls if the compositor does not acknowledge the request.
+The existing X11 path is unchanged. Both explicit and interactive selection now
+produce the correct native (0,0,512,384) logical frame and 1024x768 orange export.
+
+KWin mixed-scale/clipboard, GNOME dual-monitor and Sway mixed-scale/Pinyin regressions
+passed. All-feature application unit tests (73 passed, one existing ignored),
+all-feature all-target Clippy, formatting and Python syntax pass. Details and snapshot
+hash are in KDE-VALIDATION.md. Fractional-scale/hotplug/KDE IME work remains open.
+The minimal-feature application unit tests also pass (65 passed, one existing
+ignored test). The disposable container was stopped and removed after verifying
+that no test desktop processes remained.

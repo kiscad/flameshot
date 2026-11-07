@@ -49,6 +49,46 @@ in `target/kde-clipboard.log` and `target/kde-clipboard-artifacts`. No test proc
 remained after cleanup. Use the latest checkout's script when reusing the cached
 environment image, which is a dependency cache rather than the authoritative test.
 
+## Mixed-scale outputs and interactive monitor placement
+
+The `--multi-monitor` fixture uses two 1024×768 virtual outputs, with scales 1 and 2.
+`kscreen-doctor` requests a left-hand second monitor. KWin normalizes the requested
+negative origin to nonnegative positions: Virtual-1 is at (0,0), Virtual-0 at (512,0).
+The test reads and asserts the resulting JSON layout; it does **not** claim negative
+origin coverage. A separate colored Qt background on each screen distinguishes crops.
+
+The KDE portal returns a 3072×1536 composite at the maximum output scale. First and
+second monitor crops are 2048×1536 and 1024×768 respectively, with expected colors.
+Both `--region screen1` and keyboard selection of monitor 2 are exercised. The input
+helper reads the native window-management protocol and verifies the editor's actual
+logical frame is (0,0,512,384) before accepting the 1024×768 export. This establishes
+window placement as well as image selection.
+
+This caught a production bug: changing an already-fullscreen window's output on
+KWin 5.27 left it on the old monitor while showing the new monitor's image. Sending
+leave-fullscreen and target-fullscreen requests in the same frame did not fix it.
+The Rust editor now requests leaving fullscreen, waits for the compositor's reported
+non-fullscreen state, then requests the selected output in a later frame. The wait
+is bounded to two seconds so an uncooperative compositor cannot stall editing
+indefinitely. X11 keeps its existing direct monitor-switch path.
+
+All mixed-scale cases passed after the fix, as did KDE clipboard, GNOME dual-monitor
+and Sway mixed-scale/IME regressions. The tested all-feature debug binary SHA-256 was
+`4a44e14af8dc85d96f4bfaa994b52bfe600e4cbdd7e110f6fc4ea4cc84d4b1a1`.
+Logs/artifacts are `target/kde-monitors.log` and `target/kde-monitor-artifacts`;
+`chooser-debug.png` is the pre-fix diagnostic, not accepted output. The test-only
+container with KScreen tools is cached as `flameshot-test-kde:5.27-monitors`; copy
+current checkout binaries/scripts into it before reuse.
+
+Run this mode separately from `--clipboard`. It additionally requires
+`libkf5screen-bin` (`kscreen-doctor`):
+
+```sh
+python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input --multi-monitor
+```
+
+Fractional scaling, hotplug and native KDE IME remain separate acceptance work.
+
 ## Reproduce
 
 Build the application and guarded input helper:
@@ -67,7 +107,7 @@ python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde
 The script creates private XDG trees, a private session bus, a virtual 1024×768
 KWin output and a solid-color Qt Wayland background. The input helper requires
 `FLAMESHOT_TEST_KDE_INPUT=1`; only its disposable Desktop Entry requests the
-`org_kde_kwin_fake_input` interface. The fixture does not disable KWin interface
+`org_kde_kwin_fake_input` and window-management interfaces. The fixture does not disable KWin interface
 permission checks globally. It uses an explicit software OpenGL compositor;
 QPainter cannot provide the KWin screenshot effect.
 
@@ -101,7 +141,7 @@ python3 /validation/kde_smoke.py /usr/bin/flameshot /validation/kde_input --clip
 ```
 
 No real terminal, browser, uploader or user desktop is invoked. Remaining KDE
-coverage includes native IME, mixed-scale/negative-origin
+coverage includes native IME, fractional-scale/negative-origin
 outputs, hotplug and installed sandbox behavior. The plain `screen` command cannot
 infer the pointer's monitor on this Wayland backend; the existing diagnostic asks
 for `--number`. Hosted CI has not run this fixture.

@@ -225,6 +225,7 @@ struct Editor {
     buttons: Option<Vec<i32>>,
     screen_image: Option<RgbaImage>,
     screen_previews: Vec<TextureHandle>,
+    pending_monitor: Option<(usize, std::time::Instant)>,
     #[cfg(feature = "imgur")]
     upload_dialog: Option<crate::upload_ui::UploadDialog>,
     document: Document,
@@ -296,6 +297,7 @@ impl Editor {
             buttons: settings.buttons.clone(),
             screen_image,
             screen_previews: Vec::new(),
+            pending_monitor: None,
             #[cfg(feature = "imgur")]
             upload_dialog: None,
             document: Document::new(image, settings.undo_limit)?,
@@ -405,7 +407,14 @@ impl Editor {
             self.rendered = None;
             self.dirty = true;
             self.screen_previews.clear();
-            ctx.send_viewport_cmd(egui::ViewportCommand::SetMonitor(index));
+            // KWin 5 keeps the old output if fullscreen is retargeted before it
+            // acknowledges leaving fullscreen. Finish this switch in a later frame.
+            if crate::is_wayland() {
+                self.pending_monitor = Some((index, std::time::Instant::now()));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+            } else {
+                ctx.send_viewport_cmd(egui::ViewportCommand::SetMonitor(index));
+            }
             ctx.request_repaint();
         }
     }
@@ -1126,6 +1135,20 @@ impl eframe::App for Editor {
         }
     }
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        if let Some((index, started)) = self.pending_monitor {
+            // Bound the wait because compositor fullscreen requests are advisory.
+            if ui.input(|input| input.viewport().fullscreen) != Some(false)
+                && started.elapsed() < std::time::Duration::from_secs(2)
+            {
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(16));
+                return;
+            }
+            self.pending_monitor = None;
+            ui.ctx()
+                .send_viewport_cmd(egui::ViewportCommand::SetMonitor(index));
+            ui.ctx().request_repaint();
+        }
         // Flush one frame after release so final release-frame changes belong
         // to the same gesture, even when the next input starts another gesture.
         if !self.property_pointer_down {

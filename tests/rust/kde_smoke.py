@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER [--clipboard]
+"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER [--clipboard] [--multi-monitor]
 Requires KWin 5, KDE portal, Qt Wayland, PyQt5, Pillow and private-session tools.
 """
 import os
@@ -12,16 +12,18 @@ import time
 import io
 import signal
 import shutil
+import json
 from PIL import Image
 binary,helper=map(lambda p:Path(p).resolve(),sys.argv[1:3])
 if '--inside' not in sys.argv:
+    assert not ('--clipboard' in sys.argv and '--multi-monitor' in sys.argv),'Run clipboard and monitor fixtures separately'
     with tempfile.TemporaryDirectory(prefix='flameshot-kde-') as directory:
         root=Path(directory)
         for name in ['runtime','config','data','cache','tmp','pictures']:(root/name).mkdir(mode=0o700)
         config=root/'config/flameshot';config.mkdir()
         (config/'flameshot.ini').write_text('[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\n')
         applications=root/'data/applications';applications.mkdir()
-        (applications/'flameshot-kde-input.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=Isolated test input\nExec={helper}\nX-KDE-Wayland-Interfaces=org_kde_kwin_fake_input\n')
+        (applications/'flameshot-kde-input.desktop').write_text(f'[Desktop Entry]\nType=Application\nName=Isolated test input\nExec={helper}\nX-KDE-Wayland-Interfaces=org_kde_kwin_fake_input,org_kde_plasma_window_management\n')
         portals=root/'config/xdg-desktop-portal';portals.mkdir()
         (portals/'portals.conf').write_text('[preferred]\ndefault=kde\n')
         (root/'config/user-dirs.dirs').write_text(f'XDG_PICTURES_DIR="{root}/pictures"\n')
@@ -29,7 +31,7 @@ if '--inside' not in sys.argv:
         env=os.environ.copy()
         for key in ['DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','DBUS_SYSTEM_BUS_ADDRESS','SESSION_MANAGER']:env.pop(key,None)
         env.update(XDG_RUNTIME_DIR=str(root/'runtime'),XDG_CONFIG_HOME=str(root/'config'),XDG_DATA_HOME=str(root/'data'),XDG_CACHE_HOME=str(root/'cache'),TMPDIR=str(root/'tmp'),XDG_CURRENT_DESKTOP='KDE',XDG_SESSION_TYPE='wayland',QT_QPA_PLATFORM='wayland',LIBGL_ALWAYS_SOFTWARE='1',KWIN_COMPOSE='O2')
-        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),*(['--clipboard'] if '--clipboard' in sys.argv else []),'--inside',str(root)],env=env,start_new_session=True)
+        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),*[flag for flag in ['--clipboard','--multi-monitor'] if flag in sys.argv],'--inside',str(root)],env=env,start_new_session=True)
         try:
             status=session.wait(timeout=100)
         except subprocess.TimeoutExpired:
@@ -58,7 +60,7 @@ def owned(name):
     return result.returncode==0 and b'true' in result.stdout
 try:
     subprocess.run(['kbuildsycoca5','--noincremental'],env=env,capture_output=True,check=True,timeout=15)
-    compositor=start('kwin',['kwin_wayland','--virtual','--width','1024','--height','768','--no-lockscreen','--no-global-shortcuts','--socket','flameshot-kde'],{'QT_QPA_PLATFORM':'offscreen','QT_LOGGING_RULES':'kwin_core.debug=true;KWIN_UTILS.debug=true'})
+    compositor=start('kwin',['kwin_wayland','--virtual','--width','1024','--height','768',*(['--output-count','2'] if '--multi-monitor' in sys.argv else []),'--no-lockscreen','--no-global-shortcuts','--socket','flameshot-kde'],{'QT_QPA_PLATFORM':'offscreen','QT_LOGGING_RULES':'kwin_core.debug=true;KWIN_UTILS.debug=true'})
     wait_for(lambda:(root/'runtime/flameshot-kde').exists() or compositor.poll() is not None)
     assert compositor.poll() is None,'KWin exited'
     env['WAYLAND_DISPLAY']='flameshot-kde'
@@ -67,31 +69,70 @@ try:
     def key(code):
         for state in [1,0]:
             pointer.stdin.write(f'key {code} {state}\n');pointer.stdin.flush();assert pointer.stdout.readline().strip()=='ok'
-    start('background',['/usr/bin/python3','-c','from PyQt5.QtWidgets import QApplication,QWidget; app=QApplication([]); w=QWidget(); w.setStyleSheet("background:rgb(32,64,96)"); w.showFullScreen(); app.exec_()'])
+    if '--multi-monitor' in sys.argv:
+        configured=subprocess.run(['kscreen-doctor','output.Virtual-0.scale.1','output.Virtual-0.position.0,0','output.Virtual-1.scale.2','output.Virtual-1.position.-512,0'],env=env,capture_output=True,text=True,timeout=10)
+        assert configured.returncode==0,configured.stderr+configured.stdout
+        layout=subprocess.run(['kscreen-doctor','--json'],env=env,capture_output=True,text=True,check=True,timeout=10)
+        (root/'outputs.log').write_text(layout.stdout)
+        outputs={output['name']:output for output in json.loads(layout.stdout)['outputs']}
+        assert outputs['Virtual-0']['scale']==1 and outputs['Virtual-1']['scale']==2,outputs
+        assert outputs['Virtual-0']['pos']=={'x':512,'y':0} and outputs['Virtual-1']['pos']=={'x':0,'y':0},outputs
+    background_code="""from PyQt5.QtWidgets import QApplication,QWidget
+app=QApplication([])
+windows=[]
+for screen in app.screens():
+    w=QWidget();w.winId();w.windowHandle().setScreen(screen)
+    color='32,64,96' if screen.name()=='Virtual-0' else '160,80,32'
+    w.setStyleSheet('background:rgb('+color+')');w.showFullScreen();windows.append(w)
+app.exec_()
+"""
+    start('background',['/usr/bin/python3','-c',background_code])
     start('permission-store',['/usr/libexec/xdg-permission-store'])
     start('portal-kde',['/usr/lib/x86_64-linux-gnu/libexec/xdg-desktop-portal-kde'])
     wait_for(lambda:owned('org.freedesktop.impl.portal.desktop.kde'))
     start('portal',['/usr/libexec/xdg-desktop-portal'])
     wait_for(lambda:owned('org.freedesktop.portal.Desktop'))
     time.sleep(1)
-    for command,args,size,accept in [('full',['full','--raw'],(1024,768),True),('screen',['screen','--number','0','--raw'],(1024,768),True),('editor',['gui','--region','80x60+500+450','--raw'],(80,60),True),('cancel',['gui','--region','80x60+500+450','--raw'],None,False)]:
+    cases=[('full',['full','--raw'],(1024,768),True),('screen',['screen','--number','0','--raw'],(1024,768),True),('editor',['gui','--region','80x60+500+450','--raw'],(80,60),True),('cancel',['gui','--region','80x60+500+450','--raw'],None,False)]
+    if '--multi-monitor' in sys.argv:
+        cases=[('full',['full','--raw'],(3072,1536),True),('screen',['screen','--number','0','--raw'],(2048,1536),True),('screen-second',['screen','--number','1','--raw'],(1024,768),True),('editor-second',['gui','--region','screen1','--raw'],(1024,768),True),('chooser-second',['gui','--raw'],(1024,768),True),('cancel',['gui','--region','screen1','--raw'],None,False)]
+    for command,args,size,accept in cases:
         capture=start('capture-'+command,[str(binary),*args],stdout=subprocess.PIPE)
         deadline=time.monotonic()+20
+        placement_checked=False
+        chosen=False
         while True:
             try:
                 data,_=capture.communicate(timeout=.4)
                 break
             except subprocess.TimeoutExpired:
                 assert time.monotonic()<deadline,'KDE screenshot request timed out'
+                if command in ['editor-second','chooser-second']:
+                    pointer.stdin.write('geometry org.flameshot.Flameshot\n');pointer.stdin.flush()
+                    geometry=pointer.stdout.readline().strip()
+                    if geometry!='none':
+                        if command=='chooser-second' and not chosen:
+                            key(3) # Number 2 chooses the second output.
+                            chosen=True
+                            continue
+                        if geometry!='0 0 512 384':
+                            continue
+                        if command=='chooser-second':
+                            pointer.stdin.write('key 29 1\n');pointer.stdin.flush();assert pointer.stdout.readline().strip()=='ok'
+                            key(30) # Ctrl+A selects the full chosen output.
+                            pointer.stdin.write('key 29 0\n');pointer.stdin.flush();assert pointer.stdout.readline().strip()=='ok'
+                        placement_checked=True
                 key(28 if accept else 1) # Private-session consent/accept or Escape.
         if not accept:
             assert capture.returncode==2 and not data,(capture.returncode,len(data))
             print('PASS: KWin cancellation returns 2 with empty stdout',flush=True)
             continue
         assert capture.returncode==0,(command,capture.returncode)
+        if command in ['editor-second','chooser-second']:assert placement_checked,'Editor exited before native geometry could be checked'
         image=Image.open(io.BytesIO(data)).convert('RGB')
         assert image.size==size,image.size
-        assert image.getpixel((20,20))==(32,64,96),image.getpixel((20,20))
+        color=(160,80,32) if '--multi-monitor' in sys.argv and command in ['full','screen-second','editor-second','chooser-second'] else (32,64,96)
+        assert image.getpixel((20,20))==color,image.getpixel((20,20))
         if os.environ.get('FLAMESHOT_TEST_ARTIFACT_DIR'):
             artifacts=Path(os.environ['FLAMESHOT_TEST_ARTIFACT_DIR']);artifacts.mkdir(parents=True,exist_ok=True)
             (artifacts/('kde-'+command+'.png')).write_bytes(data)
