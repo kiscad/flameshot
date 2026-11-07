@@ -20,7 +20,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | --- | --- | --- |
 | Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
 | Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway, headless GNOME and KWin 5 capture cases pass; broader compositor acceptance remains |
-| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; remaining object-editing parity pending |
+| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; text emphasis/decorations/alignment and remaining parity pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
@@ -2747,3 +2747,28 @@ tests, minimal builds, Bash/Fish live completions and Fish/Zsh syntax. Formattin
 diff checks and warning-free man rendering pass. The manual explicitly documents
 legacy zero-status parse errors. This closes the previously recorded blanket parse
 status discrepancy, not every remaining command/config semantic audit item.
+
+### X11 regression after CLI compatibility changes; concrete text-tool gap
+
+The full private-Xvfb desktop suite passed against the current all-feature executable
+after the CLI grammar/status changes. It covers valid capture options, save retry and
+cancel, image/text clipboard ownership, launcher/pin/daemon lifetime, configuration
+refresh and preservation, selection, drawing, object movement/size, undo/redo and text
+editing. The run is recorded in target/cli-desktop-regression.log.
+
+The first run exposed a stale test coordinate: the expanded localized capture-label
+width moved the Size control. The test pressed the gap before it and dragged the
+entire toolbar, so its size-preview assertion failed. The saved image showed that
+movement. The fixture now presses the Size control's center; the subsequent complete
+run verifies live size preview and single-step undo/redo. This was a test targeting
+fix, not an application drag behavior change. Python syntax and diff checks pass.
+
+Source comparison also turned the generic editor-parity remainder into a concrete
+missing feature: src/tools/text/textconfig.cpp exposes Bold (normal/bold toggle),
+Italic, Underline, StrikeOut, Left Align, Center Align and Right Align. TextTool copies
+and draws these font/alignment properties. Rust Annotation::Text currently stores
+only position, string, size, family and color, and its renderer/editor expose none of
+those formatting properties. They must be represented per annotation and supported
+in shared preview/export/picking, edit cancellation and undo/redo, with the existing
+TextConfig translations reused. This remains implementation work, not a completed
+editor acceptance claim; arbitrary font-weight choices are not a legacy requirement.

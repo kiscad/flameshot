@@ -918,10 +918,12 @@ print('PASS: capture lock is released after a killed editor')
                 tool('mousemove','--window',window,'650','550')
                 tool('click','1')
                 time.sleep(.2)
-                tool('mousemove','--window',window,'310','37')
+                # Center of Size after the localized capture-label width. The
+                # gap before this control drags the entire toolbar instead.
+                tool('mousemove','--window',window,'350','37')
                 tool('mousedown','1')
                 time.sleep(.2)
-                for size_x in (308,306,304,302,300,298,296):
+                for size_x in (348,346,344,342,340,338,336):
                     tool('mousemove','--window',window,str(size_x),'37')
                     time.sleep(.15)
                 assert corner_pixel()==(0,255,0),'Size drag did not preview while held'
