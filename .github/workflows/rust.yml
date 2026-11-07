@@ -69,6 +69,8 @@ jobs:
         run: python3 tests/rust/global_render_smoke.py / target/debug/flameshot
       - name: Numeric tool-size keyboard input
         run: python3 tests/rust/size_keyboard_smoke.py / target/debug/flameshot
+      - name: Drawing grid and snapped annotation export
+        run: python3 tests/rust/drawing_grid_smoke.py / target/debug/flameshot
       - name: Native terminal launch
         run: python3 tests/rust/terminal_smoke.py / target/debug/flameshot
       - name: Native Fcitx Pinyin input and text clipboard

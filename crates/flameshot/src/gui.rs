@@ -48,6 +48,8 @@ pub struct Outcome {
 #[derive(Default, Clone)]
 pub struct Options {
     pub target_monitor: Option<usize>,
+    pub grid_origin: [f32; 2],
+    pub screen_origins: Vec<[f32; 2]>,
     pub screens: Vec<(String, PixelRect)>,
     pub accept_on_select: bool,
     pub initial_selection: Option<PixelRect>,
@@ -213,6 +215,7 @@ struct Editor {
     wheel_frame: Option<u64>,
     keyboard_frame: Option<u64>,
     size_keyboard: crate::size_keyboard::SizeKeyboard,
+    grid: crate::drawing_grid::DrawingGrid,
     counter_override: Option<u16>,
     undo_limit: usize,
     marker_size: f32,
@@ -295,6 +298,7 @@ impl Editor {
             wheel_frame: None,
             keyboard_frame: None,
             size_keyboard: Default::default(),
+            grid: Default::default(),
             counter_override: None,
             undo_limit: settings.undo_limit,
             marker_size: settings.marker_size.min(10000.0),
@@ -408,6 +412,9 @@ impl Editor {
         }
         if let Some(index) = chosen {
             let r = self.options.screens[index].1;
+            if let Some(origin) = self.options.screen_origins.get(index) {
+                self.options.grid_origin = *origin;
+            }
             let image = self.screen_image.take().unwrap();
             let crop = image::imageops::crop_imm(&image, r.x, r.y, r.width, r.height).to_image();
             self.size = [crop.width(), crop.height()];
@@ -937,6 +944,10 @@ impl Editor {
         *size = value / factor;
         self.persist_tool_size(key, value);
     }
+    fn grid_origin(&self, ctx: &egui::Context) -> Pos2 {
+        ctx.input(|input| input.viewport().inner_rect.map(|rect| rect.min))
+            .unwrap_or_else(|| egui::pos2(self.options.grid_origin[0], self.options.grid_origin[1]))
+    }
     fn type_tool_size(&mut self, key: egui::Key, modifiers: egui::Modifiers) {
         let Some(value) = self.size_keyboard.press(key, modifiers) else {
             return;
@@ -1279,7 +1290,24 @@ impl eframe::App for Editor {
         }
         if let Some(mut editor) = self.text_editor.take() {
             self.size_keyboard.reset();
-            editor.paint_preview(ui, &self.document);
+            if let Some(canvas) = editor.paint_preview(ui, &self.document)
+                && let Some(selection) = self.selection
+            {
+                let scale = canvas.width() / self.size[0] as f32;
+                let bounds = Rect::from_min_size(
+                    canvas.min + egui::vec2(selection.x as f32 * scale, selection.y as f32 * scale),
+                    egui::vec2(
+                        selection.width as f32 * scale,
+                        selection.height as f32 * scale,
+                    ),
+                );
+                self.grid.paint(
+                    ui,
+                    bounds.intersect(canvas),
+                    self.grid_origin(ui.ctx()),
+                    self.theme.main,
+                );
+            }
             let commit = self
                 .shortcuts
                 .actions(ui.ctx())
@@ -1548,6 +1576,7 @@ impl eframe::App for Editor {
                             }
                         }
                     });
+                    self.grid.controls(ui);
                     egui::ScrollArea::vertical()
                         .max_height(300.0)
                         .show(ui, |ui| {
@@ -1718,6 +1747,20 @@ impl eframe::App for Editor {
             available.center(),
             egui::vec2(self.size[0] as f32 * scale, self.size[1] as f32 * scale),
         );
+        let grid = self.grid;
+        let origin = self.grid_origin(&ctx);
+        let image_size = self.size;
+        let drawing_point = |position: Pos2, snap: bool| {
+            let position = if snap {
+                grid.snap(position, origin)
+            } else {
+                position
+            };
+            Point {
+                x: ((position.x - rect.min.x) / scale).clamp(0.0, image_size[0] as f32),
+                y: ((position.y - rect.min.y) / scale).clamp(0.0, image_size[1] as f32),
+            }
+        };
         let response = ui.interact(
             rect,
             egui::Id::unique("capture-canvas"),
@@ -1920,10 +1963,7 @@ impl eframe::App for Editor {
             && self.tool == Tool::Counter
             && let Some(position) = response.interact_pointer_pos()
         {
-            let center = Point {
-                x: (position.x - rect.min.x) / scale,
-                y: (position.y - rect.min.y) / scale,
-            };
+            let center = drawing_point(position, true);
             match self.document.add(Annotation::Counter {
                 center,
                 tip: center,
@@ -1954,6 +1994,10 @@ impl eframe::App for Editor {
             }) {
                 return;
             }
+            let position = drawing_point(
+                rect.min + egui::vec2(position.x * scale, position.y * scale),
+                true,
+            );
             if self.text.is_empty() {
                 self.text_editor = crate::text_edit::TextEdit::create(Annotation::Text {
                     position,
@@ -2022,10 +2066,9 @@ impl eframe::App for Editor {
                         y: (position.y - rect.min.y) / scale,
                     });
                 }
-                self.points.push(Point {
-                    x: ((position.x - rect.min.x) / scale).clamp(0.0, self.size[0] as f32),
-                    y: ((position.y - rect.min.y) / scale).clamp(0.0, self.size[1] as f32),
-                });
+                let snap = self.selection_drag.is_none()
+                    && !matches!(self.tool, Tool::Move | Tool::Select | Tool::MoveSelection);
+                self.points.push(drawing_point(position, snap));
             }
         }
         if (response.dragged() || response.drag_stopped())
@@ -2034,10 +2077,10 @@ impl eframe::App for Editor {
         {
             self.dirty = true;
             ctx.request_repaint();
-            self.points.push(Point {
-                x: ((position.x - rect.min.x) / scale).clamp(0.0, self.size[0] as f32),
-                y: ((position.y - rect.min.y) / scale).clamp(0.0, self.size[1] as f32),
-            });
+            let snap = self.selection_drag.is_none()
+                && !self.constrain_drawing
+                && !matches!(self.tool, Tool::Move | Tool::Select | Tool::MoveSelection);
+            self.points.push(drawing_point(position, snap));
         }
         if let Some((original, mode)) = self.selection_drag
             && let (Some(start), Some(end)) = (self.points.first(), self.points.last())
@@ -2138,6 +2181,9 @@ impl eframe::App for Editor {
                 Stroke::new(1.0, self.theme.main),
                 StrokeKind::Inside,
             );
+        }
+        if let Some(bounds) = overlay_bounds {
+            grid.paint(ui, bounds.intersect(rect), origin, self.theme.main);
         }
         self.geometry_overlay.show(
             ui,

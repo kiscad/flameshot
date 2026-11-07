@@ -92,7 +92,7 @@ impl TextEdit {
             None => document.preview(draft),
         }
     }
-    pub fn paint_preview(&mut self, ui: &egui::Ui, document: &Document) {
+    pub fn paint_preview(&mut self, ui: &egui::Ui, document: &Document) -> Option<egui::Rect> {
         if self.previewed.as_ref() != Some(&self.draft) {
             match self.preview(document) {
                 Ok(image) => {
@@ -125,7 +125,9 @@ impl TextEdit {
                 egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
                 egui::Color32::WHITE,
             );
+            return Some(rect);
         }
+        None
     }
     fn apply(&self, document: &mut Document) -> Result<(), EditError> {
         let Some(index) = self.index else {

@@ -20,7 +20,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | --- | --- | --- |
 | Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
 | Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway, headless GNOME and KWin 5 capture cases pass; broader compositor acceptance remains |
-| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text formatting, rendered picking, live movement, selected properties and numeric size entry implemented/tested; remaining parity audit pending |
+| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text formatting, rendered picking, live movement, selected properties, numeric size entry and drawing grid implemented/tested; remaining parity audit pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
@@ -2998,3 +2998,32 @@ with Fish/Zsh checks, the full Xvfb desktop suite, X11 Fcitx Pinyin, Sway Waylan
 with Pinyin and mixed-scale cases, and the live-global-render regression. Tests
 used private displays, D-Bus sessions and XDG directories. Hosted CI and the other
 migration acceptance gates remain pending.
+
+### Restore the drawing grid and snapping controls
+
+The Objects and properties panel now exposes the existing translated Display grid
+control and a 5–50 spacing control (default 10). This restores the legacy side-panel
+feature that was missing from the Rust editor. The grid is a UI overlay clipped to
+the selection, including during text drafts; it never changes document pixels or
+appears in exports. Dots are batched into a mesh to avoid a separate shape per dot.
+
+New annotation positions snap to the grid in global logical window coordinates;
+image scaling is applied after snapping. Drawing endpoints use normal snapping unless
+Control enables the existing constrained-drawing behavior. Selection manipulation
+and movement of existing annotations remain unsnapped. Where the compositor does
+not report the window position, the selected monitor's logical origin supplies the
+grid origin, including after the monitor chooser crops the capture.
+
+Unit tests cover disabled snapping and positive/negative global coordinates, including
+half-step rounding. The private-Xvfb drawing-grid fixture compares snapped lines at
+default and custom spacing with lines drawn at exact coordinates, checks undo and
+unsnapped object movement, and verifies that grid-enabled export contains only the
+annotations. The fixture is registered in the Rust workflow and build instructions.
+
+Validation passed: the complete Rust gate with Fish/Zsh checks, the new grid fixture
+(including text-draft grid visibility), text formatting, selected-arrow style, the
+full Xvfb desktop suite, and Sway Wayland with Pinyin and mixed-scale cases. All desktop
+fixtures used private displays, D-Bus sessions and XDG directories. Enabled-grid native
+validation is currently X11; the Wayland regression does not establish enabled-grid
+behavior at every scale or monitor origin. Hosted CI and final migration acceptance
+remain pending.

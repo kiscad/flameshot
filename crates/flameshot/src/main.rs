@@ -2,6 +2,7 @@ mod about;
 mod app_ui;
 mod buttons;
 mod children;
+mod drawing_grid;
 mod geometry_overlay;
 mod size_keyboard;
 mod text_edit;
@@ -596,6 +597,30 @@ async fn run(cli: Cli) -> Result<()> {
                 }
             }
             let target_monitor = selected_screen.as_ref().map(|(_, index)| *index);
+            let grid_origin = selected_screen
+                .as_ref()
+                .map(|(screens, index)| {
+                    [
+                        screens[*index].bounds.x as f32,
+                        screens[*index].bounds.y as f32,
+                    ]
+                })
+                .or_else(|| {
+                    available_screens
+                        .as_ref()
+                        .and_then(|screens| screens.first())
+                        .map(|screen| [screen.bounds.x as f32, screen.bounds.y as f32])
+                })
+                .unwrap_or([0.0; 2]);
+            let screen_origins = available_screens
+                .as_ref()
+                .map(|screens| {
+                    screens
+                        .iter()
+                        .map(|screen| [screen.bounds.x as f32, screen.bounds.y as f32])
+                        .collect()
+                })
+                .unwrap_or_default();
 
             let connection = daemon::session_connection().await?;
             let capture = if settings.use_x11_legacy_screenshot && !is_wayland() {
@@ -669,6 +694,8 @@ async fn run(cli: Cli) -> Result<()> {
                     gui::Options {
                         accept_on_select,
                         target_monitor,
+                        grid_origin,
+                        screen_origins,
                         screens: screen_choices,
                         initial_selection,
                         save_on_accept: path.is_some()
