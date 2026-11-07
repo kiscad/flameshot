@@ -1,6 +1,13 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
+check_completions() {
+    if [ -n "${FLAMESHOT_COMPLETION_TOOL_ROOT:-}" ]; then
+        python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot" "$FLAMESHOT_COMPLETION_TOOL_ROOT"
+    else
+        python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot"
+    fi
+}
 cargo fmt --all -- --check
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
@@ -13,8 +20,8 @@ FLAMESHOT_TEST_PRIVATE_BUS=1 dbus-run-session -- cargo test --locked -p flamesho
 cargo clippy --locked --workspace --all-features --all-targets -- -D warnings
 cargo test --locked --workspace --all-features
 FLAMESHOT_TEST_PRIVATE_BUS=1 cargo test --locked -p flameshot --test daemon_exit --all-features -- --ignored
-python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot"
+check_completions
 cargo test --locked --workspace --no-default-features
 FLAMESHOT_TEST_PRIVATE_BUS=1 dbus-run-session -- cargo test --locked -p flameshot --test daemon --no-default-features -- --ignored
 
-python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot"
+check_completions

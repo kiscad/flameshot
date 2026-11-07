@@ -34,6 +34,7 @@ jobs:
     env:
       CARGO_TERM_COLOR: always
       LIBGL_ALWAYS_SOFTWARE: '1'
+      FLAMESHOT_COMPLETION_TOOL_ROOT: /
     steps:
       - uses: actions/checkout@v6
       - name: Install native runtime and desktop test dependencies
@@ -42,7 +43,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config ripgrep desktop-file-utils appstream libx11-dev libx11-xcb1 libxkbcommon-dev libxkbcommon-x11-0 libwayland-dev \
             libegl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
-            libglib2.0-bin dbus dbus-x11 fonts-noto-core fonts-noto-cjk \
+            libglib2.0-bin dbus dbus-x11 fish zsh fonts-noto-core fonts-noto-cjk \
             xvfb xdotool xclip x11-xserver-utils fuse3 python3-pil fcitx5 fcitx5-chinese-addons sway swaybg grim wtype \
             wl-clipboard pipewire xdg-desktop-portal xdg-desktop-portal-gtk \
             xdg-desktop-portal-wlr
@@ -56,7 +57,7 @@ jobs:
           cargo build --locked -p flameshot-platform --examples
       - name: Real X11 smoke
         run: python3 tests/rust/desktop_smoke.py / target/debug/flameshot
-      - name: Simplified and traditional Chinese launcher and history
+      - name: Simplified and traditional Chinese desktop UI
         run: python3 tests/rust/localization_smoke.py / target/debug/flameshot
       - name: Native terminal launch
         run: python3 tests/rust/terminal_smoke.py / target/debug/flameshot

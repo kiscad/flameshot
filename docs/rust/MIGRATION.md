@@ -2523,3 +2523,24 @@ hosted execution remains unverified. Terminal discovery is GIO's host policy rat
 than the legacy hardcoded preference list; acceptance across installed terminal
 emulators is still part of broader desktop validation. GIO launch metadata may name
 the temporary entry, although the application's %k argument names the original.
+
+### Revalidate combined changes and include all packaged shell completions
+
+After the configuration refresh, UI localization and manual terminal launch changes,
+the complete scripts/check-rust.sh gate passed: default/all-feature lint and workspace
+tests, private-bus portal/capture/daemon/notification tests, daemon exit cases,
+minimal-feature workspace/daemon tests and Bash completion checks. The native terminal
+fixture also passed against the minimal executable left by the gate.
+
+The gate previously tested Fish/Zsh only when developers invoked completions.py
+separately. It now accepts FLAMESHOT_COMPLETION_TOOL_ROOT and uses that root for both
+all-feature and minimal completion checks. Rust CI installs Fish/Zsh and sets the
+root to /, so those checks are explicit rather than silently absent. BUILD.md lists
+the option, its requirements and the native terminal fixture. With the extracted
+local tool root, the entire updated gate passed again and logged Fish live completion
+plus Fish/Zsh syntax success twice. Shell syntax and diff checks also pass.
+
+These are local results; hosted CI and the remaining CLI behavior audit are not
+closed. The existing parser-status discrepancy remains: legacy parse rejection can
+return zero through main.cpp's finish label, while Clap rejects arguments nonzero.
+No blanket exit-status change was made during this verification pass.

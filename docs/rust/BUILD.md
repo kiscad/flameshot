@@ -37,15 +37,23 @@ compositors lacking that protocol.
 ## Verification
 
 ```sh
-scripts/check-rust.sh
+FLAMESHOT_COMPLETION_TOOL_ROOT=/ scripts/check-rust.sh
 cargo build --locked -p flameshot --all-features
 cargo build --locked -p flameshot-platform --examples
 python3 tests/rust/desktop_smoke.py / target/debug/flameshot
 python3 tests/rust/localization_smoke.py / target/debug/flameshot
+python3 tests/rust/terminal_smoke.py / target/debug/flameshot
 python3 tests/rust/ime_smoke.py / target/debug/flameshot
 python3 tests/rust/dbus_ui_smoke.py / --documents
 python3 tests/rust/wayland_smoke.py / target/debug/flameshot --ime
 ```
+
+The completion tool root enables Fish live completions and Fish/Zsh syntax checks
+in both all-feature and minimal builds; it requires Fish and Zsh under that root.
+Without the variable, the core check runs Bash completion checks only.
+The terminal fixture uses a synthetic terminal and receiver on a private Xvfb display.
+It verifies the native checkbox sends a cropped PNG through GIO without starting a
+real user terminal.
 
 The D-Bus UI suite builds the matching test executables and exercises actual tray
 monitor activation/output removal and sandbox Open With success, cancellation,
