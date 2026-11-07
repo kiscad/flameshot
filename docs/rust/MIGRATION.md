@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak/Nix/Snap definitions migrated; sandbox/provider builds and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI and headless GNOME capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin and headless GNOME capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2304,3 +2304,21 @@ new minimal commands passed locally, followed by live Bash/Fish completion check
 and Fish/Zsh syntax checks against the minimal executable. This extends repeatable
 feature-matrix evidence; it does not complete native Wayland IME, packaging installs,
 hosted CI or the final removal of C++ reference sources.
+
+
+### Native Wayland Fcitx Pinyin verification
+
+The isolated Sway suite now accepts --ime. It starts Fcitx with a private Pinyin
+profile and Cloud Pinyin disabled, while DISPLAY remains unset and Xwayland stays
+disabled. Latin key events are sent through the virtual keyboard; the actual input
+engine must produce Chinese text. The test verifies the exact copied string, cancels
+a second uncommitted composition without losing the committed text, applies the text
+annotation and checks the exported dimensions and text pixels. The resulting Chinese
+glyphs were visually inspected.
+
+The full Sway suite passed with this option, including its existing image clipboard,
+pin, monitor scaling, selection and confirmation cases. No production Rust changes
+were needed. Rust CI now requests this option, but hosted CI remains unrun. This
+establishes the tested native Wayland/Sway/Fcitx path; GNOME input-method integration,
+other engines, candidate-window placement and broad language coverage remain separate
+acceptance requirements.

@@ -44,7 +44,7 @@ python3 tests/rust/desktop_smoke.py / target/debug/flameshot
 python3 tests/rust/localization_smoke.py / target/debug/flameshot
 python3 tests/rust/ime_smoke.py / target/debug/flameshot
 python3 tests/rust/dbus_ui_smoke.py / --documents
-python3 tests/rust/wayland_smoke.py / target/debug/flameshot
+python3 tests/rust/wayland_smoke.py / target/debug/flameshot --ime
 ```
 
 The D-Bus UI suite builds the matching test executables and exercises actual tray
@@ -313,3 +313,7 @@ ensures invalid prefixes are rejected before any package files are written.
 
 The X11 IME fixture additionally needs Fcitx5 with the Pinyin engine (on Ubuntu,
 fcitx5-chinese-addons). It uses private profiles and disables Cloud Pinyin.
+
+The Sway `--ime` option runs the real Fcitx Wayland Pinyin engine with DISPLAY
+unset and Xwayland disabled, including composition cancellation and text copying.
+It requires the same Pinyin packages as the X11 IME fixture.

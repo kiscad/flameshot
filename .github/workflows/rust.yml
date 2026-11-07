@@ -62,8 +62,8 @@ jobs:
         run: python3 tests/rust/ime_smoke.py / target/debug/flameshot
       - name: Private D-Bus tray and application chooser UI
         run: python3 tests/rust/dbus_ui_smoke.py / --documents
-      - name: Native Wayland and mixed-scale smoke
-        run: python3 tests/rust/wayland_smoke.py / target/debug/flameshot
+      - name: Native Wayland, Pinyin and mixed-scale smoke
+        run: python3 tests/rust/wayland_smoke.py / target/debug/flameshot --ime
       - name: Native Wayland OpenGL fallback
         env:
           WGPU_BACKEND: gl

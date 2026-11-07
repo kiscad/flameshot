@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Isolated native Wayland/Sway smoke test. No XWayland or real desktop bus.
-Usage: python3 tests/rust/wayland_smoke.py TOOL_ROOT FLAMESHOT_BINARY
+Usage: python3 tests/rust/wayland_smoke.py TOOL_ROOT FLAMESHOT_BINARY [--ime]
 TOOL_ROOT supplies sway, swaymsg, wtype, wl-paste, grim, portal-wlr and its libraries.
 Uses the host's xdg-desktop-portal frontend and pipewire executable.
 Build the pointer helper first: cargo build -p flameshot-platform --example wayland_pointer
@@ -33,10 +33,11 @@ if '--inside' not in sys.argv:
         (directory/'sway.conf').write_text('xwayland disable\noutput HEADLESS-1 resolution 1024x768\noutput * bg #204060 solid_color\nseat seat0 fallback true\n')
         bus=directory/'bus.conf';bus.write_text('<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><policy context="default"><allow send_destination="*"/><allow send_type="error" send_requested_reply="false"/><allow receive_type="error" receive_requested_reply="false"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
         env=os.environ.copy()
-        for key in ['DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS']:env.pop(key,None)
+        for key in ['DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS','FLAMESHOT_TEST_WAYLAND_IME']:env.pop(key,None)
         env.update(XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(config),XDG_CACHE_HOME=str(directory/'cache'),XDG_DATA_HOME=str(directory/'data'),XDG_SESSION_TYPE='wayland',XDG_CURRENT_DESKTOP='sway',WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',WLR_HEADLESS_OUTPUTS='1',XDG_DESKTOP_PORTAL_DIR=str(portals))
         env['LD_LIBRARY_PATH']=str(root/'usr/lib/x86_64-linux-gnu')+':'+env.get('LD_LIBRARY_PATH','')
         env['PATH']=str(root/'usr/bin')+':'+env['PATH']
+        if '--ime' in sys.argv:env['FLAMESHOT_TEST_WAYLAND_IME']='1'
         result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(root),str(binary),'--inside',str(directory)],env=env,timeout=120)
         if result.returncode:
             for log in directory.glob('*.log'):print(log.name,log.read_text(errors='replace')[-5000:],file=sys.stderr)
@@ -109,6 +110,44 @@ try:
     wait_for(lambda:not owned('org.flameshot.Flameshot'),8)
     clipboard_config.write_text(clipboard_original)
     print('PASS: native Wayland JPEG clipboard and ownership-aware idle exit',flush=True)
+    if env.get('FLAMESHOT_TEST_WAYLAND_IME')=='1':
+        profile=directory/'config/fcitx5';profile.mkdir()
+        (profile/'profile').write_text('[Groups/0]\nName=Default\nDefault Layout=us\nDefaultIM=pinyin\n[Groups/0/Items/0]\nName=keyboard-us\nLayout=\n[Groups/0/Items/1]\nName=pinyin\nLayout=\n[GroupOrder]\n0=Default\n')
+        fcitx=start('fcitx',['fcitx5','-D','--disable=cloudpinyin'])
+        wait_for(lambda:call('fcitx5-remote','--check',timeout=5).returncode==0)
+        editor=subprocess.Popen([str(binary),'gui','--raw','--region','400x200+500+450'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE);processes.append(editor)
+        def ime_editor_visible():
+            tree=json.loads(call(str(root/'usr/bin/swaymsg'),'-t','get_tree').stdout)
+            def contains(node):return (node.get('name')=='Flameshot' and node.get('pid')==editor.pid) or any(contains(c) for key in ['nodes','floating_nodes'] for c in node.get(key,[]))
+            return contains(tree)
+        wait_for(ime_editor_visible,20)
+        call(str(root/'usr/bin/swaymsg'),'[title="Flameshot"] focus')
+        call(str(root/'usr/bin/wtype'),'-s','500','t')
+        point('move 550 500');point('left');time.sleep(.5)
+        assert call('fcitx5-remote','-s','pinyin').returncode==0
+        call('fcitx5-remote','-o');time.sleep(.5)
+        typed=call(str(root/'usr/bin/wtype'),'-d','100','nihao','-s','3000','-k','space','-s','500')
+        assert typed.returncode==0,typed.stderr.decode()
+        call('fcitx5-remote','-c');time.sleep(.3)
+        call(str(root/'usr/bin/wtype'),'-M','ctrl','-k','a','-k','c','-m','ctrl','-s','300')
+        copied=call(str(root/'usr/bin/wl-paste'),'--type','text/plain;charset=utf-8','--no-newline')
+        assert copied.returncode==0 and copied.stdout.decode()=='你好',(copied.stdout,copied.stderr)
+        call(str(root/'usr/bin/wtype'),'-k','End')
+        call('fcitx5-remote','-o');time.sleep(.3)
+        call(str(root/'usr/bin/wtype'),'-d','100','zhong','-s','500','-k','Escape','-s','300')
+        assert editor.poll() is None,'Composition cancellation closed the editor'
+        call('fcitx5-remote','-c');time.sleep(.3)
+        call(str(root/'usr/bin/wtype'),'-M','ctrl','-k','a','-k','c','-m','ctrl','-s','300')
+        copied=call(str(root/'usr/bin/wl-paste'),'--type','text/plain;charset=utf-8','--no-newline')
+        assert copied.returncode==0 and copied.stdout.decode()=='你好','Composition cancellation changed committed text'
+        call(str(root/'usr/bin/wtype'),'-M','ctrl','-k','Return','-m','ctrl','-s','300','-k','Return')
+        out,err=editor.communicate(timeout=10);assert editor.returncode==0,err.decode()
+        assert png(out)==(400,200)
+        image=Image.open(BytesIO(out)).convert('RGB')
+        assert any(r>180 and g<80 and b<80 for r,g,b in image.getdata()),'Missing text annotation pixels'
+        (artifact_dir/'rust-wayland-ime.png').write_bytes(out)
+        call('fcitx5-remote','-e');assert fcitx.wait(timeout=5)==0
+        print('PASS: native Wayland Fcitx Pinyin commit, text copying and annotation export',flush=True)
     for copy in (False,True):
         flags=['--clipboard'] if copy else ['--raw']
         editor=subprocess.Popen([str(binary),'gui','--region','100x80+10+20',*flags],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE);processes.append(editor)
