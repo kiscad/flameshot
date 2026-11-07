@@ -46,6 +46,7 @@ fn documented_commands_and_long_options_are_present_in_the_manual() {
         let output = process.arg("--help").output().unwrap();
         assert!(output.status.success());
         let help = String::from_utf8(output.stdout).unwrap();
+        assert!(!help.contains("internal-about"));
         for option in help
             .split_whitespace()
             .filter(|word| word.starts_with("--"))

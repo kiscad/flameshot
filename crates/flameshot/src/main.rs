@@ -1,3 +1,4 @@
+mod about;
 mod app_ui;
 mod buttons;
 mod children;
@@ -78,6 +79,8 @@ enum Command {
     },
     #[command(hide = true)]
     InternalPin,
+    #[command(hide = true)]
+    InternalAbout,
     /// Capture a monitor (defaults to the monitor containing the pointer on X11).
     Screen {
         #[arg(long)]
@@ -195,6 +198,9 @@ async fn run(cli: Cli) -> Result<()> {
     #[cfg(feature = "update-check")]
     if matches!(command, Command::Updates) {
         return updates_ui::show();
+    }
+    if matches!(command, Command::InternalAbout) {
+        return about::show();
     }
     if matches!(command, Command::Launcher) {
         return launcher::show();
@@ -350,7 +356,10 @@ async fn run(cli: Cli) -> Result<()> {
         Command::Updates => unreachable!(),
         #[cfg(feature = "imgur")]
         Command::History => unreachable!(),
-        Command::InternalPin | Command::Config { .. } | Command::Launcher => unreachable!(),
+        Command::InternalPin
+        | Command::InternalAbout
+        | Command::Config { .. }
+        | Command::Launcher => unreachable!(),
         Command::Full {
             path,
             delay,

@@ -300,6 +300,28 @@ tool('key','Escape')
 time.sleep(.3)
 assert tool('search','--onlyvisible','--name','^flameshot-pin$').returncode!=0
 print('PASS: D-Bus pin zoom preserves aspect, resets, and closes')
+about=subprocess.Popen([binary,'internal-about'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+try:
+    window=wait_window('^Flameshot About$')
+    tool('windowfocus','--sync',window)
+    time.sleep(.3)
+    tool('key','Return')
+    deadline=time.monotonic()+5
+    while True:
+        copied=subprocess.run([xclip,'-selection','clipboard','-t','UTF8_STRING','-o'],capture_output=True,timeout=5)
+        if copied.returncode==0 and copied.stdout.startswith(b'Flameshot '):break
+        assert time.monotonic()<deadline,'About did not copy diagnostics'
+        time.sleep(.1)
+    diagnostics=copied.stdout
+    assert b'Compiled with rustc ' in diagnostics and b'linux: ' in diagnostics,diagnostics
+    tool('key','Escape')
+    out,err=about.communicate(timeout=10)
+    assert about.returncode==0,err.decode()
+    copied=subprocess.run([xclip,'-selection','clipboard','-t','UTF8_STRING','-o'],capture_output=True,timeout=5)
+    assert copied.returncode==0 and copied.stdout==diagnostics,'About clipboard lost after closing'
+finally:
+    if about.poll() is None:about.kill();about.wait()
+print('PASS: About copies version/compiler/system info and preserves clipboard after Escape')
 launcher=subprocess.Popen([binary,'launcher'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
 try:
     window=wait_window('^Flameshot Launcher$')

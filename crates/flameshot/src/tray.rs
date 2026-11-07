@@ -63,6 +63,12 @@ impl ksni::Tray for Tray {
                 ..Default::default()
             }
             .into(),
+            StandardItem {
+                label: crate::i18n::dbus_menu_label("TrayIcon", "&About"),
+                activate: Box::new(|tray: &mut Self| tray.launch("internal-about")),
+                ..Default::default()
+            }
+            .into(),
             #[cfg(feature = "imgur")]
             StandardItem {
                 label: crate::i18n::dbus_menu_label("TrayIcon", "&Latest Uploads"),

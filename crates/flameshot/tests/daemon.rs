@@ -214,6 +214,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     }
     assert!(labels.contains(&"_Take Screenshot".into()));
     assert!(labels.contains(&"_Configuration".into()));
+    assert!(labels.contains(&"_About".into()));
     assert!(labels.contains(&"_Open Launcher".into()));
     menu.call::<_, _, ()>(
         "Event",
@@ -293,7 +294,13 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
                     .map(|value| <&str>::try_from(value).unwrap().to_owned())
             })
             .collect();
-        for expected in ["进行截图(_T)", "打开启动器(_O)", "配置(_C)", "退出(_Q)"] {
+        for expected in [
+            "进行截图(_T)",
+            "打开启动器(_O)",
+            "配置(_C)",
+            "关于(_A)",
+            "退出(_Q)",
+        ] {
             assert!(labels.iter().any(|label| label == expected), "{labels:?}");
         }
         #[cfg(feature = "imgur")]

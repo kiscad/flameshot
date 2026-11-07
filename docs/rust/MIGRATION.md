@@ -1826,3 +1826,26 @@ not add live translation switching or finish the remaining UI translation covera
 Validation passed: no-default-feature form tests, all-feature workspace tests,
 all-target Clippy with warnings denied, formatting and the complete isolated Xvfb
 suite, including preservation of newer external settings while saving language.
+
+### About window and diagnostic clipboard
+
+The tray now exposes the translated baseline About action. Its Rust window shows
+the application icon, GPLv3+ license, version/revision, actual Rust compiler version,
+and kernel/distribution information. Existing InfoWindow catalog entries translate
+its labels. Escape closes the window; Copy Info uses the daemon's text clipboard
+service so ownership survives the window closing. The hidden child command uses
+the existing owned-process launcher and is excluded from public help.
+
+Build metadata accepts the existing GIT_HASH override, then the source archive's
+.git-version, then the current repository revision. Git lookup checks the repository
+root to avoid borrowing an enclosing repository's revision for extracted sources;
+missing Git metadata falls back to a dash. OS release values are parsed as data,
+without invoking a shell, and diagnostics exclude the host name.
+
+Validation passed: all-feature workspace tests and all-target Clippy with warnings
+denied, all-feature and no-default-feature private-bus daemon tests (English/Chinese
+About labels), formatting, the complete isolated Xvfb suite including keyboard Copy
+Info, Escape and clipboard persistence, and the headless Sway regression suite.
+The About clipboard interaction itself was exercised on X11; this does not establish
+native host tray rendering, complete translation coverage or GNOME/KDE acceptance.
+Open Save Path and monitor-selection tray actions remain in the compatibility audit.
