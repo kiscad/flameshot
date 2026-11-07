@@ -1784,3 +1784,26 @@ Validation passed on the final implementation: no-default-feature form-model tes
 all-feature workspace tests (including combined INI transaction rejection), Clippy
 with warnings denied, formatting, and the complete isolated Xvfb suite with actual
 unchanged/edited form saves after an external CLI update.
+
+### Tray menu and startup-message translations
+
+Tray actions now use the existing TrayIcon catalog entries, including the baseline
+Latest Uploads label, and the startup notification uses its QObject translation.
+Qt ampersand mnemonics are converted to the D-Bus menu underscore convention instead
+of being displayed literally or discarded; escaped ampersands and literal underscores
+remain correct. Locale normalization also makes language fallback case-insensitive
+for mixed-case tags with an unknown territory.
+
+The private-bus daemon test checks English menu/action behavior, Chinese published
+menu labels with explicit `uiLanguage` overriding `LC_ALL=C`, optional-feature labels,
+and the Chinese startup notification. Both no-default-feature and all-feature daemon
+tests pass, together with workspace tests, core mnemonic/fallback tests, Clippy and
+formatting. These are actual D-Bus payload checks, not a claim of native host rendering
+or keyboard navigation coverage on every desktop.
+
+The baseline VisualsEditor explicitly requires restart for language changes; this
+change retains the process-local translator rather than inventing a hot-reload
+requirement. The configuration notice and remaining UI translation coverage still
+need completion. The source audit also confirms additional baseline tray actions
+(About, Open Save Path and monitor selection) that are not supplied by this translation
+change and must remain in the complete tray-compatibility audit.

@@ -95,6 +95,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         Command::new(env!("CARGO_BIN_EXE_flameshot"))
             .env("XDG_CONFIG_HOME", temp.path())
             .env("LANG", "C")
+            .env("LC_ALL", "C")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .spawn()
@@ -205,15 +206,15 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         let properties: HashMap<String, OwnedValue> = fields.remove(0).downcast().unwrap();
         if let Some(label) = properties.get("label") {
             let label = <&str>::try_from(label).unwrap().to_string();
-            if label == "Quit" {
+            if label == "_Quit" {
                 quit = Some(id);
             }
             labels.push(label);
         }
     }
-    assert!(labels.contains(&"Take Screenshot".into()));
-    assert!(labels.contains(&"Configuration".into()));
-    assert!(labels.contains(&"Open Launcher".into()));
+    assert!(labels.contains(&"_Take Screenshot".into()));
+    assert!(labels.contains(&"_Configuration".into()));
+    assert!(labels.contains(&"_Open Launcher".into()));
     menu.call::<_, _, ()>(
         "Event",
         &(quit.unwrap(), "clicked", Value::from(0_i32), 0_u32),
@@ -237,7 +238,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     );
     std::fs::write(
         temp.path().join("flameshot/flameshot.ini"),
-        "[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\n",
+        "[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nuiLanguage=zh_CN\n",
     )
     .unwrap();
     for (sandbox_key, sandbox_value) in [
@@ -248,6 +249,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
             Command::new(env!("CARGO_BIN_EXE_flameshot"))
                 .env("XDG_CONFIG_HOME", temp.path())
                 .env("LANG", "C")
+                .env("LC_ALL", "C")
                 .env(sandbox_key, sandbox_value)
                 .spawn()
                 .unwrap(),
@@ -260,6 +262,45 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
             sandbox_item.starts_with(':'),
             "Sandbox tray should use its unique bus name"
         );
+        let item = Proxy::new(
+            &connection,
+            sandbox_item.as_str(),
+            "/StatusNotifierItem",
+            "org.kde.StatusNotifierItem",
+        )
+        .await
+        .unwrap();
+        let path: OwnedObjectPath = item.get_property("Menu").await.unwrap();
+        let menu = Proxy::new(
+            &connection,
+            sandbox_item.as_str(),
+            path.as_str(),
+            "com.canonical.dbusmenu",
+        )
+        .await
+        .unwrap();
+        let (_, (_, _, children)): (u32, Layout) = menu
+            .call("GetLayout", &(0_i32, -1_i32, vec!["label"]))
+            .await
+            .unwrap();
+        let labels: Vec<String> = children
+            .into_iter()
+            .filter_map(|child| {
+                let mut fields = Structure::try_from(child).unwrap().into_fields();
+                let properties: HashMap<String, OwnedValue> = fields.remove(1).downcast().unwrap();
+                properties
+                    .get("label")
+                    .map(|value| <&str>::try_from(value).unwrap().to_owned())
+            })
+            .collect();
+        for expected in ["进行截图(_T)", "打开启动器(_O)", "配置(_C)", "退出(_Q)"] {
+            assert!(labels.iter().any(|label| label == expected), "{labels:?}");
+        }
+        #[cfg(feature = "imgur")]
+        assert!(labels.iter().any(|label| label == "最近的上传(_L)"));
+        #[cfg(feature = "update-check")]
+        assert!(labels.iter().any(|label| label == "检查更新"));
+
         assert!(
             tokio::time::timeout(Duration::from_millis(200), notifications.recv())
                 .await
@@ -267,4 +308,28 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
             "Disabled startup message was delivered"
         );
     }
+    std::fs::write(
+        temp.path().join("flameshot/flameshot.ini"),
+        "[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=true\nuiLanguage=zh_CN\n",
+    )
+    .unwrap();
+    let _localized = ChildGuard(
+        Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("XDG_CONFIG_HOME", temp.path())
+            .env("LC_ALL", "C")
+            .spawn()
+            .unwrap(),
+    );
+    tokio::time::timeout(Duration::from_secs(5), registered.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let message = tokio::time::timeout(Duration::from_secs(5), notifications.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        message,
+        "我已启动并在后台运行！点击托盘图标即可进行屏幕截图，右键点击托盘图标可查看更多选项。"
+    );
 }

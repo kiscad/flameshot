@@ -16,7 +16,8 @@ impl Translator {
             .split(['.', '@'])
             .next()
             .unwrap_or(locale)
-            .replace('-', "_");
+            .replace('-', "_")
+            .to_ascii_lowercase();
         let language = locale.split('_').next().unwrap_or(&locale);
         let catalog = CATALOGS
             .iter()
@@ -40,9 +41,46 @@ impl Translator {
             .unwrap_or(source)
     }
 }
+/// Convert Qt ampersand mnemonics to the underscore notation used by D-Bus menus.
+pub fn dbus_menu_label(value: &str) -> String {
+    let mut output = String::new();
+    let mut chars = value.chars().peekable();
+    while let Some(character) = chars.next() {
+        match character {
+            '&' if chars.peek() == Some(&'&') => {
+                output.push('&');
+                chars.next();
+            }
+            '&' => output.push('_'),
+            '_' => output.push_str("__"),
+            _ => output.push(character),
+        }
+    }
+    output
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn menu_labels_preserve_translation_and_literal_ampersands() {
+        let chinese = Translator::new("zh_CN");
+        assert_eq!(
+            dbus_menu_label(chinese.translate("TrayIcon", "&Take Screenshot")),
+            "进行截图(_T)"
+        );
+        assert_eq!(
+            dbus_menu_label(chinese.translate("TrayIcon", "&Quit")),
+            "退出(_Q)"
+        );
+        assert_eq!(
+            dbus_menu_label(Translator::new("unknown").translate("TrayIcon", "&Quit")),
+            "_Quit"
+        );
+        assert_eq!(dbus_menu_label("Rock && Roll (&R)"), "Rock & Roll (_R)");
+        assert_eq!(dbus_menu_label("A (&&) B"), "A (&) B");
+        assert_eq!(dbus_menu_label("&Édition"), "_Édition");
+        assert_eq!(dbus_menu_label("file_name"), "file__name");
+    }
     #[test]
     fn catalogs_are_built_without_qt_and_contexts_remain_distinct() {
         assert_eq!(languages().count(), 49);
@@ -61,6 +99,10 @@ mod tests {
         assert_eq!(Translator::new("en").translate("CopyTool", "Copy"), "Copy");
         assert_eq!(
             Translator::new("zh_ZZ").translate("CopyTool", "Copy"),
+            "复制"
+        );
+        assert_eq!(
+            Translator::new("ZH-zz.UTF-8").translate("CopyTool", "Copy"),
             "复制"
         );
     }

@@ -46,39 +46,39 @@ impl ksni::Tray for Tray {
         use ksni::menu::StandardItem;
         vec![
             StandardItem {
-                label: "Take Screenshot".into(),
+                label: crate::i18n::dbus_menu_label("TrayIcon", "&Take Screenshot"),
                 activate: Box::new(|tray: &mut Self| tray.launch("gui")),
                 ..Default::default()
             }
             .into(),
             StandardItem {
-                label: "Open Launcher".into(),
+                label: crate::i18n::dbus_menu_label("TrayIcon", "&Open Launcher"),
                 activate: Box::new(|tray: &mut Self| tray.launch("launcher")),
                 ..Default::default()
             }
             .into(),
             StandardItem {
-                label: "Configuration".into(),
+                label: crate::i18n::dbus_menu_label("TrayIcon", "&Configuration"),
                 activate: Box::new(|tray: &mut Self| tray.launch("config")),
                 ..Default::default()
             }
             .into(),
             #[cfg(feature = "imgur")]
             StandardItem {
-                label: "Upload History".into(),
+                label: crate::i18n::dbus_menu_label("TrayIcon", "&Latest Uploads"),
                 activate: Box::new(|tray: &mut Self| tray.launch("history")),
                 ..Default::default()
             }
             .into(),
             #[cfg(feature = "update-check")]
             StandardItem {
-                label: "Check for updates".into(),
+                label: crate::i18n::dbus_menu_label("TrayIcon", "Check for updates"),
                 activate: Box::new(|tray: &mut Self| tray.launch("updates")),
                 ..Default::default()
             }
             .into(),
             StandardItem {
-                label: "Quit".into(),
+                label: crate::i18n::dbus_menu_label("TrayIcon", "&Quit"),
                 activate: Box::new(|tray: &mut Self| tray.quit.notify_one()),
                 ..Default::default()
             }

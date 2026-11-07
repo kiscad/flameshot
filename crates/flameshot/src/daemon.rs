@@ -244,7 +244,7 @@ pub async fn run() -> Result<()> {
                         if tray_handle.is_some() && settings.startup_message {
                             let connection=connection.clone();
                             tokio::spawn(async move {
-                                let _=flameshot_platform::desktop::notify(&connection,"Flameshot","Hello, I'm here! Click icon in the tray to take a screenshot or click with a right button to see more options.").await;
+                                let _=flameshot_platform::desktop::notify(&connection,"Flameshot",crate::i18n::tr("QObject","Hello, I'm here! Click icon in the tray to take a screenshot or click with a right button to see more options.")).await;
                             });
                         }
                     }

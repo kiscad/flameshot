@@ -21,6 +21,10 @@ pub fn tr<'a>(context: &str, source: &'a str) -> &'a str {
         .translate(context, source)
 }
 
+pub fn dbus_menu_label(context: &str, source: &str) -> String {
+    flameshot_core::i18n::dbus_menu_label(tr(context, source))
+}
+
 /// Supplement bundled Latin fonts using installed script-specific fonts.
 pub fn install_fonts(ctx: &eframe::egui::Context) {
     use eframe::egui::{FontData, FontDefinitions, FontFamily};
