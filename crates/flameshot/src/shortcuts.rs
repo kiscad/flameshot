@@ -127,6 +127,14 @@ struct Binding {
     progress: usize,
     last: Instant,
 }
+/// Ordered shortcut dispatch, retaining unbound keys for editor input.
+/// Claimed sequence prefixes reset decimal input instead of leaking into it.
+pub enum InputAction {
+    Shortcut(String),
+    Key(egui::Key, egui::Modifiers),
+    ResetInput,
+}
+
 pub struct Shortcuts {
     bindings: Vec<Binding>,
     super_left: bool,
@@ -183,11 +191,24 @@ impl Shortcuts {
         self.events(&ctx.input(|i| i.events.clone()))
     }
     fn events(&mut self, events: &[egui::Event]) -> Vec<String> {
+        self.dispatch_events(events)
+            .into_iter()
+            .filter_map(|action| match action {
+                InputAction::Shortcut(name) => Some(name),
+                _ => None,
+            })
+            .collect()
+    }
+    pub fn dispatch(&mut self, ctx: &egui::Context) -> Vec<InputAction> {
+        self.dispatch_events(&ctx.input(|i| i.events.clone()))
+    }
+    fn dispatch_events(&mut self, events: &[egui::Event]) -> Vec<InputAction> {
         let mut actions = Vec::new();
         for event in events {
             match event {
                 egui::Event::WindowFocused(false) => {
                     self.reset();
+                    actions.push(InputAction::ResetInput);
                     continue;
                 }
                 egui::Event::Key {
@@ -196,6 +217,7 @@ impl Shortcuts {
                     ..
                 } => {
                     self.super_left = *pressed;
+                    actions.push(InputAction::ResetInput);
                     continue;
                 }
                 egui::Event::Key {
@@ -204,6 +226,7 @@ impl Shortcuts {
                     ..
                 } => {
                     self.super_right = *pressed;
+                    actions.push(InputAction::ResetInput);
                     continue;
                 }
                 _ => {}
@@ -240,8 +263,10 @@ impl Shortcuts {
                     | egui::Key::AltLeft
                     | egui::Key::AltRight
             ) {
+                actions.push(InputAction::ResetInput);
                 continue;
             }
+            let mut claimed = false;
             let mut completed = Vec::new();
             for binding in &mut self.bindings {
                 if binding.chords.is_empty() {
@@ -250,6 +275,7 @@ impl Shortcuts {
                 if binding.last.elapsed() > Duration::from_secs(1) {
                     binding.progress = 0;
                 }
+                claimed |= binding.progress > 0 || binding.chords[0] == chord;
                 if binding.chords[binding.progress] == chord {
                     binding.progress += 1;
                 } else {
@@ -262,7 +288,12 @@ impl Shortcuts {
                 }
             }
             if completed.len() == 1 && !self.bindings.iter().any(|binding| binding.progress > 0) {
-                actions.extend(completed);
+                actions.extend(completed.into_iter().map(InputAction::Shortcut));
+            }
+            if claimed || chord.meta {
+                actions.push(InputAction::ResetInput);
+            } else if let egui::Event::Key { key, modifiers, .. } = event {
+                actions.push(InputAction::Key(*key, *modifiers));
             }
         }
         actions
@@ -313,6 +344,45 @@ mod tests {
                 ..Default::default()
             },
         }
+    }
+    #[test]
+    fn numeric_bindings_and_sequences_claim_keys_before_size_entry() {
+        let mut shortcuts = Shortcuts::new(&BTreeMap::from([
+            ("TYPE_UNDO".into(), "7".into()),
+            ("TYPE_ARROW".into(), "8,9".into()),
+        ]));
+        let actions = shortcuts.dispatch_events(&[
+            key(egui::Key::Num2, false, false),
+            key(egui::Key::Num7, false, false),
+            key(egui::Key::Num8, false, false),
+            key(egui::Key::Num9, false, false),
+            key(egui::Key::Num3, false, false),
+        ]);
+        let unbound: Vec<_> = actions
+            .iter()
+            .filter_map(|action| match action {
+                InputAction::Key(key, _) => Some(*key),
+                _ => None,
+            })
+            .collect();
+        let names: Vec<_> = actions
+            .iter()
+            .filter_map(|action| match action {
+                InputAction::Shortcut(name) => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(unbound, [egui::Key::Num2, egui::Key::Num3]);
+        assert_eq!(names, ["TYPE_UNDO", "TYPE_ARROW"]);
+        let interrupted = shortcuts.dispatch_events(&[
+            key(egui::Key::Num8, false, false),
+            key(egui::Key::Num4, false, false),
+        ]);
+        assert!(
+            interrupted
+                .iter()
+                .all(|action| matches!(action, InputAction::ResetInput))
+        );
     }
     #[test]
     fn super_keys_and_focus_reset_do_not_leave_stuck_modifiers() {

@@ -20,7 +20,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | --- | --- | --- |
 | Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
 | Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway, headless GNOME and KWin 5 capture cases pass; broader compositor acceptance remains |
-| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text formatting and editing, rendered picking, live movement and selected color/size implemented/tested; remaining parity audit pending |
+| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text formatting, rendered picking, live movement, selected properties and numeric size entry implemented/tested; remaining parity audit pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
@@ -2969,3 +2969,32 @@ checks, the new live-render fixture, the full Xvfb desktop suite, text-format an
 selected-arrow fixtures, X11 Fcitx Pinyin, and Sway Wayland with Pinyin and mixed-scale
 monitor cases. Desktop checks used isolated displays, sessions and XDG directories.
 Hosted CI and remaining migration acceptance gates are still pending.
+
+### Restore decimal keyboard entry for tool sizes
+
+The legacy capture widget accumulates unmodified digit presses into a decimal tool
+size, clamps it to 1–50, and resets the accumulator on a non-digit key or clipping.
+The Rust editor now supports this input alongside its existing wheel and size control.
+It uses the existing per-tool persistence and selected-object replacement paths,
+so a selected object's size changes remain undoable. Text-entry widgets and modal
+dialogs do not receive canvas size handling; focus loss and modal transitions reset
+the accumulator. Input is processed once per egui frame, including multi-pass layouts.
+
+Shortcut dispatch now retains ordered unbound key events for the editor. Bound digit
+shortcuts and multi-stroke prefixes consume their keys before decimal handling;
+interrupted prefixes do not accidentally resize a tool. Other shortcut clients retain
+the existing action-only interface. Unit tests cover decimal accumulation, clipping,
+modifier rejection, shortcut precedence and interrupted sequences.
+
+The private-Xvfb `size_keyboard_smoke.py` verifies decimal and physical keypad input,
+clipping/reset, numeric Undo and multi-stroke bindings, isolation during text entry,
+selected-object size changes, undo restoration and preview/export pixels. Physical
+keypad events use XTest because xdotool's keysym helper toggles NumLock around each
+key, which would correctly reset the accumulator but does not model ordinary typing.
+The test is registered in the Rust workflow and build instructions.
+
+Validation passed: the new numeric-input native fixture, the complete Rust gate
+with Fish/Zsh checks, the full Xvfb desktop suite, X11 Fcitx Pinyin, Sway Wayland
+with Pinyin and mixed-scale cases, and the live-global-render regression. Tests
+used private displays, D-Bus sessions and XDG directories. Hosted CI and the other
+migration acceptance gates remain pending.

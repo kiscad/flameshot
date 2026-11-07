@@ -211,6 +211,8 @@ struct Editor {
     contrast_opacity: u8,
     wheel: crate::wheel::ToolWheel,
     wheel_frame: Option<u64>,
+    keyboard_frame: Option<u64>,
+    size_keyboard: crate::size_keyboard::SizeKeyboard,
     counter_override: Option<u16>,
     undo_limit: usize,
     marker_size: f32,
@@ -291,6 +293,8 @@ impl Editor {
             contrast_opacity: settings.contrast_opacity,
             wheel: Default::default(),
             wheel_frame: None,
+            keyboard_frame: None,
+            size_keyboard: Default::default(),
             counter_override: None,
             undo_limit: settings.undo_limit,
             marker_size: settings.marker_size.min(10000.0),
@@ -512,6 +516,7 @@ impl Editor {
             self.quit_prompt = false;
             self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
             self.shortcuts.reset();
+            self.size_keyboard.reset();
             ctx.input_mut(|input| {
                 input.consume_key(egui::Modifiers::NONE, egui::Key::Escape);
                 input.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
@@ -932,6 +937,20 @@ impl Editor {
         *size = value / factor;
         self.persist_tool_size(key, value);
     }
+    fn type_tool_size(&mut self, key: egui::Key, modifiers: egui::Modifiers) {
+        let Some(value) = self.size_keyboard.press(key, modifiers) else {
+            return;
+        };
+        if self.tool == Tool::Move
+            && self.selected_object.is_some()
+            && self.selected_size().is_none()
+        {
+            return;
+        }
+        let (key, size, factor) = self.tool_size();
+        *size = value / factor;
+        self.persist_tool_size(key, value);
+    }
     fn palette_ui(&mut self, ui: &mut egui::Ui, close_on_select: bool) {
         ui.horizontal_wrapped(|ui| {
             for entry in self.palette.clone() {
@@ -1230,16 +1249,19 @@ impl eframe::App for Editor {
         }
         self.property_pointer_down = pointer_down;
         if self.quit_prompt {
+            self.size_keyboard.reset();
             self.quit_ui(ui);
             return;
         }
         if self.screen_image.is_some() {
+            self.size_keyboard.reset();
             self.choose_screen(ui);
             return;
         }
         #[cfg(feature = "imgur")]
         if let Some(mut dialog) = self.upload_dialog.take() {
             self.shortcuts.reset();
+            self.size_keyboard.reset();
             if dialog.show(ui.ctx()) {
                 self.upload_dialog = Some(dialog);
             }
@@ -1247,6 +1269,7 @@ impl eframe::App for Editor {
         }
         if let Some(mut dialog) = self.open_with.take() {
             self.shortcuts.reset();
+            self.size_keyboard.reset();
             if dialog.show(ui.ctx()) {
                 self.open_with = Some(dialog);
             } else if dialog.was_launched() {
@@ -1255,6 +1278,7 @@ impl eframe::App for Editor {
             return;
         }
         if let Some(mut editor) = self.text_editor.take() {
+            self.size_keyboard.reset();
             editor.paint_preview(ui, &self.document);
             let commit = self
                 .shortcuts
@@ -1280,12 +1304,14 @@ impl eframe::App for Editor {
                     ui.ctx().request_repaint();
                     self.selected_object = None;
                     self.shortcuts.reset();
+                    self.size_keyboard.reset();
                 }
             }
             return;
         }
         if self.save_dialog.is_some() {
             self.shortcuts.reset();
+            self.size_keyboard.reset();
             self.save_ui(ui);
             return;
         }
@@ -1333,19 +1359,37 @@ impl eframe::App for Editor {
             }
         }
         let mut grab_color = false;
-        let actions = if self.dismissed_dialog_frame == Some(ctx.cumulative_frame_nr()) {
+        let actions = if self.dismissed_dialog_frame == Some(ctx.cumulative_frame_nr())
+            || self.keyboard_frame == Some(ctx.cumulative_frame_nr())
+        {
             Vec::new()
         } else {
-            self.shortcuts.actions(&ctx)
+            self.keyboard_frame = Some(ctx.cumulative_frame_nr());
+            self.shortcuts.dispatch(&ctx)
         };
         if ctx.egui_wants_keyboard_input() {
             self.shortcuts.reset_sequences();
+            self.size_keyboard.reset();
         }
         if !ctx.egui_wants_keyboard_input() {
             for action in actions {
                 if self.quit_prompt {
                     break;
                 }
+                let action = match action {
+                    crate::shortcuts::InputAction::Shortcut(name) => {
+                        self.size_keyboard.reset();
+                        name
+                    }
+                    crate::shortcuts::InputAction::Key(key, modifiers) => {
+                        self.type_tool_size(key, modifiers);
+                        continue;
+                    }
+                    crate::shortcuts::InputAction::ResetInput => {
+                        self.size_keyboard.reset();
+                        continue;
+                    }
+                };
                 match action.as_str() {
                     "TYPE_PENCIL" => self.tool = Tool::Pencil,
                     "TYPE_DRAWER" => self.tool = Tool::Line,
@@ -1849,6 +1893,7 @@ impl eframe::App for Editor {
             self.points.clear();
             self.selection_drag = None;
             self.shortcuts.reset();
+            self.size_keyboard.reset();
             ctx.request_repaint();
             return;
         }
@@ -1919,6 +1964,7 @@ impl eframe::App for Editor {
                     color: self.color.to_srgba_unmultiplied(),
                 });
                 self.shortcuts.reset();
+                self.size_keyboard.reset();
                 ctx.request_repaint();
                 return;
             }

@@ -46,6 +46,7 @@ python3 tests/rust/localization_smoke.py / target/debug/flameshot
 python3 tests/rust/text_format_smoke.py / target/debug/flameshot
 python3 tests/rust/arrow_style_smoke.py / target/debug/flameshot
 python3 tests/rust/global_render_smoke.py / target/debug/flameshot
+python3 tests/rust/size_keyboard_smoke.py / target/debug/flameshot
 python3 tests/rust/terminal_smoke.py / target/debug/flameshot
 python3 tests/rust/ime_smoke.py / target/debug/flameshot
 python3 tests/rust/dbus_ui_smoke.py / --documents

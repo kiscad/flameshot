@@ -3,6 +3,7 @@ mod app_ui;
 mod buttons;
 mod children;
 mod geometry_overlay;
+mod size_keyboard;
 mod text_edit;
 mod theme;
 #[cfg(all(test, any(feature = "imgur", feature = "update-check")))]
