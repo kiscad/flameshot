@@ -134,25 +134,31 @@ fn legacy_color_options_are_headless_atomic_and_preserve_unknown_settings() {
             .output()
             .unwrap()
     };
-    let result = run(&["config", "-m", "green", "--contrastcolor", "#11223344"]);
+    let result = run(&["config", "-m", "green", "--contrastcolor", "#ff112233"]);
     assert!(result.status.success(), "{:?}", result);
     let source = std::fs::read_to_string(&file).unwrap();
     let ini = flameshot_core::config::IniDocument::parse(source.clone());
     assert_eq!(
         ini.string("General", "uiColor").unwrap().as_deref(),
-        Some("green")
+        Some("#008000")
     );
     assert_eq!(
         ini.string("General", "contrastUiColor").unwrap().as_deref(),
-        Some("#11223344")
+        Some("#112233")
     );
     assert!(source.contains("privateValue=keep"));
     for args in [
-        vec!["config", "--maincolor", "#123", "--filename", "changed"],
+        vec![
+            "config",
+            "--maincolor",
+            "#11223344",
+            "--filename",
+            "changed",
+        ],
         vec!["config", "-k", "not-a-color"],
     ] {
         let result = run(&args);
-        assert_eq!(result.status.code(), Some(1));
+        assert_eq!(result.status.code(), Some(2));
         assert_eq!(std::fs::read_to_string(&file).unwrap(), source);
     }
 }
@@ -335,4 +341,73 @@ fn failed_autostart_config_write_preserves_custom_desktop_entry() {
     assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
     assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o640);
     assert_eq!(std::fs::read_to_string(ini).unwrap(), invalid);
+}
+
+#[test]
+fn repeated_config_options_keep_first_values_and_later_errors_write_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("XDG_CONFIG_HOME", root.path())
+            .env("DBUS_SESSION_BUS_ADDRESS", "not-a-valid-dbus-address")
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let result = run(&[
+        "config",
+        "--filename",
+        "first",
+        "-f",
+        "later",
+        "--maincolor",
+        "#123",
+        "-m",
+        "red",
+        "--notifications",
+        "false",
+        "-n",
+        "true",
+    ]);
+    assert!(result.status.success(), "{:?}", result.stderr);
+    let path = root.path().join("flameshot/flameshot.ini");
+    let saved = std::fs::read_to_string(&path).unwrap();
+    let ini = flameshot_core::config::IniDocument::parse(saved.clone());
+    for (key, expected) in [
+        ("filenamePattern", "first"),
+        ("uiColor", "#112233"),
+        ("showDesktopNotification", "false"),
+    ] {
+        assert_eq!(
+            ini.string("General", key).unwrap().as_deref(),
+            Some(expected)
+        );
+    }
+    for args in [
+        vec![
+            "config",
+            "--filename",
+            "changed",
+            "-m",
+            "red",
+            "--maincolor",
+            "invalid",
+        ],
+        vec![
+            "config",
+            "--filename",
+            "changed",
+            "-n",
+            "true",
+            "--notifications",
+            "invalid",
+        ],
+    ] {
+        let result = run(&args);
+        assert_eq!(result.status.code(), Some(2));
+        assert!(result.stdout.is_empty());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+    }
 }

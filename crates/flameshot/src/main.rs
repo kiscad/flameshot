@@ -30,7 +30,7 @@ mod upload_history;
 #[cfg(feature = "imgur")]
 mod upload_ui;
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, builder::TypedValueParser};
 use flameshot_platform::{portal, screens, x11};
 use std::{
     io::{self, Write},
@@ -38,7 +38,7 @@ use std::{
     time::Duration,
 };
 
-// QCommandLine's numeric checker used QString::toInt and required value >= 0.
+// The legacy CLI numeric checker used QString::toInt and required value >= 0.
 fn parse_cli_nonnegative(value: &str) -> Result<u64, String> {
     value
         .trim()
@@ -50,6 +50,36 @@ fn parse_cli_nonnegative(value: &str) -> Result<u64, String> {
 }
 fn parse_cli_screen_number(value: &str) -> Result<usize, String> {
     parse_cli_nonnegative(value).map(|value| value as usize)
+}
+
+fn parse_cli_color(value: &str) -> Result<String, String> {
+    let color = if value.starts_with('#') {
+        flameshot_core::color::parse_palette(value)
+    } else {
+        let name: String = value.chars().filter(|ch| !ch.is_whitespace()).collect();
+        if name.starts_with('#') {
+            None
+        } else {
+            flameshot_core::color::parse(&name)
+        }
+    };
+    color
+        .filter(|rgba| rgba[3] == 255)
+        .map(flameshot_core::color::encode_palette)
+        .ok_or_else(|| "Expected an opaque QColor name or hexadecimal color".into())
+}
+fn cli_path_parser() -> impl TypedValueParser<Value = PathBuf> {
+    clap::builder::PathBufValueParser::new().try_map(|path: PathBuf| {
+        let parent = path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or(std::path::Path::new("."));
+        if path.is_dir() || parent.is_dir() {
+            Ok(path)
+        } else {
+            Err("Expected an existing directory or a file in an existing directory".to_owned())
+        }
+    })
 }
 
 #[derive(Parser)]
@@ -77,21 +107,21 @@ enum Command {
     Launcher,
     /// Open configuration, or change individual settings.
     Config {
-        #[arg(short = 'm', long)]
+        #[arg(short = 'm', long, action = clap::ArgAction::Append, value_parser = parse_cli_color)]
         maincolor: Option<String>,
-        #[arg(short = 'k', long)]
+        #[arg(short = 'k', long, action = clap::ArgAction::Append, value_parser = parse_cli_color)]
         contrastcolor: Option<String>,
-        #[arg(long)]
+        #[arg(long, overrides_with = "check")]
         check: bool,
-        #[arg(short = 'a', long)]
+        #[arg(short = 'a', long, action = clap::ArgAction::Append)]
         autostart: Option<bool>,
-        #[arg(short = 'f', long)]
+        #[arg(short = 'f', long, action = clap::ArgAction::Append)]
         filename: Option<String>,
-        #[arg(short = 't', long)]
+        #[arg(short = 't', long, action = clap::ArgAction::Append)]
         trayicon: Option<bool>,
-        #[arg(short = 'n', long)]
+        #[arg(short = 'n', long, action = clap::ArgAction::Append)]
         notifications: Option<bool>,
-        #[arg(short = 's', long)]
+        #[arg(short = 's', long, action = clap::ArgAction::Append)]
         showhelp: Option<bool>,
     },
     #[command(hide = true)]
@@ -102,53 +132,53 @@ enum Command {
     InternalOpenSavePath,
     /// Capture a monitor (defaults to the monitor containing the pointer on X11).
     Screen {
-        #[arg(long)]
+        #[arg(long, action = clap::ArgAction::Append)]
         region: Option<flameshot_core::region::Spec>,
-        #[arg(long)]
+        #[arg(long, overrides_with = "pin")]
         pin: bool,
-        #[arg(short = 'n', long, value_parser = parse_cli_screen_number)]
+        #[arg(short = 'n', long, value_parser = parse_cli_screen_number, action = clap::ArgAction::Append)]
         number: Option<usize>,
-        #[arg(short = 'e', long)]
+        #[arg(short = 'e', long, overrides_with = "edit")]
         edit: bool,
-        #[arg(short = 'p', long)]
+        #[arg(short = 'p', long, action = clap::ArgAction::Append, value_parser = cli_path_parser())]
         path: Option<PathBuf>,
-        #[arg(short = 'd', long, default_value_t = 0, value_parser = parse_cli_nonnegative)]
+        #[arg(short = 'd', long, default_value_t = 0, value_parser = parse_cli_nonnegative, action = clap::ArgAction::Append)]
         delay: u64,
-        #[arg(short = 'c', long)]
+        #[arg(short = 'c', long, overrides_with = "clipboard")]
         clipboard: bool,
-        #[arg(short = 'r', long)]
+        #[arg(short = 'r', long, overrides_with = "raw")]
         raw: bool,
     },
     /// Select and annotate a screenshot.
     Gui {
-        #[arg(long)]
+        #[arg(long, action = clap::ArgAction::Append)]
         region: Option<flameshot_core::region::Spec>,
-        #[arg(long)]
+        #[arg(long, overrides_with = "last_region")]
         last_region: bool,
-        #[arg(short = 's', long)]
+        #[arg(short = 's', long, overrides_with = "accept_on_select")]
         accept_on_select: bool,
-        #[arg(short = 'g', long)]
+        #[arg(short = 'g', long, overrides_with = "print_geometry")]
         print_geometry: bool,
-        #[arg(long)]
+        #[arg(long, overrides_with = "pin")]
         pin: bool,
-        #[arg(short = 'p', long)]
+        #[arg(short = 'p', long, action = clap::ArgAction::Append, value_parser = cli_path_parser())]
         path: Option<PathBuf>,
-        #[arg(short = 'd', long, default_value_t = 0, value_parser = parse_cli_nonnegative)]
+        #[arg(short = 'd', long, default_value_t = 0, value_parser = parse_cli_nonnegative, action = clap::ArgAction::Append)]
         delay: u64,
-        #[arg(short = 'c', long)]
+        #[arg(short = 'c', long, overrides_with = "clipboard")]
         clipboard: bool,
-        #[arg(short = 'r', long)]
+        #[arg(short = 'r', long, overrides_with = "raw")]
         raw: bool,
     },
     /// Capture the entire desktop.
     Full {
-        #[arg(short = 'p', long)]
+        #[arg(short = 'p', long, action = clap::ArgAction::Append, value_parser = cli_path_parser())]
         path: Option<PathBuf>,
-        #[arg(short = 'd', long, default_value_t = 0, value_parser = parse_cli_nonnegative)]
+        #[arg(short = 'd', long, default_value_t = 0, value_parser = parse_cli_nonnegative, action = clap::ArgAction::Append)]
         delay: u64,
-        #[arg(short = 'c', long)]
+        #[arg(short = 'c', long, overrides_with = "clipboard")]
         clipboard: bool,
-        #[arg(short = 'r', long)]
+        #[arg(short = 'r', long, overrides_with = "raw")]
         raw: bool,
     },
 }
@@ -635,8 +665,128 @@ fn unavailable(error: &portal::CaptureError) -> bool {
 }
 
 #[cfg(test)]
-mod cli_numeric_tests {
+mod cli_tests {
     use super::*;
+    #[test]
+    fn duplicate_options_keep_first_values_and_validate_all_occurrences() {
+        let cli = Cli::try_parse_from([
+            "flameshot",
+            "gui",
+            "--delay",
+            "5",
+            "-d",
+            "6",
+            "--region",
+            "all",
+            "--region",
+            "screen1",
+            "--raw",
+            "-r",
+            "--pin",
+            "--pin",
+            "--last-region",
+            "--last-region",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Some(Command::Gui {
+                delay: 5,
+                region: Some(flameshot_core::region::Spec::All),
+                raw: true,
+                pin: true,
+                last_region: true,
+                ..
+            })
+        ));
+        let cli = Cli::try_parse_from([
+            "flameshot",
+            "config",
+            "--notifications",
+            "false",
+            "-n",
+            "true",
+            "--maincolor",
+            "#123",
+            "-m",
+            "blue",
+            "--check",
+            "--check",
+        ])
+        .unwrap();
+        assert!(
+            matches!(cli.command,Some(Command::Config { notifications:Some(false),maincolor:Some(color),check:true,.. }) if color=="#112233")
+        );
+        for args in [
+            vec!["flameshot", "full", "--delay", "1", "--delay", "2147483648"],
+            vec!["flameshot", "screen", "--number", "0", "-n", "invalid"],
+            vec!["flameshot", "gui", "--region", "all", "--region", "invalid"],
+            vec![
+                "flameshot",
+                "config",
+                "--notifications",
+                "true",
+                "-n",
+                "invalid",
+            ],
+            vec![
+                "flameshot",
+                "config",
+                "--maincolor",
+                "red",
+                "-m",
+                "#11223344",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err());
+        }
+    }
+    #[test]
+    fn cli_colors_follow_qcolor_and_require_opacity() {
+        for (source, expected) in [
+            ("#123", "#112233"),
+            ("#123456789", "#124578"),
+            ("#008100000000", "#010000"),
+            ("#ff7000000", "#ff0000"),
+            ("#ff112233", "#112233"),
+            (" dark blue ", "#00008b"),
+        ] {
+            assert_eq!(parse_cli_color(source).unwrap(), expected);
+        }
+        for source in ["#11223344", "transparent", " #123 ", "#12", "bogus"] {
+            assert!(parse_cli_color(source).is_err(), "{source}");
+        }
+    }
+    #[test]
+    fn repeated_paths_preserve_first_non_utf8_path_and_reject_missing_parent() {
+        use std::os::unix::ffi::OsStringExt;
+        let root = tempfile::tempdir().unwrap();
+        let first = root
+            .path()
+            .join(std::ffi::OsString::from_vec(b"image-\xff.png".to_vec()));
+        let second = root.path().join("second.png");
+        let args: Vec<std::ffi::OsString> = vec![
+            "flameshot".into(),
+            "full".into(),
+            "--path".into(),
+            first.clone().into(),
+            "-p".into(),
+            second.into(),
+        ];
+        assert!(
+            matches!(Cli::try_parse_from(args).unwrap().command,Some(Command::Full { path:Some(path),delay:0,.. }) if path==first)
+        );
+        let missing = root.path().join("absent/file.png");
+        let args: Vec<std::ffi::OsString> = vec![
+            "flameshot".into(),
+            "gui".into(),
+            "--path".into(),
+            root.path().into(),
+            "-p".into(),
+            missing.into(),
+        ];
+        assert!(Cli::try_parse_from(args).is_err());
+    }
     #[test]
     fn numeric_options_keep_legacy_i32_bounds_and_whitespace() {
         for command in ["gui", "screen", "full"] {

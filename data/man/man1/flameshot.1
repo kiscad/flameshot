@@ -52,6 +52,8 @@ Show help. Each command also accepts this option.
 .BR \-v , " " \-V , " " \-\-version
 Show version information without starting the background service.
 .SH CAPTURE OPTIONS
+Capture and configuration options may be repeated. The first supplied value is used;
+all occurrences of checked values must be valid. Repeating a switch keeps it enabled.
 The following options apply to
 .BR gui , " " screen " and " full .
 .TP
@@ -138,6 +140,10 @@ Set the main interface color.
 .TP
 .BR \-k , " " \-\-contrastcolor " " \fICOLOR\fR
 Set the contrasting interface color. Quote hexadecimal colors in the shell.
+Interface colors must be opaque. QColor forms #RGB, #RRGGBB, #RRRGGGBBB
+and #RRRRGGGGBBBB are accepted, as are named colors.
+The #AARRGGBB form requires an alpha value of FF.
+These command-line colors are stored as normalized #RRGGBB values.
 .TP
 .B \-\-check
 Validate configuration values and shortcut assignments without opening the settings window.

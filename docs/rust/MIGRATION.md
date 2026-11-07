@@ -2685,3 +2685,33 @@ CLI audit. In particular baseline value() selects the first repeated value; a ge
 last-value-wins override would not preserve that behavior.
 The same parser and six executable CLI tests pass with no default features.
 Formatting, diff checks and warning-free man-page rendering also pass.
+
+### Preserve repeated capture/config options and QColor CLI validation
+
+The baseline parser records repeated options and value() selects the first matching
+value. Capture/config value arguments now use append parsing with first-value
+extraction, so every occurrence still passes its value parser. Switches allow repeated
+occurrences without changing their enabled state. No global last-value-wins override
+is used. Help/version behavior is separate and remains under audit.
+
+This exposed two prerequisite validator gaps. CLI interface colors now use the
+existing QColor-compatible palette decoder, require opacity, and normalize to
+#RRGGBB. Qt shorthand/high-precision forms and opaque #AARRGGBB are accepted; the
+former integration test incorrectly accepted a translucent Qt ARGB value and rejected
+#RGB. Expectations were corrected against the baseline colorChecker and an isolated
+Qt 5.15 runtime probe. Named-color whitespace/case handling is supported. This is
+CLI normalization; the existing stored/drawing color decoder is not rewritten.
+
+Output paths validate the baseline existing-directory/existing-parent condition for
+every occurrence before desktop actions. The typed path parser retains non-UTF-8
+paths. Filename-pattern strings have no legacy parser checker; their selected first
+value still undergoes the existing settings validation when applied.
+
+Four parser tests, six CLI-help integration tests and nine config tests pass with
+all features and no default features. Actual config invocations verify first values
+are saved, aliases participate, and later invalid typed values prevent all writes.
+The private D-Bus mock-portal full-capture integration test verifies PNG stdout and
+collision-safe saving. All-feature all-target Clippy and Bash/Fish/Zsh completion
+checks pass; the manual documents repetitions and opaque QColor formats and renders
+without warnings. Formatting/diff checks pass. Legacy parse-error status and remaining
+help/version/syntax semantics are still unclosed CLI acceptance items.
