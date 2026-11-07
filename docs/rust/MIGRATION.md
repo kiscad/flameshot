@@ -2199,3 +2199,14 @@ isolated D-Bus/Xvfb UI suite, all-feature all-target Clippy, no-default-feature
 compilation, formatting and diff checks. This is conservative file retention for an
 unknown outcome, not a claim that a stopped worker's external side effect can be
 reliably determined.
+
+### Current optimized payload validation
+
+Built the locked all-feature release application and platform examples at
+`ee049bd49ae685233c4b16edda916e862a0862ad`, staged a fresh /usr payload, and validated
+its metadata, installed resource set, executable identity and absence of Qt linkage.
+The staged binary passed the full Xvfb and Sway suites, GNOME multi-monitor/clipboard
+fixture, and shell completion checks. Its SHA-256 remained unchanged throughout.
+See RELEASE-VALIDATION.md for provenance and scope. This updates local release-build
+evidence but does not complete installation, sandbox, hosted CI or final source-removal
+gates, and later production changes require a new release validation snapshot.
