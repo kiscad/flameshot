@@ -16,7 +16,10 @@ impl LinkOpener {
             .add_enabled(self.job.is_none(), egui::Link::new(label))
             .on_hover_text(url);
         response.context_menu(|ui| {
-            if ui.button("Copy link").clicked() {
+            if ui
+                .button(crate::i18n::tr("ImgUploaderBase", "Copy URL"))
+                .clicked()
+            {
                 ui.ctx().copy_text(url.to_owned());
                 ui.close();
             }

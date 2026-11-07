@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::i18n::tr;
 use eframe::egui;
 use flameshot_platform::imgur::{Imgur, UploadedImage};
 use std::{sync::mpsc, time::Duration};
@@ -32,7 +33,7 @@ impl LinkClipboard {
         };
         self.job = None;
         Some(match result {
-            Ok(()) => "Link copied".into(),
+            Ok(()) => tr("ImgUploaderBase", "URL copied to clipboard.").into(),
             Err(error) => error,
         })
     }
@@ -170,7 +171,7 @@ impl UploadDialog {
             self.clipboard.copy(ctx, &link);
         }
         let mut keep = true;
-        egui::Window::new("Upload to Imgur")
+        egui::Window::new(format!("{} — Imgur", tr("ImgUploaderBase", "Upload image")))
             .collapsible(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
@@ -188,16 +189,16 @@ impl UploadDialog {
                 ui.image(self.texture.as_ref().unwrap());
                 if let Some(uploaded) = &self.uploaded {
                     self.links.link(ui, &uploaded.link, &uploaded.link);
-                    if ui.button("Copy link").clicked() {
+                    if ui.button(tr("ImgUploaderBase", "Copy URL")).clicked() {
                         self.clipboard.copy(ctx, &uploaded.link);
                     }
                 } else if self.job.is_some() {
                     ui.spinner();
-                    ui.label("Uploading…");
+                    ui.label(tr("ImgUploaderBase", "Uploading Image"));
                     ctx.request_repaint_after(Duration::from_millis(100));
                 } else {
-                    ui.label("Upload this selected image to Imgur?");
-                    if ui.button("Upload").clicked() {
+                    ui.label(tr("ImgUploadDialog", "Do you want to upload this capture?"));
+                    if ui.button(tr("ImgUploaderBase", "Upload image")).clicked() {
                         self.begin(ctx);
                     }
                 }
@@ -210,7 +211,7 @@ impl UploadDialog {
                 }
                 if self.job.is_none()
                     && self.clipboard.job.is_none()
-                    && (ui.button("Close").clicked()
+                    && (ui.button(tr("UtilityPanel", "Close")).clicked()
                         || ctx.input(|i| i.key_pressed(egui::Key::Escape)))
                 {
                     keep = false;
@@ -223,7 +224,7 @@ pub fn history() -> anyhow::Result<()> {
     let confirmation_required = crate::settings::Settings::load()?.history_confirmation_to_delete;
     let entries = crate::upload_history::list(&crate::upload_history::directory()?)?;
     eframe::run_native(
-        "Flameshot Upload History",
+        &format!("Flameshot {}", tr("UploadHistory", "Upload History")),
         eframe::NativeOptions {
             viewport: crate::app_ui::viewport(),
             ..Default::default()
@@ -319,9 +320,9 @@ impl eframe::App for History {
         if let Some(message) = self.clipboard.poll(ui.ctx()) {
             self.message = message;
         }
-        ui.heading("Upload History");
+        ui.heading(tr("UploadHistory", "Upload History"));
         if self.entries.is_empty() {
-            ui.label("No uploaded images");
+            ui.label(tr("UploadHistory", "Screenshots history is empty"));
         }
         let mut requested_delete = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
@@ -346,12 +347,15 @@ impl eframe::App for History {
                         ui.add(egui::Image::new(&*texture).max_size(egui::vec2(125.0, 50.0)));
                     }
                     self.links.link(ui, &entry.link, &entry.link);
-                    if ui.button("Copy link").clicked() {
+                    if ui.button(tr("ImgUploaderBase", "Copy URL")).clicked() {
                         self.clipboard.copy(ui.ctx(), &entry.link);
                     }
                     if entry.deletehash.is_some()
                         && ui
-                            .add_enabled(self.job.is_none(), egui::Button::new("Delete"))
+                            .add_enabled(
+                                self.job.is_none(),
+                                egui::Button::new(tr("ImgUploaderBase", "Delete image")),
+                            )
                             .clicked()
                     {
                         requested_delete = Some(index);
@@ -365,13 +369,19 @@ impl eframe::App for History {
             self.start_delete(ui.ctx(), index);
         }
         if let Some(index) = self.confirm {
-            ui.label("Delete this image from Imgur?");
+            ui.label(tr(
+                "UploadLineItem",
+                "Are you sure you want to delete a screenshot from the latest uploads and server?",
+            ));
             if self.job.is_none() {
                 ui.horizontal(|ui| {
-                    if ui.button("Confirm deletion").clicked() {
+                    if ui
+                        .button(tr("UploadLineItem", "Confirm to delete"))
+                        .clicked()
+                    {
                         self.start_delete(ui.ctx(), index);
                     }
-                    if ui.button("Cancel").clicked() {
+                    if ui.button(tr("ColorGrabWidget", "Cancel")).clicked() {
                         self.confirm = None;
                     }
                 });

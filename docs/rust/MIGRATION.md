@@ -2233,3 +2233,21 @@ regression passed as well. Build metadata used the archived revision, and no reg
 source cache was populated. SOURCE-VALIDATION.md records the artifact hash and the
 installed-toolchain/system-dependency limitations of this evidence. This does not
 complete clean-system installs, hosted CI or removal of the checkout's C++ reference.
+
+### Upload and history control localization
+
+Upload confirmation, progress, copy-URL feedback, close/delete controls and history
+headings now reuse their existing ImgUploadDialog, ImgUploaderBase, UploadHistory,
+UploadLineItem and generic-control catalog entries. The upload window retains Imgur
+in its title so the destination remains explicit. The shared link context menu also
+uses the existing Copy URL translation. Network/worker diagnostic details and some
+compound status messages remain outside this localization change.
+
+The Chinese localization fixture now opens a synthetic local history record when
+Imgur support is built, checks the translated native title, captures the window,
+and closes it while verifying the record is unchanged. Both simplified/traditional
+Chinese screenshots were inspected with readable controls and no truncation.
+Five upload/history state and local-HTTP tests, the isolated D-Bus/Xvfb suite,
+all-target Clippy, default/no-default-feature compilation, formatting and diff checks
+passed. No real upload, deletion or browser launch was performed. Complete UI
+translation and remaining interactive/network acceptance are still unfinished.

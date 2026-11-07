@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Check Chinese launcher rendering and its capture/cancel lifecycle on private Xvfb.
+"""Check Chinese launcher/history rendering and lifecycle on private Xvfb.
 Usage: localization_smoke.py TOOL_ROOT FLAMESHOT_BINARY
 """
 import os
@@ -67,6 +67,30 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
         out,err=process.communicate()
         if process.returncode:print(err.decode(),file=sys.stderr)
     print('PASS:',locale,'launcher title, capture/cancel lifecycle and rendered screenshot')
+    if b'history' in subprocess.run([binary,'--help'],capture_output=True,timeout=5).stdout:
+        from PIL import Image
+        history=Path(os.environ['XDG_CACHE_HOME'])/'flameshot/history'
+        history.mkdir(parents=True,exist_ok=True)
+        record=history/'imgur-localtoken-localimage.png'
+        Image.new('RGB',(80,60),(32,64,96)).save(record)
+        original=record.read_bytes()
+        history_title={'zh_CN':'Flameshot 上传历史记录','zh_TW':'Flameshot 上傳歷史記錄'}[locale]
+        process=subprocess.Popen([binary,'history'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        try:
+            identifier=window('^'+history_title+'$')
+            tool('windowfocus','--sync',identifier)
+            time.sleep(.5)
+            captured=subprocess.run([binary,'full','--raw'],capture_output=True,timeout=10)
+            assert captured.returncode==0,captured.stderr.decode()
+            Path(artifacts,f'rust-history-{locale}.png').write_bytes(captured.stdout)
+            tool('key','Escape')
+            out,err=process.communicate(timeout=10)
+            assert process.returncode==0,err.decode()
+            assert record.read_bytes()==original
+        finally:
+            if process.poll() is None:process.kill();process.wait()
+        print('PASS:',locale,'localized history title and intact local record')
+
 '''
         subprocess.run(['dbus-run-session','--config-file',str(config),'--',sys.executable,'-c',driver,str(binary),str(root/'usr/bin/xdotool'),str(artifacts)],env=env,check=True,timeout=50)
     finally:
