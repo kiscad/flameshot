@@ -35,11 +35,17 @@ impl Watcher {
     }
 }
 
-struct Notifications(tokio::sync::mpsc::UnboundedSender<String>);
+struct Notifications {
+    messages: tokio::sync::mpsc::UnboundedSender<String>,
+    delivery: Option<(
+        std::sync::Arc<tokio::sync::Semaphore>,
+        tokio::sync::mpsc::UnboundedSender<bool>,
+    )>,
+}
 #[zbus::interface(name = "org.freedesktop.Notifications")]
 impl Notifications {
     #[allow(clippy::too_many_arguments)]
-    fn notify(
+    async fn notify(
         &self,
         _app: &str,
         _replaces: u32,
@@ -49,9 +55,28 @@ impl Notifications {
         _actions: Vec<String>,
         _hints: HashMap<String, OwnedValue>,
         _timeout: i32,
-    ) -> u32 {
-        let _ = self.0.send(body.into());
-        1
+        #[zbus(header)] header: zbus::message::Header<'_>,
+    ) -> zbus::fdo::Result<u32> {
+        let _ = self.messages.send(body.into());
+        if body.starts_with("clipboard-order")
+            && let Some((gate, observations)) = &self.delivery
+        {
+            observations
+                .send(
+                    header
+                        .primary()
+                        .flags()
+                        .contains(zbus::message::Flags::NoReplyExpected),
+                )
+                .unwrap();
+            gate.acquire().await.unwrap().forget();
+            if body.ends_with("reject") {
+                return Err(zbus::fdo::Error::Failed(
+                    "Synthetic notification failure".into(),
+                ));
+            }
+        }
+        Ok(1)
     }
 }
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -72,13 +97,20 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         .await
         .unwrap();
     let (notify_sender, mut notifications) = tokio::sync::mpsc::unbounded_channel();
+    let (notification_flag_sender, mut notification_flags) = tokio::sync::mpsc::unbounded_channel();
+    let notification_gate = std::sync::Arc::new(tokio::sync::Semaphore::new(0));
+    let delivery_probe = std::env::var_os("FLAMESHOT_TEST_PRIVATE_DISPLAY_TOOLS")
+        .map(|_| (notification_gate.clone(), notification_flag_sender));
     let _notifications = zbus::connection::Builder::session()
         .unwrap()
         .name("org.freedesktop.Notifications")
         .unwrap()
         .serve_at(
             "/org/freedesktop/Notifications",
-            Notifications(notify_sender),
+            Notifications {
+                messages: notify_sender,
+                delivery: delivery_probe,
+            },
         )
         .unwrap()
         .build()
@@ -252,6 +284,164 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     assert!(labels.contains(&"_Open Save Path".into()));
     assert!(labels.contains(&"_Open Launcher".into()));
     if let Ok(tools) = std::env::var("FLAMESHOT_TEST_PRIVATE_DISPLAY_TOOLS") {
+        let xclip = std::path::Path::new(&tools).join("usr/bin/xclip");
+        let read_clipboard = || {
+            let output = Command::new(&xclip)
+                .args(["-selection", "clipboard", "-t", "UTF8_STRING", "-o"])
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{:?}", output.stderr);
+            output.stdout
+        };
+        let config = temp.path().join("flameshot/flameshot.ini");
+        std::fs::write(
+            &config,
+            "[General]\ncheckForUpdates=false\nshowDesktopNotification=true\n",
+        )
+        .unwrap();
+        for notification in ["clipboard-order-held", "clipboard-order-reject"] {
+            proxy
+                .call::<_, _, ()>("attachTextToClipboard", &("before notification", ""))
+                .await
+                .unwrap();
+            tokio::time::timeout(
+                Duration::from_secs(1),
+                proxy.call::<_, _, ()>(
+                    "attachTextToClipboard",
+                    &("after notification", notification),
+                ),
+            )
+            .await
+            .expect("Copy waited for notification handling")
+            .unwrap();
+            assert!(
+                notification_flags.recv().await.unwrap(),
+                "Notification requested a reply"
+            );
+            assert_eq!(notifications.recv().await.unwrap(), notification);
+            assert_eq!(read_clipboard(), b"after notification");
+            notification_gate.add_permits(1);
+        }
+        let first = async {
+            proxy
+                .call::<_, _, ()>(
+                    "attachTextToClipboard",
+                    &("first pending", "clipboard-order-held"),
+                )
+                .await
+                .unwrap();
+        };
+        let second = async {
+            assert!(notification_flags.recv().await.unwrap());
+            proxy
+                .call::<_, _, ()>("attachTextToClipboard", &("second queued", ""))
+                .await
+                .unwrap();
+        };
+        tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::join!(first, second);
+        })
+        .await
+        .unwrap();
+        assert_eq!(notifications.recv().await.unwrap(), "clipboard-order-held");
+        assert_eq!(
+            read_clipboard(),
+            b"second queued",
+            "An older request overwrote newer text"
+        );
+        notification_gate.add_permits(1);
+        let expected_image = image::RgbaImage::from_pixel(3, 2, image::Rgba([9, 80, 220, 255]));
+        let wire_image = flameshot_core::qt_wire::encode_clipboard(&expected_image).unwrap();
+        let first = async {
+            proxy
+                .call::<_, _, ()>(
+                    "attachTextToClipboard",
+                    &("older text before image", "clipboard-order-held"),
+                )
+                .await
+                .unwrap();
+        };
+        let second = async {
+            assert!(notification_flags.recv().await.unwrap());
+            proxy
+                .call::<_, _, ()>("attachScreenshotToClipboard", &(wire_image,))
+                .await
+                .unwrap();
+        };
+        tokio::time::timeout(Duration::from_secs(1), async {
+            tokio::join!(first, second);
+        })
+        .await
+        .unwrap();
+        assert_eq!(notifications.recv().await.unwrap(), "clipboard-order-held");
+        let copied_image = Command::new(&xclip)
+            .args(["-selection", "clipboard", "-t", "image/png", "-o"])
+            .output()
+            .unwrap();
+        assert!(copied_image.status.success(), "{:?}", copied_image.stderr);
+        assert_eq!(
+            image::load_from_memory(&copied_image.stdout)
+                .unwrap()
+                .to_rgba8(),
+            expected_image
+        );
+        notification_gate.add_permits(1);
+        // Q_NOREPLY clients must still trigger the clipboard side effect.
+        proxy
+            .call_noreply("attachTextToClipboard", &("legacy no-reply text", ""))
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while read_clipboard() != b"legacy no-reply text" {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
+        std::fs::write(
+            &config,
+            "[General]\ncheckForUpdates=false\nshowDesktopNotification=false\n",
+        )
+        .unwrap();
+        proxy
+            .call::<_, _, ()>(
+                "attachTextToClipboard",
+                &("disabled notification", "clipboard-order-disabled"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(read_clipboard(), b"disabled notification");
+        assert!(notification_flags.try_recv().is_err());
+        assert!(notifications.try_recv().is_err());
+        std::fs::write(&config, "[General]\ncheckForUpdates=false\nshowDesktopNotification=true\nautoCloseIdleDaemon=true\n").unwrap();
+        let external = flameshot_platform::clipboard::copy(
+            b"external owner".to_vec(),
+            "text/plain;charset=utf-8",
+            false,
+        )
+        .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            proxy.call::<_, _, ()>(
+                "attachTextToClipboard",
+                &("copied while notification pending", "clipboard-order-held"),
+            ),
+        )
+        .await
+        .expect("Copy waited for notification handling")
+        .unwrap();
+        assert!(notification_flags.recv().await.unwrap());
+        assert_eq!(notifications.recv().await.unwrap(), "clipboard-order-held");
+        tokio::time::sleep(Duration::from_millis(1400)).await;
+        assert_eq!(read_clipboard(), b"copied while notification pending");
+        assert!(daemon.0.try_wait().unwrap().is_none());
+        notification_gate.add_permits(1);
+        drop(external);
+        std::fs::write(
+            &config,
+            "[General]\ncheckForUpdates=false\nshowDesktopNotification=false\n",
+        )
+        .unwrap();
         assert_eq!(monitor_items.len(), 2, "{monitor_items:?}");
         assert_eq!(monitor_items[1].1, "Monitor 2: right (512x768)");
         menu.call::<_, _, ()>(

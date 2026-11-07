@@ -6,7 +6,7 @@ use std::{
     process::{Command, Stdio},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -47,8 +47,20 @@ pub(crate) struct Activity {
     clipboard: Mutex<Vec<flameshot_platform::clipboard::Lease>>,
     children: Arc<crate::children::Children>,
     used: AtomicBool,
+    pending_requests: AtomicUsize,
+    clipboard_requests: tokio::sync::Mutex<()>,
+}
+struct PendingRequest<'a>(&'a AtomicUsize);
+impl Drop for PendingRequest<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 impl Activity {
+    fn begin_request(&self) -> PendingRequest<'_> {
+        self.pending_requests.fetch_add(1, Ordering::AcqRel);
+        PendingRequest(&self.pending_requests)
+    }
     pub(crate) fn launch(self: &Arc<Self>, command: &str) -> Result<()> {
         self.launch_args(&[command])
     }
@@ -63,7 +75,8 @@ impl Activity {
         Ok(())
     }
     fn idle(&self) -> bool {
-        self.used.load(Ordering::Acquire)
+        self.pending_requests.load(Ordering::Acquire) == 0
+            && self.used.load(Ordering::Acquire)
             && self.children.idle()
             && self.clipboard.try_lock().is_ok_and(|mut leases| {
                 leases.retain(|lease| lease.active());
@@ -93,10 +106,13 @@ impl Service {
 impl Service {
     #[zbus(name = "captureScreen")]
     fn capture_screen(&self) -> zbus::fdo::Result<()> {
+        let _request = self.activity.begin_request();
         self.activity.launch("gui").map_err(failure)
     }
     #[zbus(name = "attachScreenshotToClipboard")]
-    fn attach_screenshot_to_clipboard(&self, data: Vec<u8>) -> zbus::fdo::Result<()> {
+    async fn attach_screenshot_to_clipboard(&self, data: Vec<u8>) -> zbus::fdo::Result<()> {
+        let _request = self.activity.begin_request();
+        let _clipboard_order = self.activity.clipboard_requests.lock().await;
         let image = qt_wire::decode_clipboard(&data)
             .map_err(|e| zbus::fdo::Error::InvalidArgs(e.to_string()))?;
         let jpeg = crate::settings::Settings::load()
@@ -120,7 +136,11 @@ impl Service {
         notification: &str,
         #[zbus(connection)] connection: &Connection,
     ) -> zbus::fdo::Result<()> {
-        self.clipboard(text.as_bytes().to_vec(), "text/plain;charset=utf-8")?;
+        // The legacy service sends notifications asynchronously before replacing
+        // clipboard contents. Serialize transport work with other replacements,
+        // but never wait for the notification server to handle the message.
+        let _request = self.activity.begin_request();
+        let _clipboard_order = self.activity.clipboard_requests.lock().await;
         if !notification.is_empty()
             && crate::settings::Settings::load()
                 .map(|settings| settings.notifications)
@@ -135,7 +155,7 @@ impl Service {
                 )
                 .await?;
                 proxy
-                    .call::<_, _, u32>(
+                    .call_noreply(
                         "Notify",
                         &(
                             "Flameshot",
@@ -152,10 +172,11 @@ impl Service {
             })
             .await;
         }
-        Ok(())
+        self.clipboard(text.as_bytes().to_vec(), "text/plain;charset=utf-8")
     }
     #[zbus(name = "attachPin")]
     fn attach_pin(&self, data: Vec<u8>) -> zbus::fdo::Result<()> {
+        let _request = self.activity.begin_request();
         qt_wire::decode_pin(&data).map_err(|e| zbus::fdo::Error::InvalidArgs(e.to_string()))?;
         self.activity
             .children
@@ -327,4 +348,35 @@ pub async fn copy_text(text: &str) -> Result<()> {
         .call::<_, _, ()>("attachTextToClipboard", &(text, ""))
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::future::Future;
+
+    #[test]
+    fn executing_and_queued_requests_prevent_idle_until_cancelled() {
+        let activity = Activity::default();
+        activity.used.store(true, Ordering::Release);
+        assert!(activity.idle());
+        let request = || async {
+            let _request = activity.begin_request();
+            let _clipboard_order = activity.clipboard_requests.lock().await;
+            std::future::pending::<()>().await;
+        };
+        let mut first = Box::pin(request());
+        let mut second = Box::pin(request());
+        let mut context = std::task::Context::from_waker(futures_util::task::noop_waker_ref());
+        assert!(first.as_mut().poll(&mut context).is_pending());
+        assert!(second.as_mut().poll(&mut context).is_pending());
+        assert!(!activity.idle());
+        drop(first);
+        assert!(!activity.idle(), "Queued request was treated as idle");
+        drop(second);
+        assert!(
+            activity.idle(),
+            "Cancelled requests retained daemon activity"
+        );
+    }
 }

@@ -3114,3 +3114,38 @@ default renderer/Pinyin and OpenGL fallback. Both Wayland runs passed precision 
 at 1.5x and 2x along with the existing grid cases. GUI validation used private displays,
 D-Bus sessions and XDG directories. This establishes the tested X11/Sway interactions;
 other compositor/version acceptance and the overall migration gates remain pending.
+
+### Preserve asynchronous D-Bus notifications and clipboard ordering
+
+The legacy text-clipboard service asynchronously sends its notification before
+replacing clipboard contents. The Rust implementation replaced the clipboard first
+and waited up to two seconds for a notification reply before finishing its D-Bus
+method. It now sends Notify without requesting a reply, then replaces the clipboard.
+A slow or rejecting notification service cannot delay completion of the copy operation;
+the existing timeout only bounds notification transport setup/sending.
+
+Text and screenshot clipboard requests share an asynchronous ordering lock, preserving
+replacement order across transport awaits. Public service calls hold pending-request
+guards so queued/executing operations are not considered idle. A lifecycle test polls
+an executing request and a queued request, then cancels each and verifies idle state
+is restored only after both have ended.
+
+The private-Xvfb fixture holds synthetic notification handlers behind an explicit gate.
+Clipboard calls must finish before that gate is released, and the captured D-Bus headers
+must carry NoReplyExpected. It also checks rejection, disabled notifications, concurrent
+text/text and text/image replacements, a legacy no-reply text call, and clipboard/daemon
+survival while notification handling remains pending. Actual copied image pixels are
+compared. The fixture continues through tray actions and explicit daemon shutdown.
+
+A separate private-bus introspection snapshot confirms the four legacy method names
+and argument signatures (`ay`, `s,s`, `ay`, and no arguments for captureScreen). The
+Rust XML currently has no Method.NoReply annotations, while the Qt adapter declares
+these slots Q_NOREPLY. Exact introspection-metadata parity remains a specific follow-up;
+the successful no-reply text call above proves dispatch behavior, not metadata parity.
+
+Validation passed for the final asynchronous-send implementation: the complete Rust
+gate with Fish/Zsh checks, private D-Bus/native UI tests including real document-portal
+saves, the full Xvfb desktop suite, and Sway with Pinyin, scaled grids and precision
+picking. Existing clipboard ownership and automatic-idle-exit cases still pass on
+X11 and Wayland. Tests used private sessions/displays/XDG directories; hosted CI and
+remaining migration acceptance, including the metadata item above, are still pending.
