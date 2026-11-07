@@ -3056,3 +3056,31 @@ successfully in sequence. The virtual-pointer example build and focused Clippy,
 formatting and diff checks pass. This extends native grid coverage to Sway at the
 specified scales/origins, not every compositor or output arrangement. Hosted CI
 and the remaining migration acceptance gates are still pending.
+
+### Restore confirmed color grabbing and selected-object recoloring
+
+The previous Rust G shortcut immediately saved the hovered color and bypassed the
+selected object's color-edit path. G and the translated side-panel Grab Color button
+now enter a picking mode. Hovering does not mutate settings or annotations; a left
+click or Enter confirms, and Escape cancels without exiting the editor. Space/right
+click toggle the magnifier, using the existing ColorGrabWidget translations for the
+on-screen controls. Canvas shortcuts and wheel size changes are suppressed while
+picking; confirmation events are not reused to export or start a drawing operation.
+
+Confirmation uses the same color persistence and object replacement path as palette
+edits. A selected object therefore changes in one undoable edit, while choosing a
+color with a drawing tool changes its default without editing the previously selected
+object. Capture tool controls are hidden during picking and restored afterward.
+
+The new private-Xvfb fixture exercises confirmation/cancellation, selected-object
+undo/redo, button entry, magnifier toggling, default-only picking and preview/export
+agreement. The existing magnifier smoke case now explicitly confirms its sampled
+color. The legacy held-button enlarged pixel-selection interaction is not implemented
+by this change and remains an explicit editor acceptance item.
+
+Validation passed: the complete Rust gate with Fish/Zsh checks, the new color-grab
+fixture (including right-click/Space magnifier toggling and Enter confirmation),
+drawing-grid and text-format fixtures, the full Xvfb suite, and Sway with Pinyin and
+the scaled negative-origin grid scenarios. All GUI checks used private displays,
+D-Bus sessions and XDG directories. Native color-grab-specific coverage is X11;
+Wayland picking and the held-button precision mode remain acceptance work.

@@ -629,6 +629,8 @@ print('PASS: capture lock is released after a killed editor')
                 assert artifact.returncode==0,artifact.stderr.decode()
                 (artifact_dir/'rust-magnifier-x11.png').write_bytes(artifact.stdout)
                 tool('key','g')
+                time.sleep(.2)
+                tool('click','1') # Confirm the sampled color.
             if mode in ('quitresume','quitconfirm','quitdisable'):
                 if mode=='quitresume':
                     tool('key','p')

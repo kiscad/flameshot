@@ -216,6 +216,9 @@ struct Editor {
     keyboard_frame: Option<u64>,
     size_keyboard: crate::size_keyboard::SizeKeyboard,
     grid: crate::drawing_grid::DrawingGrid,
+    color_grab: bool,
+    grab_magnifier: bool,
+    grab_input_frame: Option<u64>,
     counter_override: Option<u16>,
     undo_limit: usize,
     marker_size: f32,
@@ -299,6 +302,9 @@ impl Editor {
             keyboard_frame: None,
             size_keyboard: Default::default(),
             grid: Default::default(),
+            color_grab: false,
+            grab_magnifier: false,
+            grab_input_frame: None,
             counter_override: None,
             undo_limit: settings.undo_limit,
             marker_size: settings.marker_size.min(10000.0),
@@ -1368,6 +1374,13 @@ impl eframe::App for Editor {
                 ctx.request_repaint();
             }
         }
+        if self.color_grab && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.color_grab = false;
+            self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
+            self.shortcuts.reset();
+            self.size_keyboard.reset();
+            ctx.request_repaint();
+        }
         if self.dismissed_dialog_frame != Some(ctx.cumulative_frame_nr())
             && ctx.input(|i| i.key_pressed(egui::Key::Escape))
         {
@@ -1386,9 +1399,9 @@ impl eframe::App for Editor {
                 return;
             }
         }
-        let mut grab_color = false;
         let actions = if self.dismissed_dialog_frame == Some(ctx.cumulative_frame_nr())
             || self.keyboard_frame == Some(ctx.cumulative_frame_nr())
+            || self.color_grab
         {
             Vec::new()
         } else {
@@ -1401,7 +1414,7 @@ impl eframe::App for Editor {
         }
         if !ctx.egui_wants_keyboard_input() {
             for action in actions {
-                if self.quit_prompt {
+                if self.quit_prompt || self.color_grab {
                     break;
                 }
                 let action = match action {
@@ -1469,7 +1482,10 @@ impl eframe::App for Editor {
                     }
                     "TYPE_SIZEINCREASE" => self.adjust_tool_size(1.0),
                     "TYPE_SIZEDECREASE" => self.adjust_tool_size(-1.0),
-                    "TYPE_GRAB_COLOR" => grab_color = true,
+                    "TYPE_GRAB_COLOR" => {
+                        self.color_grab = true;
+                        self.grab_magnifier = false;
+                    }
                     "TYPE_TOGGLE_PANEL" => self.panel_visible = !self.panel_visible,
                     "TYPE_DELETE_CURRENT_TOOL" => {
                         if let Some(index) = self.selected_object.take() {
@@ -1532,7 +1548,7 @@ impl eframe::App for Editor {
         {
             self.color = Color32::from_rgba_unmultiplied(color[0], color[1], color[2], color[3]);
         }
-        if self.panel_visible {
+        if self.panel_visible && !self.color_grab {
             egui::Window::new(tr("RustEditor", "Objects and properties"))
                 .default_pos(egui::pos2(20.0, 180.0))
                 .show(&ctx, |ui| {
@@ -1622,9 +1638,15 @@ impl eframe::App for Editor {
                                 }
                             }
                         });
+                    if ui.button(tr("SidePanelWidget", "Grab Color")).clicked() {
+                        self.color_grab = true;
+                        self.grab_magnifier = false;
+                        ctx.request_repaint();
+                    }
                 });
         }
-        egui::Area::new(egui::Id::unique("capture-tools"))
+        if !self.color_grab {
+            egui::Area::new(egui::Id::unique("capture-tools"))
             .order(egui::Order::Foreground)
             .default_pos(egui::pos2(20.0, 20.0))
             .movable(true)
@@ -1717,6 +1739,7 @@ impl eframe::App for Editor {
                     }
                 });
             });
+        }
         if self.dirty {
             match self.preview() {
                 Ok(image) => {
@@ -1773,6 +1796,7 @@ impl eframe::App for Editor {
             Color32::WHITE,
         );
         if response.hovered()
+            && !self.color_grab
             && !ctx.egui_wants_keyboard_input()
             && self.wheel_frame != Some(ctx.cumulative_frame_nr())
         {
@@ -1806,6 +1830,16 @@ impl eframe::App for Editor {
                 }
             }
         }
+        if self.color_grab && self.grab_input_frame != Some(ctx.cumulative_frame_nr()) {
+            self.grab_input_frame = Some(ctx.cumulative_frame_nr());
+            if response.secondary_clicked()
+                || ctx.input(|input| input.key_pressed(egui::Key::Space))
+            {
+                self.grab_magnifier = !self.grab_magnifier;
+                ctx.request_repaint();
+            }
+        }
+        let mut sampled_color = None;
         if response.hovered()
             && let Some(pointer) = response.hover_pos()
             && let Some(rendered) = &self.rendered
@@ -1813,21 +1847,17 @@ impl eframe::App for Editor {
             let x = ((pointer.x - rect.min.x) / scale).floor().max(0.0) as u32;
             let y = ((pointer.y - rect.min.y) / scale).floor().max(0.0) as u32;
             if let Some(sample) = flameshot_core::inspection::sample(rendered, x, y, 7) {
-                if grab_color {
-                    self.color = Color32::from_rgba_unmultiplied(
-                        sample.rgba[0],
-                        sample.rgba[1],
-                        sample.rgba[2],
-                        sample.rgba[3],
-                    );
-                    if let Err(error) = crate::settings::Settings::update(&[(
-                        "drawColor",
-                        flameshot_core::color::encode(sample.rgba),
-                    )]) {
-                        self.error = error.to_string();
-                    }
+                if self.color_grab
+                    && (response.clicked()
+                        || ctx.input(|input| input.key_pressed(egui::Key::Enter)))
+                {
+                    sampled_color = Some(sample.rgba);
                 }
-                if self.magnifier {
+                if if self.color_grab {
+                    self.grab_magnifier
+                } else {
+                    self.magnifier
+                } {
                     let r = sample.neighborhood;
                     let crop =
                         image::imageops::crop_imm(rendered, r.x, r.y, r.width, r.height).to_image();
@@ -1920,6 +1950,43 @@ impl eframe::App for Editor {
                         });
                 }
             }
+        }
+        if self.color_grab {
+            self.keyboard_frame = Some(ctx.cumulative_frame_nr());
+            ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+            egui::Area::new(egui::Id::unique("color-grab-help"))
+                .fixed_pos(egui::pos2(20.0, available.max.y - 75.0))
+                .interactable(false)
+                .show(&ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.label(format!(
+                            "{}: {}",
+                            tr("ColorGrabWidget", "Enter or Left Click"),
+                            tr("ColorGrabWidget", "Accept color")
+                        ));
+                        ui.label(format!(
+                            "{}: {}",
+                            tr("ColorGrabWidget", "Space or Right Click"),
+                            tr("ColorGrabWidget", "Toggle magnifier")
+                        ));
+                        ui.label(format!(
+                            "{}: {}",
+                            tr("ColorGrabWidget", "Esc"),
+                            tr("ColorGrabWidget", "Cancel")
+                        ));
+                    });
+                });
+            if let Some(rgba) = sampled_color {
+                self.color = Color32::from_rgba_unmultiplied(rgba[0], rgba[1], rgba[2], rgba[3]);
+                self.persist_color();
+                self.color_grab = false;
+                self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
+                ctx.request_repaint();
+            }
+            return;
+        }
+        if self.dismissed_dialog_frame == Some(ctx.cumulative_frame_nr()) {
+            return;
         }
         response.context_menu(|ui| {
             self.palette_ui(ui, true);
