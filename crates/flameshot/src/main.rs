@@ -5,6 +5,8 @@ mod children;
 mod geometry_overlay;
 mod text_edit;
 mod theme;
+#[cfg(all(test, any(feature = "imgur", feature = "update-check")))]
+mod ui_test;
 mod wheel;
 // SPDX-License-Identifier: GPL-3.0-or-later
 mod config_check;

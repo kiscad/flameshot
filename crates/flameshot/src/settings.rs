@@ -198,7 +198,7 @@ impl Settings {
             |source, merged| check(&Self::parse(source)?, merged),
         )
     }
-    fn update_at(path: &std::path::Path, values: &[(&str, String)]) -> Result<()> {
+    pub(crate) fn update_at(path: &std::path::Path, values: &[(&str, String)]) -> Result<()> {
         Self::update_section_at(path, "General", values)
     }
     fn update_section_at(

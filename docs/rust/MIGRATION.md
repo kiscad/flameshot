@@ -29,7 +29,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures, atomic updates, idle reload and locked form conflict checks tested; remaining semantic audit pending |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
-| Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines/preferences and upload/history button flows tested; native upload/update interaction audit remains |
+| Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines/preferences and upload/history/update widget flows tested; native network-window integration audit remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
@@ -2910,3 +2910,32 @@ Clippy pass. Native simplified/traditional Chinese history open/close checks, ca
 tests, formatting and diff checks pass. No external requests or user history were
 used. The remembered remote-success state is scoped to the open window; persistent
 recovery after closing/crashing the application is not established by this change.
+
+### Add update-window retry and verify its controls
+
+The manual update window now offers Check for updates again after completion or
+failure. It disables the action while a request is pending, clears old release data
+when checking, and clears stale results on empty/error responses. Initial checking
+starts after window creation and worker completion requests repaint. Ignore-version
+writes still use the normal atomic settings path and report success only after the
+write succeeds.
+
+A loopback-only update transport helper reuses production response parsing with
+proxies disabled and redirects refused. Test-only window fields inject that endpoint
+and an isolated configuration path; missing test configuration never falls back to
+real update requests or user settings. Shared test-only egui helpers now drive both
+upload/history and update controls through pointer press/release events.
+
+The update interaction test gates the mock response to exercise the disabled pending
+button, receives an invalid response, retries to an available release, verifies failed
+and successful Ignore writes, then checks an older release and confirms stale links
+are gone. It also verifies Close emits the viewport-close command. Transport tests
+reject non-loopback/credential-bearing endpoints. No external release service or
+browser is contacted.
+
+The complete Rust gate passed with shell completion checks enabled, including the
+upload/history regression tests after helper extraction. Focused update tests and
+all-feature Clippy also pass after adding the Ignore-write failure case. Formatting
+and diff checks pass. These are widget-frame and loopback transport checks, not proof
+of native update-window networking on every desktop; that integration scope remains
+explicitly separate.

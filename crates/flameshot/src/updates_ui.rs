@@ -3,13 +3,6 @@ use crate::i18n::tr;
 use eframe::egui;
 use flameshot_platform::updates::{self, Update};
 pub fn show() -> anyhow::Result<()> {
-    let (sender, receiver) = std::sync::mpsc::channel();
-    tokio::spawn(async move {
-        let result = updates::check(env!("CARGO_PKG_VERSION"), "")
-            .await
-            .map_err(|e| e.to_string());
-        let _ = sender.send(result);
-    });
     eframe::run_native(
         tr("RustUpdates", "Flameshot Updates"),
         eframe::NativeOptions {
@@ -18,23 +11,76 @@ pub fn show() -> anyhow::Result<()> {
         },
         Box::new(move |cc| {
             crate::i18n::install_fonts(&cc.egui_ctx);
-            Ok(Box::new(Updates {
+            let mut window = Updates {
                 links: Default::default(),
-                job: Some(receiver),
+                job: None,
+                #[cfg(test)]
+                test_endpoint: None,
+                #[cfg(test)]
+                test_settings_path: None,
                 update: None,
                 message: tr("RustUpdates", "Checking for updates…").into(),
-            }))
+            };
+            window.begin(&cc.egui_ctx);
+            Ok(Box::new(window))
         }),
     )
     .map_err(|e| anyhow::anyhow!("Updates window: {e}"))
 }
 struct Updates {
+    #[cfg(test)]
+    test_endpoint: Option<String>,
+    #[cfg(test)]
+    test_settings_path: Option<std::path::PathBuf>,
     links: crate::links::LinkOpener,
     job: Option<std::sync::mpsc::Receiver<Result<Option<Update>, String>>>,
     update: Option<Update>,
     message: String,
 }
 impl Updates {
+    fn begin(&mut self, ctx: &egui::Context) {
+        if self.job.is_some() {
+            return;
+        }
+        self.update = None;
+        self.message = tr("RustUpdates", "Checking for updates…").into();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        self.job = Some(receiver);
+        let ctx = ctx.clone();
+        #[cfg(test)]
+        let endpoint = self.test_endpoint.take();
+        tokio::spawn(async move {
+            #[cfg(test)]
+            let result = match endpoint {
+                Some(endpoint) => {
+                    updates::check_local_test_server(&endpoint, env!("CARGO_PKG_VERSION"), "").await
+                }
+                None => Err(anyhow::anyhow!("Test update endpoint not configured")),
+            };
+            #[cfg(not(test))]
+            let result = updates::check(env!("CARGO_PKG_VERSION"), "").await;
+            let _ = sender.send(result.map_err(|error| error.to_string()));
+            ctx.request_repaint();
+        });
+    }
+    fn ignore_current(&mut self) {
+        let Some(update) = &self.update else {
+            return;
+        };
+        let values = [("ignoreUpdateToVersion", update.version.clone())];
+        #[cfg(test)]
+        let result = self
+            .test_settings_path
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Test settings path not configured"))
+            .and_then(|path| crate::settings::Settings::update_at(path, &values));
+        #[cfg(not(test))]
+        let result = crate::settings::Settings::update(&values);
+        self.message = match result {
+            Ok(()) => tr("RustUpdates", "Version ignored").into(),
+            Err(error) => error.to_string(),
+        };
+    }
     fn poll(&mut self) {
         let Some(job) = &self.job else {
             return;
@@ -51,15 +97,19 @@ impl Updates {
                     tr("RustUpdates", "Version %1 is available").replace("%1", &update.version);
                 self.update = Some(update);
             }
-            Ok(None) => self.message = tr("RustUpdates", "You have the latest version").into(),
+            Ok(None) => {
+                self.update = None;
+                self.message = tr("RustUpdates", "You have the latest version").into();
+            }
             Err(error) => {
+                self.update = None;
                 self.message = tr("RustUpdates", "Update check failed: %1").replace("%1", &error)
             }
         }
     }
 }
-impl eframe::App for Updates {
-    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+impl Updates {
+    fn ui_contents(&mut self, ui: &mut egui::Ui) {
         self.poll();
         egui::ScrollArea::vertical()
             .max_height((ui.available_height() - 32.0).max(0.0))
@@ -78,16 +128,19 @@ impl eframe::App for Updates {
                         .button(tr("RustUpdates", "Ignore this version"))
                         .clicked()
                     {
-                        match crate::settings::Settings::update(&[(
-                            "ignoreUpdateToVersion",
-                            update.version.clone(),
-                        )]) {
-                            Ok(()) => self.message = tr("RustUpdates", "Version ignored").into(),
-                            Err(e) => self.message = e.to_string(),
-                        }
+                        self.ignore_current();
                     }
                 }
                 self.links.status(ui);
+                if ui
+                    .add_enabled(
+                        self.job.is_none(),
+                        egui::Button::new(tr("RustConfig", "Check for updates")),
+                    )
+                    .clicked()
+                {
+                    self.begin(ui.ctx());
+                }
             });
         if ui.button(tr("UtilityPanel", "Close")).clicked()
             || ui.input(|i| i.key_pressed(egui::Key::Escape))
@@ -97,13 +150,149 @@ impl eframe::App for Updates {
     }
 }
 
+impl eframe::App for Updates {
+    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        self.ui_contents(ui);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui_test::{click_label, ui_frame};
+    fn server(
+        body: &str,
+    ) -> (
+        String,
+        std::sync::mpsc::Sender<()>,
+        std::thread::JoinHandle<Vec<u8>>,
+    ) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}/latest", listener.local_addr().unwrap());
+        let body = body.to_owned();
+        let (release, gate) = std::sync::mpsc::channel();
+        let task = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            socket
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0; 1024];
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let count = socket.read(&mut chunk).unwrap();
+                assert_ne!(count, 0);
+                request.extend_from_slice(&chunk[..count]);
+            }
+            gate.recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            write!(socket,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+            request
+        });
+        (endpoint, release, task)
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn update_controls_retry_ignore_and_clear_stale_release() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("flameshot.ini");
+        std::fs::write(&path, "[General]\nprivateValue=keep\n").unwrap();
+        let ctx = egui::Context::default();
+        let mut window = Updates {
+            links: Default::default(),
+            job: None,
+            update: None,
+            message: String::new(),
+            test_endpoint: None,
+            test_settings_path: Some(path.clone()),
+        };
+        for (body, available) in [
+            ("invalid JSON", false),
+            (
+                r#"{"tag_name":"v99.0.0","html_url":"https://github.com/flameshot-org/flameshot/releases/tag/v99.0.0"}"#,
+                true,
+            ),
+            (
+                r#"{"tag_name":"v1.0.0","html_url":"https://github.com/flameshot-org/flameshot/releases/tag/v1.0.0"}"#,
+                false,
+            ),
+        ] {
+            let (endpoint, release, task) = server(body);
+            window.test_endpoint = Some(endpoint);
+            click_label(&ctx, tr("RustConfig", "Check for updates"), |ui| {
+                window.ui_contents(ui)
+            });
+            assert!(window.job.is_some() && window.update.is_none());
+            click_label(&ctx, tr("RustConfig", "Check for updates"), |ui| {
+                window.ui_contents(ui)
+            });
+            assert!(
+                window.job.is_some(),
+                "Pending check must keep its disabled button"
+            );
+            release.send(()).unwrap();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while window.job.is_some() {
+                assert!(std::time::Instant::now() < deadline);
+                ui_frame(&ctx, vec![], &mut |ui| window.ui_contents(ui));
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            assert!(task.join().unwrap().starts_with(b"GET /latest "));
+            assert_eq!(window.update.is_some(), available);
+            assert!(!window.message.is_empty());
+            if body == "invalid JSON" {
+                assert!(window.message.contains("Invalid release response"));
+            }
+            if available {
+                let blocked = root.path().join("directory-instead-of-settings");
+                std::fs::create_dir(&blocked).unwrap();
+                window.test_settings_path = Some(blocked);
+                click_label(&ctx, tr("RustUpdates", "Ignore this version"), |ui| {
+                    window.ui_contents(ui)
+                });
+                assert_ne!(window.message, tr("RustUpdates", "Version ignored"));
+                assert_eq!(
+                    std::fs::read_to_string(&path).unwrap(),
+                    "[General]\nprivateValue=keep\n"
+                );
+                window.test_settings_path = Some(path.clone());
+                click_label(&ctx, tr("RustUpdates", "Ignore this version"), |ui| {
+                    window.ui_contents(ui)
+                });
+                let source = std::fs::read_to_string(&path).unwrap();
+                let ini = flameshot_core::config::IniDocument::parse(source);
+                assert_eq!(
+                    ini.string("General", "ignoreUpdateToVersion")
+                        .unwrap()
+                        .as_deref(),
+                    Some("99.0.0")
+                );
+                assert_eq!(
+                    ini.string("General", "privateValue").unwrap().as_deref(),
+                    Some("keep")
+                );
+                assert_eq!(window.message, tr("RustUpdates", "Version ignored"));
+            }
+        }
+        assert_eq!(
+            window.message,
+            tr("RustUpdates", "You have the latest version")
+        );
+        let output = click_label(&ctx, tr("UtilityPanel", "Close"), |ui| {
+            window.ui_contents(ui)
+        });
+        assert!(output.viewport_output.values().any(|viewport| {
+            viewport
+                .commands
+                .iter()
+                .any(|command| matches!(command, egui::ViewportCommand::Close))
+        }));
+    }
     #[test]
     fn worker_completion_and_disconnect_leave_the_pending_state() {
         let (sender, receiver) = std::sync::mpsc::channel();
         let mut window = Updates {
+            test_endpoint: None,
+            test_settings_path: None,
             links: Default::default(),
             job: Some(receiver),
             update: None,
