@@ -69,8 +69,15 @@ backend supported by headless Mutter. It was validated on GNOME Shell 46.0/Mutte
 with an available render device. It creates private session/system bus routing, XDG
 and Pictures directories, and a disposable test extension for virtual input. It runs
 without X11 and covers portal permission grant/refusal, full/screen capture and native
-Wayland editor export/cancellation. Clipboard, IME and multi-monitor GNOME acceptance
-are separate remaining checks; this fixture is not part of the hosted CI job yet.
+Wayland editor export/cancellation. Add `--clipboard` to enable a private Xwayland
+server (requiring Xwayland and GTK4 introspection) and verify PNG/JPEG/text delivery
+to a GTK4 Wayland receiver after capture
+processes exit. The basic no-Xwayland mode suppresses IBus startup because the installed daemon
+crashes in that fixture; it is not an input-method test. Clipboard mode uses real
+IBus, the default renderer and a test-only acknowledgement
+of the otherwise absent systemd X11 session-services target. It does not modify the
+compositor clipboard bridge. IME and multi-monitor GNOME acceptance remain separate
+checks; this fixture is not part of the hosted CI job yet.
 
 Desktop tests create private display/bus sessions and isolated XDG directories.
 They disable automatic update checking and never perform real Imgur uploads.

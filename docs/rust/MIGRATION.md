@@ -22,7 +22,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway and headless GNOME capture cases pass; broader compositor acceptance remains |
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; remaining object-editing parity pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
-| Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text, X11 INCR and ownership lifecycle verified on Xvfb/Sway; other compositor paths remain |
+| Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway and the GNOME Xwayland bridge; X11 INCR tested; other compositor paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, configuration flags, completions and manual implemented/tested; final syntax/exit-code and shell acceptance remain |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak/Nix/Snap definitions migrated; sandbox/provider builds and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI and headless GNOME capture/editor cases pass; GNOME clipboard/IME/multi-monitor and KDE acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI and headless GNOME capture/editor cases pass; GNOME IME/multi-monitor and KDE acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2078,3 +2078,42 @@ method behavior, mixed-monitor placement, native tray hosts or installed-package
 acceptance. Those remain open alongside KDE coverage. No production Rust changes
 were needed for the capture/export/cancellation cases exercised here. Hosted CI was
 not run, and this renderer-dependent fixture is currently documented for local runs.
+
+### GNOME clipboard persistence and native Wayland recipient
+
+The GNOME fixture now has a `--clipboard` mode. It obtains DISPLAY/XAUTHORITY from
+its own compositor and requires the authentication file to be inside its private
+runtime directory. All Flameshot editor and GTK receiver windows are verified to be
+Wayland clients. The existing Rust clipboard provider uses GNOME's Xwayland bridge
+when the compositor lacks the data-control interface.
+
+Actual tests verify full PNG copying after the CLI exits, cropped PNG copying via
+Ctrl+C after the native editor process exits, JPEG MIME delivery/decoding and Unicode
+text delivery. A focused GTK4 Wayland receiver reads the clipboard asynchronously;
+image dimensions and known background pixels are checked, with a small JPEG tolerance.
+These tests never use the user's display, bus or clipboard. The default mode continues
+to run without Xwayland.
+
+Fixture setup needed two adjustments: the inherited force-software GL setting
+crashed Xwayland's explicit-device rendering path, so clipboard mode uses the normal
+renderer. This host also makes the private shell appear systemd-managed through its
+inherited process scope; its X11 readiness target is absent on the private bus. The
+disposable test extension acknowledges that empty session-services target instead
+of contacting the host manager. Mutter/Xwayland clipboard handling itself is not
+mocked. This is not a full systemd-session test or proof of clipboard support without
+Xwayland on GNOME 46. No production Rust changes were required for these cases.
+
+Initial fixture failures generated system crash reports. Their private Xauthority
+path/known fixture-parent PIDs established ownership, and only those test reports were
+removed. The installed IBus daemon also proved unreliable in the no-Xwayland fixture. That
+basic capture-only mode now uses a no-op IBus launcher, explicitly excluding input
+method validation. Clipboard mode still runs real IBus. Cleanup stops only the
+private shell's IBus child before the compositor, checking its parent/executable name
+and using a PID fd to avoid signalling a reused PID. No user IBus session is affected.
+Successful final runs left no private GNOME test processes behind. GNOME
+IME, multi-monitor behavior, installed packages and remote CI remain unfinished gates.
+
+Validation passed in final runs for both the basic no-Xwayland fixture and the
+clipboard-enabled fixture, including the existing capture/export/refusal cases.
+A post-run audit found no surviving private GNOME processes and no remaining fixture
+Xwayland/IBus crash reports. Diff checks passed; hosted CI remains unrun.

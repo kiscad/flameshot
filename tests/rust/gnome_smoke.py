@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private headless GNOME Wayland fixture. Usage: gnome_smoke.py FLAMESHOT_BINARY
+"""Private headless GNOME Wayland fixture. Usage: gnome_smoke.py FLAMESHOT_BINARY [--clipboard]
 Requires GNOME Shell, GNOME/GTK portals, PyGObject and their normal runtime libraries.
 Debug input/evaluation is enabled only in the disposable private compositor.
 """
@@ -30,6 +30,12 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 export default class TestInput extends Extension {
  enable() {
   global.context.unsafe_mode = true;
+  if (GLib.getenv('FLAMESHOT_TEST_XWAYLAND') === '1') {
+   this._startX11 = Main.wm._startX11Services;
+   this._stopX11 = Main.wm._stopX11Services;
+   Main.wm._startX11Services = async task => task.return_boolean(true);
+   Main.wm._stopX11Services = async () => {};
+  }
   const seat = Clutter.get_default_backend().get_default_seat();
   const keyboard = seat.create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
   const pointer = seat.create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
@@ -42,7 +48,10 @@ export default class TestInput extends Extension {
 
   };
  }
- disable() { delete global.flameshotTest; global.context.unsafe_mode = false; }
+ disable() {
+  if (this._startX11) { Main.wm._startX11Services=this._startX11; Main.wm._stopX11Services=this._stopX11; }
+  delete global.flameshotTest; global.context.unsafe_mode = false;
+ }
 }
 ''')
         settings=root/'config/glib-2.0/settings';settings.mkdir(parents=True)
@@ -54,15 +63,29 @@ export default class TestInput extends Extension {
         (portals/'portals.conf').write_text('[preferred]\ndefault=gnome;gtk;\n')
         bus=root/'bus.conf';bus.write_text('<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
         env=os.environ.copy()
-        for key in ['DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','DBUS_SYSTEM_BUS_ADDRESS','SESSION_MANAGER','IBUS_ADDRESS','GNOME_DESKTOP_SESSION_ID']:env.pop(key,None)
-        env.update(TMPDIR=str(root/'tmp'),XDG_RUNTIME_DIR=str(root/'runtime'),XDG_CONFIG_HOME=str(root/'config'),XDG_DATA_HOME=str(root/'data'),XDG_CACHE_HOME=str(root/'cache'),XDG_CURRENT_DESKTOP='GNOME',XDG_SESSION_TYPE='wayland',GNOME_SHELL_SESSION_MODE='user',GSETTINGS_BACKEND='keyfile',LIBGL_ALWAYS_SOFTWARE='1',NO_AT_BRIDGE='1',LC_ALL='C.UTF-8')
-        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),'--inside',str(root)],env=env,timeout=100)
+        for key in ['DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','DBUS_SYSTEM_BUS_ADDRESS','SESSION_MANAGER','IBUS_ADDRESS','GNOME_DESKTOP_SESSION_ID','FLAMESHOT_TEST_XWAYLAND','WINIT_UNIX_BACKEND']:env.pop(key,None)
+        env.update(FLAMESHOT_TEST_GNOME_ROOT=str(root),TMPDIR=str(root/'tmp'),XDG_RUNTIME_DIR=str(root/'runtime'),XDG_CONFIG_HOME=str(root/'config'),XDG_DATA_HOME=str(root/'data'),XDG_CACHE_HOME=str(root/'cache'),XDG_CURRENT_DESKTOP='GNOME',XDG_SESSION_TYPE='wayland',GNOME_SHELL_SESSION_MODE='user',GDK_BACKEND='wayland',GSETTINGS_BACKEND='keyfile',LIBGL_ALWAYS_SOFTWARE='1',NO_AT_BRIDGE='1',GTK_A11Y='none',LC_ALL='C.UTF-8')
+        if '--clipboard' in sys.argv:
+            env.pop('LIBGL_ALWAYS_SOFTWARE',None)
+            env['FLAMESHOT_TEST_XWAYLAND']='1'
+        else:
+            # Input methods are outside this no-Xwayland capture fixture. The
+            # installed IBus daemon crashes in this session; do not launch it.
+            helpers=root/'helpers';helpers.mkdir()
+            ibus=helpers/'ibus-daemon';ibus.write_text('#!/bin/sh\nexit 0\n');ibus.chmod(0o700)
+            env['PATH']=str(helpers)+':'+env.get('PATH','')
+
+        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),*(['--clipboard'] if '--clipboard' in sys.argv else []),'--inside',str(root)],env=env,timeout=100)
         if result.returncode:
             for log in root.glob('*.log'):print(log.name,log.read_text(errors='replace')[-7000:],file=sys.stderr)
         sys.exit(result.returncode)
 
 from gi.repository import Gio,GLib
 root=Path(sys.argv[-1]);env=os.environ.copy()
+assert env.get('FLAMESHOT_TEST_GNOME_ROOT')==str(root),'Private fixture marker is required'
+assert Path(env['XDG_RUNTIME_DIR'])==root/'runtime'
+assert Path(env['XDG_CONFIG_HOME'])==root/'config'
+assert Path(env['XDG_CACHE_HOME'])==root/'cache'
 # No call from the private compositor reaches the host's system services.
 env['DBUS_SYSTEM_BUS_ADDRESS']=env['DBUS_SESSION_BUS_ADDRESS']
 env['WAYLAND_DISPLAY']='flameshot-test'
@@ -91,7 +114,8 @@ def key(value):
     evaluate(f'global.flameshotTest.key({value},true)');time.sleep(.05)
     evaluate(f'global.flameshotTest.key({value},false)')
 try:
-    shell=start('shell',['gnome-shell','--headless','--wayland','--virtual-monitor','1024x768','--wayland-display','flameshot-test','--no-x11','--sm-disable'])
+    shell=start('shell',['gnome-shell','--headless','--wayland','--virtual-monitor','1024x768','--wayland-display','flameshot-test',*([] if '--clipboard' in sys.argv else ['--no-x11']),'--sm-disable'])
+    print('Private GNOME shell PID:',shell.pid,flush=True)
     deadline=time.monotonic()+15
     while True:
         try:
@@ -108,6 +132,12 @@ try:
         assert time.monotonic()<deadline,'GNOME overview did not hide'
         time.sleep(.1)
     print('PASS: private GNOME compositor and virtual input initialized',flush=True)
+    if '--clipboard' in sys.argv:
+        env['DISPLAY']=evaluate("GLib.getenv('DISPLAY')")
+        env['XAUTHORITY']=evaluate("GLib.getenv('XAUTHORITY')")
+        assert env['DISPLAY'] and env['XAUTHORITY']
+        assert Path(env['XAUTHORITY']).is_relative_to(root/'runtime'),'Xauthority must belong to the private compositor'
+
     start('permissions',['/usr/libexec/xdg-permission-store'])
     start('portal-gnome',['/usr/libexec/xdg-desktop-portal-gnome'])
     start('portal-gtk',['/usr/libexec/xdg-desktop-portal-gtk'])
@@ -179,6 +209,91 @@ try:
             (artifacts/'rust-gnome-region.png').write_bytes(out)
         else:assert not out
     print('PASS: GNOME screen capture, native Wayland editor export and Escape cancellation',flush=True)
+
+    if '--clipboard' in sys.argv:
+        copied=subprocess.run([str(binary),'full','--clipboard'],env=env,capture_output=True,timeout=20)
+        assert copied.returncode==0 and not copied.stdout,copied.stderr.decode()
+        os.environ.update(env)
+        os.environ['GDK_BACKEND']='wayland'
+        import gi
+        gi.require_version('Gtk','4.0')
+        gi.require_version('Gdk','4.0')
+        from gi.repository import Gtk,Gdk
+        Gtk.init()
+        def read_native_clipboard(width=None,height=None,sample=None,*,text=None,tolerance=0,mime="image/png"):
+            receiver=Gtk.Window(title='Flameshot clipboard probe')
+            receiver.set_default_size(200,100)
+            receiver.set_child(Gtk.Label(label='Private clipboard receiver'))
+            receiver.present()
+            context=GLib.MainContext.default()
+            deadline=time.monotonic()+5
+            while True:
+                while context.pending():context.iteration(False)
+                native=evaluate("global.get_window_actors().filter(a=>a.meta_window.get_title()==='Flameshot clipboard probe'&&a.mapped).map(a=>a.meta_window.get_client_type()===Meta.WindowClientType.WAYLAND)")
+                if native:
+                    assert native==[True]
+                    break
+                assert time.monotonic()<deadline,'Wayland clipboard receiver did not map'
+                time.sleep(.05)
+            evaluate("global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot clipboard probe').meta_window.activate(global.get_current_time())")
+            deadline=time.monotonic()+.3
+            while time.monotonic()<deadline:
+                while context.pending():context.iteration(False)
+                time.sleep(.01)
+            clipboard=Gdk.Display.get_default().get_clipboard()
+            if mime:assert mime in clipboard.get_formats().get_mime_types(),clipboard.get_formats().to_string()
+            result=[]
+            loop=GLib.MainLoop()
+            def received(source,request):
+                try:result.append(source.read_texture_finish(request) if text is None else source.read_text_finish(request))
+                except GLib.Error as error:result.append(error)
+                loop.quit()
+            if text is None:clipboard.read_texture_async(None,received)
+            else:clipboard.read_text_async(None,received)
+            timeout=GLib.timeout_add_seconds(5,lambda: (loop.quit(),False)[1])
+            loop.run()
+            if result:GLib.source_remove(timeout)
+            if text is not None:
+                assert result==[text],result
+            else:
+                assert result and isinstance(result[0],Gdk.Texture),result
+                texture=result[0]
+                assert (texture.get_width(),texture.get_height())==(width,height)
+                copied_path=root/f'clipboard-{width}x{height}.png'
+                assert texture.save_to_png(str(copied_path))
+                pixel=Image.open(copied_path).getpixel(sample)[:3]
+                assert all(abs(a-b)<=tolerance for a,b in zip(pixel,(32,64,96))),pixel
+            receiver.destroy()
+            while context.pending():context.iteration(False)
+        read_native_clipboard(1024,768,(200,300))
+        print('PASS: clipboard survives capture exit and crosses Xwayland into a native Wayland client',flush=True)
+        editor=subprocess.Popen([str(binary),'gui','--region','80x60+200+300'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+        processes.append(editor)
+        deadline=time.monotonic()+12
+        while not evaluate("global.get_window_actors().some(a=>a.meta_window.get_title()==='Flameshot'&&a.mapped&&a.meta_window.get_client_type()===Meta.WindowClientType.WAYLAND)"):
+            assert editor.poll() is None and time.monotonic()<deadline,'Clipboard editor did not map'
+            time.sleep(.1)
+        evaluate("global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot').meta_window.activate(global.get_current_time())")
+        time.sleep(.3)
+        evaluate('global.flameshotTest.key(65507,true)')
+        key(99)
+        evaluate('global.flameshotTest.key(65507,false)')
+        out,err=editor.communicate(timeout=10)
+        assert editor.returncode==0 and not out,err.decode()
+        read_native_clipboard(80,60,(40,30))
+        print('PASS: GNOME native editor Ctrl+C persists cropped pixels after window/process exit',flush=True)
+        config=root/'config/flameshot/flameshot.ini'
+        config.write_text(config.read_text()+'useJpgForClipboard=true\n')
+        copied=subprocess.run([str(binary),'full','--clipboard'],env=env,capture_output=True,timeout=20)
+        assert copied.returncode==0 and not copied.stdout,copied.stderr.decode()
+        read_native_clipboard(1024,768,(200,300),tolerance=2,mime='image/jpeg')
+        text='剪贴板 αβ\n第二行'
+        call('org.flameshot.Flameshot','/','org.flameshot.Flameshot.attachTextToClipboard','(ss)',(text,''))
+        read_native_clipboard(text=text,mime=None)
+        print('PASS: GNOME native Wayland receiver decodes JPEG and preserves Unicode clipboard text',flush=True)
+
+
+
     call('org.freedesktop.impl.portal.PermissionStore','/org/freedesktop/impl/portal/PermissionStore','org.freedesktop.impl.portal.PermissionStore.Delete','(ss)',('screenshot','screenshot'))
     denied=subprocess.Popen([str(binary),'full','--raw'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
     processes.append(denied)
@@ -194,6 +309,24 @@ try:
 
 
 finally:
+    # This distro's IBus can crash while its Wayland server is torn down. Stop
+    # only the private shell's IBus child first, using a PID fd to avoid PID reuse.
+    if 'shell' in globals() and shell.poll() is None:
+        for task in (Path('/proc')/str(shell.pid)/'task').iterdir():
+            try:children=(task/'children').read_text().split()
+            except OSError:continue
+            for child in children:
+                descriptor=None
+                try:
+                    descriptor=os.pidfd_open(int(child))
+                    process_dir=Path('/proc')/child
+                    parent=next(line.split()[1] for line in (process_dir/'status').read_text().splitlines() if line.startswith('PPid:'))
+                    if parent==str(shell.pid) and (process_dir/'comm').read_text().strip()=='ibus-daemon':
+                        signal.pidfd_send_signal(descriptor,signal.SIGKILL)
+                except (OSError,StopIteration):pass
+                finally:
+                    if descriptor is not None:os.close(descriptor)
+        time.sleep(.1)
     for process in reversed(processes):
         if process.poll() is not None:continue
         try:os.killpg(process.pid,signal.SIGTERM)
