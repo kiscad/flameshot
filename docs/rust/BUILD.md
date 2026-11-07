@@ -304,3 +304,8 @@ contents. Interactive Zsh completion and refreshed distribution package builds
 remain part of packaging acceptance. The Rust CLI manual is installed in `share/man/man1/flameshot.1`; package tools
 may compress it. Its options are checked against the executable help in the Rust
 integration tests. Final exit-code compatibility remains under audit.
+
+The staging regression can be run with
+`python3 tests/rust/staging.py target/release/flameshot`. It validates temporary
+/usr and space-containing /opt payloads, file modes and resource metadata, and
+ensures invalid prefixes are rejected before any package files are written.

@@ -84,6 +84,7 @@ jobs:
           fi
       - name: Validate staged package payload
         run: |
+          python3 tests/rust/staging.py target/release/flameshot
           DESTDIR="$PWD/target/rust-stage" PREFIX=/usr scripts/stage-rust.sh
           desktop-file-validate target/rust-stage/usr/share/applications/org.flameshot.Flameshot.desktop
           appstreamcli validate --no-net target/rust-stage/usr/share/metainfo/org.flameshot.Flameshot.metainfo.xml

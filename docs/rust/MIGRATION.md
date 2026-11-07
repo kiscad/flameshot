@@ -2210,3 +2210,16 @@ fixture, and shell completion checks. Its SHA-256 remained unchanged throughout.
 See RELEASE-VALIDATION.md for provenance and scope. This updates local release-build
 evidence but does not complete installation, sandbox, hosted CI or final source-removal
 gates, and later production changes require a new release validation snapshot.
+
+### Staging-prefix boundary and reproducible payload checks
+
+The staging helper now rejects parent-directory components and line breaks in PREFIX
+before creating output. The previous absolute-path-only check allowed a parent
+component to escape the intended DESTDIR, and line breaks could corrupt activation
+metadata. Normal absolute prefixes, including spaces, remain supported.
+
+Added staging.py to verify installed binary bytes, modes, completion/manual/D-Bus
+resources, quoted activation paths, absence of Qt catalog files and desktop/AppStream
+metadata. Invalid prefixes must fail without creating even a partial destination.
+The regression passed against the current release executable and is wired into Rust
+CI; hosted CI remains unrun. All test payloads were temporary, with no live install.

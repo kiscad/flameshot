@@ -6,6 +6,13 @@ set -eu
 package_prefix=${PREFIX:-/usr}
 package_binary=${FLAMESHOT_BINARY:-target/release/flameshot}
 case "$package_prefix" in /*) ;; *) echo 'PREFIX must be absolute' >&2; exit 1;; esac
+case "/$package_prefix/" in
+  */../*) echo 'PREFIX must not contain parent-directory components' >&2; exit 1;;
+esac
+case "$package_prefix" in
+  *'
+'*|*"$(printf '\r')"*) echo 'PREFIX must not contain line breaks' >&2; exit 1;;
+esac
 [ -x "$package_binary" ] || { echo 'Build the Rust release executable first' >&2; exit 1; }
 package_root="$DESTDIR$package_prefix"
 install -Dm755 "$package_binary" "$package_root/bin/flameshot"
