@@ -810,6 +810,39 @@ impl Editor {
         }
         self.save_dialog = Some(dialog);
     }
+    fn selected_arrow_controls(&mut self, ui: &mut egui::Ui) {
+        if self.tool != Tool::Move {
+            return;
+        }
+        let Some(index) = self.selected_object else {
+            return;
+        };
+        let Some(mut annotation) = self.document.annotations().get(index).cloned() else {
+            return;
+        };
+        let Annotation::Arrow { curved, .. } = &mut annotation else {
+            return;
+        };
+        if ui
+            .checkbox(curved, tr("RustEditor", "Curved arrow head"))
+            .changed()
+        {
+            let value = *curved;
+            match self.document.replace(index, annotation) {
+                Ok(()) => {
+                    self.curved_arrow = value;
+                    self.dirty = true;
+                    if let Err(error) = crate::settings::Settings::update(&[(
+                        "arrowStyle",
+                        u8::from(value).to_string(),
+                    )]) {
+                        self.error = error.to_string();
+                    }
+                }
+                Err(error) => self.error = error.to_string(),
+            }
+        }
+    }
     fn selected_size(&self) -> Option<(SizeKind, f32)> {
         if self.tool != Tool::Move {
             return None;
@@ -1400,6 +1433,7 @@ impl eframe::App for Editor {
                     if ui.color_edit_button_srgba(&mut self.color).changed() {
                         self.persist_color();
                     }
+                    self.selected_arrow_controls(ui);
                     ui.horizontal(|ui| {
                         let selected = self
                             .selected_object

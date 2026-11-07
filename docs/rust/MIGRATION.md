@@ -2805,3 +2805,23 @@ full Xvfb desktop suite, native X11 Fcitx Pinyin fixture and Sway/IME/fractional
 suite also passed. Python syntax, formatting and diff checks pass. This closes the
 specific text-formatting implementation gap identified above; it does not establish
 completion of every remaining editor or migration acceptance item.
+
+### Edit the curved style of an existing arrow
+
+The next tool-configuration audit compared ArrowTool::configurationWidget and
+setArrowStyle with the Rust UI. The existing Rust toolbar checkbox changed drawing
+defaults but did not edit an already-drawn selected arrow. The Objects and properties
+panel now exposes its actual curved-head state when Move object selects an arrow.
+A checkbox change replaces only that annotation as one undoable operation, redraws
+it, and saves arrowStyle/current drawing defaults, matching the baseline setter's
+preference update. The selected object's state is read independently of the default,
+so undo restores its appearance without being overwritten by the saved preference.
+
+The new private Xvfb arrow_style_smoke.py draws two arrows, edits one through the
+real property checkbox, verifies the other is unchanged, checks the saved preference,
+undoes/redoes the single edit, and compares export against the displayed result
+(with the same one-level display-quantization allowance as the text fixture).
+The export was inspected. All-feature workspace tests, all-feature all-target Clippy,
+formatting, Python syntax and diff checks pass. The fixture is listed in BUILD.md
+and Rust CI; hosted execution remains unverified. This closes selected-arrow style
+editing, not the remaining global configuration semantics/parity audit.
