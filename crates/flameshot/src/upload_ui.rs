@@ -48,6 +48,8 @@ pub struct UploadDialog {
     uploaded: Option<UploadedImage>,
     message: String,
     auto_start_pending: bool,
+    #[cfg(test)]
+    test_begin: Option<(crate::settings::Settings, Imgur, std::path::PathBuf)>,
     copy_after_upload: bool,
 }
 impl UploadDialog {
@@ -73,6 +75,8 @@ impl UploadDialog {
             uploaded: None,
             message: String::new(),
             auto_start_pending: settings.is_some_and(|s| s.upload_without_confirmation),
+            #[cfg(test)]
+            test_begin: None,
             copy_after_upload: settings.is_some_and(|s| s.copy_url_after_upload),
         }
     }
@@ -80,16 +84,27 @@ impl UploadDialog {
         std::mem::take(&mut self.auto_start_pending)
     }
     fn begin(&mut self, ctx: &egui::Context) {
-        let setup = (|| {
-            let settings = crate::settings::Settings::load()?;
-            let api = Imgur::new(&settings.upload_client_id)?;
-            Ok::<_, anyhow::Error>((settings, api))
-        })();
-        match setup {
-            Ok((settings, api)) => {
-                self.start(ctx, settings, api, crate::upload_history::directory())
+        #[cfg(test)]
+        {
+            if let Some((settings, api, history)) = self.test_begin.take() {
+                self.start(ctx, settings, api, Ok(history));
+            } else {
+                self.message = "Test upload client not configured".into();
             }
-            Err(error) => self.message = error.to_string(),
+        }
+        #[cfg(not(test))]
+        {
+            let setup = (|| {
+                let settings = crate::settings::Settings::load()?;
+                let api = Imgur::new(&settings.upload_client_id)?;
+                Ok::<_, anyhow::Error>((settings, api))
+            })();
+            match setup {
+                Ok((settings, api)) => {
+                    self.start(ctx, settings, api, crate::upload_history::directory())
+                }
+                Err(error) => self.message = error.to_string(),
+            }
         }
     }
     fn start(
@@ -233,6 +248,8 @@ pub fn history() -> anyhow::Result<()> {
             crate::i18n::install_fonts(&cc.egui_ctx);
             Ok(Box::new(History {
                 confirmation_required,
+                #[cfg(test)]
+                test_delete: None,
                 textures: Default::default(),
                 links: Default::default(),
                 clipboard: LinkClipboard::default(),
@@ -248,6 +265,8 @@ pub fn history() -> anyhow::Result<()> {
 struct History {
     links: crate::links::LinkOpener,
     confirmation_required: bool,
+    #[cfg(test)]
+    test_delete: Option<Imgur>,
     textures: std::collections::HashMap<std::path::PathBuf, Option<egui::TextureHandle>>,
     clipboard: LinkClipboard,
     entries: Vec<crate::upload_history::Entry>,
@@ -285,11 +304,22 @@ impl History {
         }
     }
     fn start_delete(&mut self, ctx: &egui::Context, index: usize) {
-        match crate::settings::Settings::load()
-            .and_then(|settings| Imgur::new(&settings.upload_client_id))
+        #[cfg(test)]
         {
-            Ok(api) => self.begin_delete(ctx, index, api),
-            Err(error) => self.message = error.to_string(),
+            if let Some(api) = self.test_delete.take() {
+                self.begin_delete(ctx, index, api);
+            } else {
+                self.message = "Test deletion client not configured".into();
+            }
+        }
+        #[cfg(not(test))]
+        {
+            match crate::settings::Settings::load()
+                .and_then(|settings| Imgur::new(&settings.upload_client_id))
+            {
+                Ok(api) => self.begin_delete(ctx, index, api),
+                Err(error) => self.message = error.to_string(),
+            }
         }
     }
     fn begin_delete(&mut self, ctx: &egui::Context, index: usize, api: Imgur) {
@@ -304,7 +334,11 @@ impl History {
         tokio::spawn(async move {
             let result = async {
                 api.delete(entry.deletehash.as_deref().unwrap()).await?;
-                std::fs::remove_file(&entry.path)?;
+                match std::fs::remove_file(&entry.path) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.into()),
+                }
                 Ok::<_, anyhow::Error>(index)
             }
             .await
@@ -314,8 +348,8 @@ impl History {
         });
     }
 }
-impl eframe::App for History {
-    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+impl History {
+    fn show(&mut self, ui: &mut egui::Ui) {
         self.poll_delete();
         if let Some(message) = self.clipboard.poll(ui.ctx()) {
             self.message = message;
@@ -395,12 +429,20 @@ impl eframe::App for History {
         if !self.message.is_empty() {
             ui.label(&self.message);
         }
+        // Escape dismisses an outstanding confirmation before closing history.
         if self.job.is_none()
             && self.clipboard.job.is_none()
             && ui.input(|i| i.key_pressed(egui::Key::Escape))
+            && self.confirm.take().is_none()
         {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
+    }
+}
+
+impl eframe::App for History {
+    fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        self.show(ui);
     }
 }
 
@@ -464,6 +506,304 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         copied
+    }
+    fn ui_frame(
+        ctx: &egui::Context,
+        events: Vec<egui::Event>,
+        render: &mut impl FnMut(&mut egui::Ui),
+    ) -> egui::FullOutput {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(700.0, 500.0),
+                )),
+                events,
+                ..Default::default()
+            },
+            render,
+        );
+        output.textures_delta.clear();
+        output
+    }
+    fn label_position(shape: &egui::Shape, label: &str) -> Option<egui::Pos2> {
+        match shape {
+            egui::Shape::Text(text) if text.galley.job.text == label => {
+                Some(text.pos + text.galley.rect.center().to_vec2())
+            }
+            egui::Shape::Vec(shapes) => {
+                shapes.iter().find_map(|shape| label_position(shape, label))
+            }
+            _ => None,
+        }
+    }
+    fn click_label(ctx: &egui::Context, label: &str, mut render: impl FnMut(&mut egui::Ui)) {
+        ui_frame(ctx, vec![], &mut render);
+        let output = ui_frame(ctx, vec![], &mut render);
+        let point = output
+            .shapes
+            .iter()
+            .find_map(|shape| label_position(&shape.shape, label))
+            .unwrap_or_else(|| panic!("Missing UI label: {label}"));
+        for pressed in [true, false] {
+            ui_frame(
+                ctx,
+                vec![
+                    egui::Event::PointerMoved(point),
+                    egui::Event::PointerButton {
+                        pos: point,
+                        button: egui::PointerButton::Primary,
+                        pressed,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                &mut render,
+            );
+        }
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn upload_buttons_confirm_retry_and_close_against_loopback() {
+        let ctx = egui::Context::default();
+        let root = tempfile::tempdir().unwrap();
+        let settings = crate::settings::Settings {
+            copy_url_after_upload: false,
+            upload_without_confirmation: false,
+            ..Default::default()
+        };
+        let image = image::RgbaImage::from_pixel(1024, 768, image::Rgba([32, 64, 96, 255]));
+        let mut cancelled = UploadDialog::with_settings(image.clone(), Some(&settings));
+        let mut keep = true;
+        click_label(&ctx, tr("UtilityPanel", "Close"), |ui| {
+            keep = cancelled.show(ui.ctx())
+        });
+        assert!(!keep && cancelled.job.is_none() && cancelled.message.is_empty());
+        let mut dialog = UploadDialog::with_settings(image.clone(), Some(&settings));
+        let (api, failed) = mock_server(false);
+        dialog.test_begin = Some((settings.clone(), api, root.path().to_owned()));
+        ui_frame(&ctx, vec![], &mut |ui| {
+            dialog.show(ui.ctx());
+        });
+        assert!(dialog.job.is_none() && dialog.test_begin.is_some());
+        click_label(&ctx, tr("ImgUploaderBase", "Upload image"), |ui| {
+            dialog.show(ui.ctx());
+        });
+        assert!(
+            dialog.job.is_some(),
+            "Upload button did not start a request"
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while dialog.job.is_some() {
+            assert!(std::time::Instant::now() < deadline);
+            ui_frame(&ctx, vec![], &mut |ui| {
+                dialog.show(ui.ctx());
+            });
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(dialog.uploaded.is_none() && !dialog.message.is_empty());
+        assert!(failed.join().unwrap().starts_with(b"POST /3/image "));
+        assert!(crate::upload_history::list(root.path()).unwrap().is_empty());
+        let (api, success) = mock_server(true);
+        dialog.test_begin = Some((settings, api, root.path().to_owned()));
+        click_label(&ctx, tr("ImgUploaderBase", "Upload image"), |ui| {
+            dialog.show(ui.ctx());
+        });
+        assert!(
+            dialog.job.is_some(),
+            "Upload button did not start a request"
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while dialog.job.is_some() {
+            assert!(std::time::Instant::now() < deadline);
+            ui_frame(&ctx, vec![], &mut |ui| {
+                dialog.show(ui.ctx());
+            });
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert!(dialog.uploaded.is_some() && dialog.message.is_empty());
+        let request = success.join().unwrap();
+        let png = request
+            .windows(8)
+            .position(|bytes| bytes == b"\x89PNG\r\n\x1a\n")
+            .unwrap();
+        assert_eq!(
+            image::load_from_memory(&request[png..]).unwrap().to_rgba8(),
+            image
+        );
+        assert_eq!(crate::upload_history::list(root.path()).unwrap().len(), 1);
+        click_label(&ctx, tr("UtilityPanel", "Close"), |ui| {
+            keep = dialog.show(ui.ctx())
+        });
+        assert!(!keep);
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn history_buttons_confirm_cancel_retry_and_remove_only_after_success() {
+        let ctx = egui::Context::default();
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("image.png");
+        image::RgbaImage::from_pixel(4, 3, image::Rgba([32, 64, 96, 255]))
+            .save(&path)
+            .unwrap();
+        let original = std::fs::read(&path).unwrap();
+        let mut history = History {
+            links: Default::default(),
+            confirmation_required: true,
+            test_delete: None,
+            textures: Default::default(),
+            clipboard: Default::default(),
+            entries: vec![crate::upload_history::Entry {
+                path: path.clone(),
+                link: "https://i.imgur.com/abc123.png".into(),
+                deletehash: Some("secret123".into()),
+            }],
+            confirm: None,
+            job: None,
+            message: String::new(),
+        };
+        click_label(&ctx, tr("ImgUploaderBase", "Delete image"), |ui| {
+            history.show(ui)
+        });
+        assert_eq!(history.confirm, Some(0));
+        assert!(history.job.is_none() && history.message.is_empty());
+        click_label(&ctx, tr("ColorGrabWidget", "Cancel"), |ui| history.show(ui));
+        assert!(history.confirm.is_none());
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        click_label(&ctx, tr("ImgUploaderBase", "Delete image"), |ui| {
+            history.show(ui)
+        });
+        let output = ui_frame(
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            &mut |ui| history.show(ui),
+        );
+        assert!(history.confirm.is_none() && history.job.is_none());
+        assert!(output.viewport_output.values().all(|viewport| {
+            !viewport
+                .commands
+                .iter()
+                .any(|command| matches!(command, egui::ViewportCommand::Close))
+        }));
+        ui_frame(
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: false,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            &mut |ui| history.show(ui),
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+        for success in [false, true] {
+            let (api, server) = mock_server(success);
+            history.test_delete = Some(api);
+            if history.confirm.is_none() {
+                click_label(&ctx, tr("ImgUploaderBase", "Delete image"), |ui| {
+                    history.show(ui)
+                });
+            }
+            assert!(history.job.is_none() && history.test_delete.is_some());
+            click_label(&ctx, tr("UploadLineItem", "Confirm to delete"), |ui| {
+                history.show(ui)
+            });
+            assert!(
+                history.job.is_some(),
+                "Confirmation button did not start deletion"
+            );
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while history.job.is_some() {
+                assert!(std::time::Instant::now() < deadline);
+                ui_frame(&ctx, vec![], &mut |ui| history.show(ui));
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            assert!(
+                server
+                    .join()
+                    .unwrap()
+                    .starts_with(b"DELETE /3/image/secret123 ")
+            );
+            assert_eq!(history.entries.is_empty(), success);
+            assert_eq!(path.exists(), !success);
+            if !success {
+                assert_eq!(std::fs::read(&path).unwrap(), original);
+                assert!(!history.message.is_empty());
+            }
+        }
+    }
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn confirmed_remote_deletion_accepts_a_concurrently_removed_thumbnail() {
+        let ctx = egui::Context::default();
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("image.png");
+        image::RgbaImage::new(4, 3).save(&path).unwrap();
+        let mut history = History {
+            links: Default::default(),
+            confirmation_required: true,
+            test_delete: None,
+            textures: Default::default(),
+            clipboard: Default::default(),
+            entries: vec![crate::upload_history::Entry {
+                path: path.clone(),
+                link: "https://i.imgur.com/abc123.png".into(),
+                deletehash: Some("secret123".into()),
+            }],
+            confirm: None,
+            job: None,
+            message: String::new(),
+        };
+        click_label(&ctx, tr("ImgUploaderBase", "Delete image"), |ui| {
+            history.show(ui)
+        });
+        std::fs::remove_file(&path).unwrap(); // Retention cleanup in another process.
+        let (api, server) = mock_server(true);
+        history.test_delete = Some(api);
+        click_label(&ctx, tr("UploadLineItem", "Confirm to delete"), |ui| {
+            history.show(ui)
+        });
+        assert!(history.job.is_some());
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while history.job.is_some() {
+            assert!(std::time::Instant::now() < deadline);
+            ui_frame(&ctx, vec![], &mut |ui| history.show(ui));
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        server.join().unwrap();
+        assert!(
+            history.entries.is_empty(),
+            "Remote deletion succeeded but stale history remained: {}",
+            history.message
+        );
+        assert!(history.message.is_empty());
+        // Other filesystem errors must still be reported, not silently ignored.
+        std::fs::create_dir(&path).unwrap();
+        history.entries.push(crate::upload_history::Entry {
+            path: path.clone(),
+            link: "https://i.imgur.com/abc123.png".into(),
+            deletehash: Some("secret123".into()),
+        });
+        let (api, server) = mock_server(true);
+        history.test_delete = Some(api);
+        click_label(&ctx, tr("ImgUploaderBase", "Delete image"), |ui| {
+            history.show(ui)
+        });
+        click_label(&ctx, tr("UploadLineItem", "Confirm to delete"), |ui| {
+            history.show(ui)
+        });
+        assert!(history.job.is_some());
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while history.job.is_some() {
+            assert!(std::time::Instant::now() < deadline);
+            ui_frame(&ctx, vec![], &mut |ui| history.show(ui));
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        server.join().unwrap();
+        assert!(path.is_dir() && history.entries.len() == 1 && !history.message.is_empty());
     }
     #[test]
     fn stopped_clipboard_worker_releases_pending_state() {
@@ -571,6 +911,7 @@ mod tests {
         let mut history = History {
             links: Default::default(),
             confirmation_required: true,
+            test_delete: None,
             textures: Default::default(),
             clipboard: Default::default(),
             entries: vec![crate::upload_history::Entry {

@@ -29,7 +29,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures, atomic updates, idle reload and locked form conflict checks tested; remaining semantic audit pending |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
-| Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
+| Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines/preferences and upload/history button flows tested; native upload/update interaction audit remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
@@ -2857,3 +2857,33 @@ checks including shortcut equivalence and all-feature Clippy. Full Xvfb desktop 
 Simplified/Traditional Chinese UI regressions passed. Catalog tests, formatting,
 Python syntax and diff checks passed. This closes same-field draft overwrite handling,
 not the remaining configuration fallback/live-capture semantics audit.
+
+### Exercise upload/history controls and fix deletion edge cases
+
+Added egui-frame interaction tests that locate rendered button labels and deliver
+pointer press/release events through the production widget code. A 1024x768 synthetic
+image remains unsubmitted until confirmation, a failed request permits retry, and a
+successful retry writes history. The received multipart PNG is decoded and compared
+with the original image. History tests click Delete/Confirm/Cancel, preserve files
+on remote failure, retry successfully and remove the record only after success.
+These are real widget-frame tests with loopback HTTP, not native-window uploads.
+
+Client/history-path injection exists only under cfg(test). Missing injected clients
+fail closed instead of falling back to production endpoints or user cache locations.
+The existing loopback constructor disables proxies/redirects. No real screenshot or
+external upload was used. History's native App method delegates to the same rendering
+method used by the frame tests; production endpoint setup is unchanged.
+
+A new failing regression demonstrated that retention cleanup could remove a thumbnail
+while confirmation was open, causing successful remote deletion to leave a stale row
+with a local NotFound error. Missing local files are now treated as already cleaned
+up after remote success; other filesystem errors remain visible. Escape also dismisses
+an active deletion confirmation without closing the history window, matching the
+baseline modal confirmation behavior. Tests cover both fixes and preserved file data.
+
+Eight upload/history tests pass with all features and with only Imgur enabled.
+All-feature workspace tests and all-target Clippy pass. Native simplified/traditional
+Chinese history-window open/close checks pass, along with formatting/diff checks.
+The frame tests do not establish native-window upload/clipboard/browser integration
+or every partial remote/local failure recovery path; those limits remain in the
+network/desktop audit.
