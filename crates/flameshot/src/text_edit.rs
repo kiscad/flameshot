@@ -9,6 +9,7 @@ pub struct TextEdit {
     original: Annotation,
     draft: Annotation,
     focus: bool,
+    composing: bool,
     error: String,
 }
 impl TextEdit {
@@ -24,6 +25,7 @@ impl TextEdit {
             draft: original.clone(),
             original,
             focus: true,
+            composing: false,
             error: String::new(),
         })
     }
@@ -38,6 +40,7 @@ impl TextEdit {
             original: draft.clone(),
             draft,
             focus: true,
+            composing: false,
             error: String::new(),
         })
     }
@@ -106,6 +109,25 @@ impl TextEdit {
             document.replace(index, self.draft.clone())
         }
     }
+    #[allow(deprecated)] // Some integrations still emit Disabled without an empty preedit.
+    fn protect_composition(&mut self, events: &[egui::Event]) -> bool {
+        let mut protected = self.composing;
+        for event in events {
+            match event {
+                egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => {
+                    self.composing = !text.is_empty();
+                    protected |= self.composing;
+                }
+                egui::Event::Ime(egui::ImeEvent::Commit(text)) => {
+                    protected |= !text.is_empty();
+                    self.composing = false;
+                }
+                egui::Event::Ime(egui::ImeEvent::Disabled) => self.composing = false,
+                _ => {}
+            }
+        }
+        protected
+    }
     /// None keeps the dialog open; Some(true) applied, Some(false) cancelled.
     pub fn show(
         &mut self,
@@ -113,6 +135,8 @@ impl TextEdit {
         document: &mut Document,
         commit_shortcut: bool,
     ) -> Option<bool> {
+        let protected = ctx.input(|input| self.protect_composition(&input.events));
+        let commit_shortcut = commit_shortcut && !protected;
         if commit_shortcut {
             ctx.input_mut(|input| {
                 input.consume_key(egui::Modifiers::CTRL, egui::Key::Enter);
@@ -120,7 +144,7 @@ impl TextEdit {
         }
         let before = self.draft.clone();
         let mut open = true;
-        let mut cancel = ctx.input(|input| input.key_pressed(egui::Key::Escape));
+        let mut cancel = !protected && ctx.input(|input| input.key_pressed(egui::Key::Escape));
         let mut apply = commit_shortcut;
         egui::Window::new("Edit text")
             .default_pos(egui::pos2(20.0, 20.0))
@@ -159,7 +183,9 @@ impl TextEdit {
                 }
                 ui.label("Apply empty text to remove this annotation.");
                 ui.horizontal(|ui| {
-                    apply |= ui.button("Apply").clicked();
+                    apply |= ui
+                        .add_enabled(!protected, egui::Button::new("Apply"))
+                        .clicked();
                     cancel |= ui.button("Cancel").clicked();
                 });
                 if !self.error.is_empty() {
@@ -196,6 +222,101 @@ mod tests {
         })
         .unwrap();
         doc
+    }
+    #[test]
+    fn dismissing_preedit_protects_the_same_frame_but_not_the_next_escape() {
+        let mut doc = document();
+        let original = doc.annotations().to_vec();
+        let mut edit = TextEdit::new(&doc, 0).unwrap();
+        edit.composing = true;
+        let ctx = egui::Context::default();
+        let escape = egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                events: vec![
+                    egui::Event::Ime(egui::ImeEvent::Preedit {
+                        text: String::new(),
+                        active_range_chars: None,
+                    }),
+                    escape.clone(),
+                ],
+                ..Default::default()
+            },
+            |ui| {
+                assert_eq!(edit.show(ui.ctx(), &mut doc, false), None);
+            },
+        );
+        output.textures_delta.clear();
+        assert!(!edit.composing);
+        assert_eq!(doc.annotations(), original);
+        let mut release = escape.clone();
+        if let egui::Event::Key { pressed, .. } = &mut release {
+            *pressed = false;
+        }
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                events: vec![release, escape],
+                ..Default::default()
+            },
+            |ui| {
+                assert_eq!(edit.show(ui.ctx(), &mut doc, false), Some(false));
+            },
+        );
+        output.textures_delta.clear();
+        assert_eq!(doc.annotations(), original);
+    }
+    #[test]
+    fn ime_composition_does_not_cancel_or_apply_the_annotation() {
+        let mut doc = document();
+        let original = doc.annotations()[0].clone();
+        let mut editor = TextEdit::new(&doc, 0).unwrap();
+        if let Annotation::Text { text, .. } = &mut editor.draft {
+            text.clear();
+        }
+        let ctx = egui::Context::default();
+        let mut frame = |events, commit| {
+            let mut result = None;
+            let mut output = ctx.run_ui(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ui| {
+                    result = editor.show(ui.ctx(), &mut doc, commit);
+                },
+            );
+            output.textures_delta.clear();
+            result
+        };
+        assert_eq!(frame(vec![], false), None);
+        assert_eq!(frame(vec![], false), None);
+        assert_eq!(
+            frame(
+                vec![egui::Event::Ime(egui::ImeEvent::Preedit {
+                    text: "zhong".into(),
+                    active_range_chars: None
+                }),],
+                true
+            ),
+            None
+        );
+        assert_eq!(
+            frame(
+                vec![egui::Event::Ime(egui::ImeEvent::Commit("中文".into()))],
+                true
+            ),
+            None
+        );
+        assert_eq!(frame(vec![], true), Some(true));
+        assert!(matches!(&doc.annotations()[0], Annotation::Text{text,..} if text == "中文"));
+        assert!(doc.undo());
+        assert_eq!(doc.annotations()[0], original);
     }
     #[test]
     fn draft_is_isolated_and_apply_is_one_undoable_replacement() {

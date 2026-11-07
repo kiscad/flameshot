@@ -2251,3 +2251,18 @@ Five upload/history state and local-HTTP tests, the isolated D-Bus/Xvfb suite,
 all-target Clippy, default/no-default-feature compilation, formatting and diff checks
 passed. No real upload, deletion or browser launch was performed. Complete UI
 translation and remaining interactive/network acceptance are still unfinished.
+
+### Text annotation shortcuts during IME composition
+
+The text dialog now tracks composition events before interpreting annotation-level
+Escape/commit shortcuts. Active preedit and the frame that commits or dismisses it
+are protected; Apply is disabled for that frame. Explicit dialog cancellation remains
+available, and a subsequent Escape can cancel the annotation normally. This prevents
+composition handling from accidentally closing or applying the entire annotation.
+
+Synthetic egui UI frames verify Chinese preedit/commit without duplicate text,
+protection against the commit shortcut, one-step undo, and Escape dismissal followed
+by normal annotation cancellation. Existing text-edit tests also pass, together with
+all-feature all-target Clippy, no-default-feature compilation, formatting and diff
+checks. These event-level tests do not establish native IBus/Fcitx integration or
+candidate-window placement; those remain required desktop acceptance work.
