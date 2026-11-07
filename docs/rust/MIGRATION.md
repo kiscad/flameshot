@@ -19,7 +19,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Area | Required evidence | Status |
 | --- | --- | --- |
 | Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
-| Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb and Sway cases pass; other compositor acceptance remains |
+| Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway and headless GNOME capture cases pass; broader compositor acceptance remains |
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; remaining object-editing parity pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text, X11 INCR and ownership lifecycle verified on Xvfb/Sway; other compositor paths remain |
@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak/Nix/Snap definitions migrated; sandbox/provider builds and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb and native Sway/mixed-DPI suites pass; full GNOME/KDE and IME coverage pending |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI and headless GNOME capture/editor cases pass; GNOME clipboard/IME/multi-monitor and KDE acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2053,3 +2053,28 @@ Validation passed: all-feature workspace tests, all-target Clippy with warnings
 denied, no-default-feature workspace compilation, focused catalog tests, zh_CN/zh_TW
 native launcher lifecycle/rendering, and the complete isolated Xvfb suite in English.
 Formatting and diff checks passed. No live update API was called for this UI work.
+
+### Native GNOME Wayland capture and editor fixture
+
+Added gnome_smoke.py using a disposable headless GNOME Shell, virtual monitor,
+private D-Bus session, isolated XDG/cache/Pictures/temporary directories and explicit
+GNOME/GTK portal backends. System-bus requests from its compositor/services are routed
+to the private bus as well. A test-only extension enables evaluation and virtual
+input only in that compositor, following [GNOME's debug interface](https://raw.githubusercontent.com/GNOME/gnome-shell/46.0/js/ui/shellDBus.js); it is never installed
+in the user's extension directory or enabled in the user's shell. Processes are
+tracked and terminated through their owned process groups.
+
+The fixture handles the real GNOME screenshot permission dialog, verifies 1024x768
+full and numbered-screen captures, confirms the editor is a native Wayland client,
+and exports an 80x60 selection with the expected controlled-background pixels. It
+also verifies Escape cancellation (status 2, empty stdout), then removes only the
+private screenshot permission and exercises actual Deny (status 1, rejection message,
+empty stdout). GNOME startup/overview readiness is explicitly awaited before testing;
+window creation is checked before focusing the editor for keyboard input.
+
+Validation passed on GNOME Shell 46.0 with Mutter 46.2. The fixture runs with DISPLAY
+unset and Xwayland disabled. It does not establish GNOME clipboard fallback, input
+method behavior, mixed-monitor placement, native tray hosts or installed-package
+acceptance. Those remain open alongside KDE coverage. No production Rust changes
+were needed for the capture/export/cancellation cases exercised here. Hosted CI was
+not run, and this renderer-dependent fixture is currently documented for local runs.

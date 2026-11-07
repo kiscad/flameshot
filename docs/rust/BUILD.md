@@ -62,6 +62,16 @@ wl-clipboard, PipeWire, xdg-desktop-portal, portal-wlr, portal-gtk and the permi
 store. Python Pillow verifies rendered pixels. The workflows install these tools
 without Qt development packages.
 
+A separate GNOME fixture is available with
+`python3 tests/rust/gnome_smoke.py target/debug/flameshot`. It requires GNOME Shell,
+GNOME and GTK portal backends, the permission store, PyGObject, Pillow, and a rendering
+backend supported by headless Mutter. It was validated on GNOME Shell 46.0/Mutter 46.2
+with an available render device. It creates private session/system bus routing, XDG
+and Pictures directories, and a disposable test extension for virtual input. It runs
+without X11 and covers portal permission grant/refusal, full/screen capture and native
+Wayland editor export/cancellation. Clipboard, IME and multi-monitor GNOME acceptance
+are separate remaining checks; this fixture is not part of the hosted CI job yet.
+
 Desktop tests create private display/bus sessions and isolated XDG directories.
 They disable automatic update checking and never perform real Imgur uploads.
 The Wayland test injects input only into its own compositor via the Rust helper.
