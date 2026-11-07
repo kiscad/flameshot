@@ -2138,3 +2138,17 @@ Validation passed in both multi-monitor-only and combined multi-monitor/clipboar
 runs, including the existing capture, cancellation, refusal and clipboard checks.
 The post-run process audit found no private GNOME processes remaining. Diff checks
 passed. No production Rust changes were required; hosted CI remains unrun.
+
+### Update-window completion and long-result handling
+
+The update window now distinguishes a pending worker from a disconnected response
+channel. A worker that stops without sending a result produces an error instead of
+leaving a permanent spinner. Buffered results are still consumed before disconnect
+is reported. Result/link content uses a bounded scroll area so the Close control has
+reserved space even when diagnostic text is long.
+
+State tests cover pending, disconnected, no-update and available-update completion.
+All-feature workspace tests, all-target Clippy, no-default-feature compilation,
+formatting and diff checks passed. No live update endpoint was contacted for this
+change. Native long-message layout and complete interactive update-server scenarios
+remain part of the UI acceptance work; these state tests do not establish them.
