@@ -4,6 +4,8 @@
 pub mod applications;
 #[cfg(target_os = "linux")]
 pub mod desktop;
+#[cfg(target_os = "linux")]
+pub mod file_chooser;
 #[cfg(feature = "imgur")]
 pub mod imgur;
 #[cfg(target_os = "linux")]

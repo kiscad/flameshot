@@ -1960,3 +1960,44 @@ processes now set XDG_CACHE_HOME explicitly: an initial local fixture run expose
 that last-selection caching was otherwise escaping isolation. The corrected suite
 was rerun with the default region cache's bytes and modification time verified
 unchanged. Formatting and diff checks also passed.
+
+### Sandbox SaveFile chooser and exact-path publication
+
+Non-fixed interactive saves in Flatpak/Snap now use the FileChooser SaveFile portal.
+It supplies the suggested name/folder, supported image filters with case-insensitive
+patterns, and the current format. Responses must contain one local file URI; remote,
+missing and multiple targets are rejected. User cancellation returns to the editor,
+while portal/write failures retain the selection and offer retry or cancellation.
+Explicit/fixed paths retain their existing direct-save behavior and fall back to the
+chooser on failure. Native desktop file browsing remains available.
+
+A selected portal path is saved exactly, without appending an extension or numbered
+collision suffix. A filename extension determines encoding; without one, the returned
+supported filter determines the format. The SaveFile choice authorizes replacement
+of that selected file. Encoding and syncing occur in a temporary sibling before
+atomic replacement, and existing permissions are preserved. Other save paths retain
+their prior no-clobber numbering behavior. This matches the document portal's
+[temporary-file replacement support](https://raw.githubusercontent.com/flatpak/xdg-desktop-portal/main/document-portal/document-portal-fuse.c)
+and the [SaveFile contract](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.FileChooser.html).
+
+Private-bus tests cover options, immediate responses, local Unicode URI decoding,
+invalid responses, cancellation, rejection, timeout and mismatched-handle cleanup.
+The actual editor fixture covers exact-path JPEG replacement without a suffix,
+cancellation/rejection preserving the old file and editor, and successful retry after
+a missing-parent write failure. Output tests verify existing-file permissions and
+preservation on encoding failure. The native no-clobber suite remains in regression.
+
+Real document-portal validation is also available with `dbus_ui_smoke.py TOOL_ROOT
+--documents`. The fixture starts its own permission store and document portal with
+isolated XDG directories and a private bus, exports existing and new filenames,
+grants the application read/write access, and returns paths in the per-application
+FUSE view from the mock chooser. Actual editor saves then verify the host file was
+created/replaced with the expected JPEG bytes and dimensions. Both cases passed
+locally. This validates real document filesystem publication, but not a deployed
+Flatpak/Snap container or the host's actual file chooser UI. Rust CI now installs
+FUSE utilities and requests this fixture; remote CI remains unrun.
+
+Validation passed: all-feature workspace tests (including prior atomic/no-clobber
+publication tests), all-target Clippy, all-feature/no-default-feature private portal
+tests, the combined D-Bus UI suite with real document FUSE creation/replacement,
+and the complete isolated Xvfb regression. Formatting and diff checks passed.

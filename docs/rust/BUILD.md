@@ -41,7 +41,7 @@ scripts/check-rust.sh
 cargo build --locked -p flameshot --all-features
 cargo build --locked -p flameshot-platform --examples
 python3 tests/rust/desktop_smoke.py / target/debug/flameshot
-python3 tests/rust/dbus_ui_smoke.py /
+python3 tests/rust/dbus_ui_smoke.py / --documents
 python3 tests/rust/wayland_smoke.py / target/debug/flameshot
 ```
 
@@ -49,6 +49,10 @@ The D-Bus UI suite builds the matching test executables and exercises actual tra
 monitor activation/output removal and sandbox Open With success, cancellation,
 errors, keep-open behavior and temporary-file lifetime against private mock services.
 It uses a private Xvfb display and does not launch a real external application.
+`--documents` additionally starts a private permission store and real document
+portal, and verifies new/overwrite saves through its per-application FUSE view.
+This requires `/dev/fuse`, `fusermount3`, `gdbus`, `xdg-permission-store` and
+`xdg-document-portal`; omit the flag to run only the mock-service fixtures.
 
 The test tool root `/` uses installed system tools. A directory containing an
 extracted `usr/bin`, `usr/libexec` and libraries can also be supplied. X11 tests

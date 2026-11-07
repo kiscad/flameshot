@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Build and run private D-Bus/native UI integration fixtures. Usage: dbus_ui_smoke.py TOOL_ROOT"""
+"""Build and run private D-Bus/native UI integration fixtures. Usage: dbus_ui_smoke.py TOOL_ROOT [--documents]"""
 import json
 from pathlib import Path
 import subprocess
@@ -20,4 +20,7 @@ for line in build.stdout.splitlines():
     if message.get('executable'):
         executables[message['target']['name']] = message['executable']
 for name, script in [('daemon','tray_smoke.py'), ('portal_open','portal_open_smoke.py')]:
-    subprocess.run([sys.executable,str(Path(__file__).with_name(script)),root,executables[name]],check=True)
+    command = [sys.executable,str(Path(__file__).with_name(script)),root,executables[name]]
+    if name == 'portal_open' and '--documents' in sys.argv[2:]:
+        command.append('--documents')
+    subprocess.run(command,check=True)

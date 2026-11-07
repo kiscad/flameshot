@@ -224,10 +224,36 @@ pub fn save_with_settings(
     publish_image(&destination, |file| file.write_all(&data))
 }
 
-fn publish_image(
+/// Save exactly the filename authorized by the system chooser. The chooser owns
+/// overwrite confirmation; numbered siblings may not be covered by its grant.
+pub fn save_selected(
+    image: &RgbaImage,
+    path: &Path,
+    extension: &str,
+    settings: &crate::settings::Settings,
+) -> Result<PathBuf> {
+    ensure!(!path.is_dir(), "Selected destination is a directory");
+    let format_path = if path.extension().is_none() {
+        path.with_extension(extension)
+    } else {
+        path.to_owned()
+    };
+    let data = encode_file(image, format_for(&format_path)?, settings.jpeg_quality)?;
+    let staged = stage_image(path, |file| file.write_all(&data))?;
+    if let Ok(metadata) = std::fs::metadata(path) {
+        staged.as_file().set_permissions(metadata.permissions())?;
+        staged.as_file().sync_all()?;
+    }
+    staged
+        .persist(path)
+        .map_err(|error| error.error)
+        .context("Cannot publish selected screenshot")?;
+    Ok(path.to_owned())
+}
+fn stage_image(
     destination: &Path,
     write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
-) -> Result<PathBuf> {
+) -> Result<tempfile::NamedTempFile> {
     let parent = destination
         .parent()
         .filter(|path| !path.as_os_str().is_empty())
@@ -248,6 +274,14 @@ fn publish_image(
         .as_file()
         .sync_all()
         .context("Cannot sync screenshot")?;
+    Ok(staged)
+}
+
+fn publish_image(
+    destination: &Path,
+    write: impl FnOnce(&mut std::fs::File) -> std::io::Result<()>,
+) -> Result<PathBuf> {
+    let mut staged = stage_image(destination, write)?;
     let stem = destination
         .file_stem()
         .context("Missing filename")?
@@ -278,6 +312,38 @@ fn publish_image(
     }
     bail!("No available output filename")
 }
+#[cfg(test)]
+mod selected_tests {
+    use super::*;
+    #[test]
+    fn selected_names_are_exact_and_replacement_follows_successful_encoding() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("selected");
+        std::fs::write(&path, b"old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        let settings = crate::settings::Settings::default();
+        let image = RgbaImage::new(12, 8);
+        assert_eq!(
+            save_selected(&image, &path, "jpg", &settings).unwrap(),
+            path
+        );
+        assert_eq!(
+            image::guess_format(&std::fs::read(&path).unwrap()).unwrap(),
+            ImageFormat::Jpeg
+        );
+        assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
+        let before = std::fs::read(&path).unwrap();
+        assert!(save_selected(&RgbaImage::new(0, 0), &path, "jpg", &settings).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        let unsupported = root.path().join("chosen.unknown");
+        std::fs::write(&unsupported, b"original").unwrap();
+        assert!(save_selected(&image, &unsupported, "png", &settings).is_err());
+        assert_eq!(std::fs::read(&unsupported).unwrap(), b"original");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

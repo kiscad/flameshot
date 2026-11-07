@@ -124,7 +124,11 @@ struct FileEntry {
     directory: bool,
 }
 type FolderResult = Result<Vec<FileEntry>, String>;
+type PortalSaveResult = Result<Option<flameshot_platform::file_chooser::SaveSelection>, String>;
 struct SaveDialog {
+    portal: bool,
+    portal_start: bool,
+    portal_task: Option<std::sync::mpsc::Receiver<PortalSaveResult>>,
     focus: bool,
     listed_folder: Option<std::path::PathBuf>,
     pending_folder: Option<std::path::PathBuf>,
@@ -533,6 +537,9 @@ impl Editor {
             };
             ctx.request_repaint();
             self.save_dialog = Some(SaveDialog {
+                portal: crate::app_ui::restricted_bus_names(),
+                portal_start: crate::app_ui::restricted_bus_names(),
+                portal_task: None,
                 focus: true,
                 listed_folder: None,
                 pending_folder: None,
@@ -553,12 +560,26 @@ impl Editor {
         ctx: &egui::Context,
         action: Action,
     ) -> Result<()> {
+        self.save_to_selected(path, ctx, action, None)
+    }
+    fn save_to_selected(
+        &mut self,
+        path: &std::path::Path,
+        ctx: &egui::Context,
+        action: Action,
+        selected_extension: Option<&str>,
+    ) -> Result<()> {
         let selection = self
             .selection
             .ok_or_else(|| anyhow::anyhow!("Select an area first"))?;
         let image = self.document.export(selection)?;
         let settings = crate::settings::Settings::load()?;
-        match crate::output::save_with_settings(&image, path, &settings) {
+        let result = if let Some(extension) = selected_extension {
+            crate::output::save_selected(&image, path, extension, &settings)
+        } else {
+            crate::output::save_with_settings(&image, path, &settings)
+        };
+        match result {
             Ok(saved) => {
                 eprintln!("flameshot: Capture saved as {}", saved.display());
                 self.finish(ctx, action, Some(saved));
@@ -602,6 +623,80 @@ impl Editor {
             );
         }
         let mut dialog = self.save_dialog.take().unwrap();
+        if dialog.portal {
+            if let Some(task) = &dialog.portal_task
+                && let Ok(result) = task.try_recv()
+            {
+                dialog.portal_task = None;
+                match result {
+                    Ok(None) => return,
+                    Ok(Some(selection)) => {
+                        dialog.path = selection.path.to_string_lossy().into_owned();
+                        match self.save_to_selected(
+                            &selection.path,
+                            &ctx,
+                            dialog.action,
+                            Some(&selection.extension),
+                        ) {
+                            Ok(()) => return,
+                            Err(error) => dialog.error = error.to_string(),
+                        }
+                    }
+                    Err(error) => dialog.error = error,
+                }
+            }
+            let mut retry = dialog.portal_start;
+            dialog.portal_start = false;
+            let mut cancel = false;
+            egui::Window::new(tr("SaveTool", "Save"))
+                .collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .show(&ctx, |ui| {
+                    if dialog.portal_task.is_some() {
+                        ui.spinner();
+                        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                    } else {
+                        if !dialog.error.is_empty() {
+                            ui.colored_label(Color32::RED, &dialog.error);
+                        }
+                        retry |= ui.button(tr("SaveTool", "Save")).clicked()
+                            || ctx.input(|i| i.key_pressed(egui::Key::Enter));
+                        cancel = ui.button(tr("ColorGrabWidget", "Cancel")).clicked()
+                            || ctx.input(|i| i.key_pressed(egui::Key::Escape));
+                    }
+                });
+            if cancel {
+                return;
+            }
+            if retry && dialog.portal_task.is_none() {
+                let (sender, receiver) = std::sync::mpsc::channel();
+                dialog.portal_task = Some(receiver);
+                dialog.error.clear();
+                let path = std::path::PathBuf::from(&dialog.path);
+                ctx.request_repaint();
+                let ctx = ctx.clone();
+                tokio::spawn(async move {
+                    let result = async {
+                        let connection = crate::daemon::session_connection().await?;
+                        flameshot_platform::file_chooser::save_file(
+                            &connection,
+                            "",
+                            tr("SaveTool", "Save"),
+                            &path,
+                            crate::output::EXTENSIONS,
+                            std::time::Duration::from_secs(120),
+                        )
+                        .await
+                    }
+                    .await;
+                    let _ = sender.send(result.map_err(|e: anyhow::Error| e.to_string()));
+                    ctx.request_repaint();
+                });
+            }
+            self.save_dialog = Some(dialog);
+            return;
+        }
+
         let mut cancel = ctx.input(|i| i.key_pressed(egui::Key::Escape));
         let mut save = ctx.input(|i| i.key_pressed(egui::Key::Enter));
         egui::Window::new("Save Screenshot")
