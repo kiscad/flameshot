@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Exercise sandbox Open With and SaveFile against private portals on Xvfb.
+"""Exercise sandbox Open With, SaveFile and web links against private portals on Xvfb.
 Usage: portal_open_smoke.py TOOL_ROOT PORTAL_OPEN_TEST_EXECUTABLE [--documents]
 Build the test executable with cargo test --test portal_open --no-run first.
 """
@@ -49,7 +49,7 @@ finally:
 """
                 command = [sys.executable,'-c',driver,*command]
             subprocess.run(['dbus-run-session','--config-file',str(bus_config),'--',*command],env=env,check=True,timeout=80)
-            print('PASS: sandbox Open With and SaveFile preserve image data, cancellation, retry, and exact output paths')
+            print('PASS: sandbox Open With, SaveFile and web links preserve data and handle cancellation/errors')
         finally:
             if '--documents' in sys.argv[3:]:
                 subprocess.run(['/usr/bin/fusermount3','-u',str(Path(directory)/'doc')],capture_output=True,timeout=5)

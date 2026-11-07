@@ -17,6 +17,7 @@ pub fn show() -> anyhow::Result<()> {
         },
         Box::new(move |_| {
             Ok(Box::new(Updates {
+                links: Default::default(),
                 job: Some(receiver),
                 update: None,
                 message: "Checking for updates…".into(),
@@ -26,6 +27,7 @@ pub fn show() -> anyhow::Result<()> {
     .map_err(|e| anyhow::anyhow!("Updates window: {e}"))
 }
 struct Updates {
+    links: crate::links::LinkOpener,
     job: Option<std::sync::mpsc::Receiver<Result<Option<Update>, String>>>,
     update: Option<Update>,
     message: String,
@@ -53,7 +55,7 @@ impl eframe::App for Updates {
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
         if let Some(update) = &self.update {
-            ui.hyperlink_to("Open release page", &update.url);
+            self.links.link(ui, "Open release page", &update.url);
             if ui.button("Ignore this version").clicked() {
                 match crate::settings::Settings::update(&[(
                     "ignoreUpdateToVersion",
@@ -64,6 +66,7 @@ impl eframe::App for Updates {
                 }
             }
         }
+        self.links.status(ui);
         if ui.button("Close").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }

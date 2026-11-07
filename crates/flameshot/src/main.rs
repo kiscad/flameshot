@@ -13,6 +13,8 @@ mod daemon;
 mod gui;
 mod i18n;
 mod launcher;
+#[cfg(any(feature = "imgur", feature = "update-check"))]
+mod links;
 mod open_with;
 mod output;
 mod pin;

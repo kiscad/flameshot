@@ -38,6 +38,7 @@ impl LinkClipboard {
     }
 }
 pub struct UploadDialog {
+    links: crate::links::LinkOpener,
     clipboard: LinkClipboard,
     clipboard_message: String,
     image: image::RgbaImage,
@@ -62,6 +63,7 @@ impl UploadDialog {
         settings: Option<&crate::settings::Settings>,
     ) -> Self {
         Self {
+            links: Default::default(),
             clipboard: LinkClipboard::default(),
             clipboard_message: String::new(),
             image,
@@ -185,7 +187,7 @@ impl UploadDialog {
                 }
                 ui.image(self.texture.as_ref().unwrap());
                 if let Some(uploaded) = &self.uploaded {
-                    ui.hyperlink(&uploaded.link);
+                    self.links.link(ui, &uploaded.link, &uploaded.link);
                     if ui.button("Copy link").clicked() {
                         self.clipboard.copy(ctx, &uploaded.link);
                     }
@@ -199,6 +201,7 @@ impl UploadDialog {
                         self.begin(ctx);
                     }
                 }
+                self.links.status(ui);
                 if !self.message.is_empty() {
                     ui.label(&self.message);
                 }
@@ -230,6 +233,7 @@ pub fn history() -> anyhow::Result<()> {
             Ok(Box::new(History {
                 confirmation_required,
                 textures: Default::default(),
+                links: Default::default(),
                 clipboard: LinkClipboard::default(),
                 entries,
                 confirm: None,
@@ -241,6 +245,7 @@ pub fn history() -> anyhow::Result<()> {
     .map_err(|e| anyhow::anyhow!("Upload history: {e}"))
 }
 struct History {
+    links: crate::links::LinkOpener,
     confirmation_required: bool,
     textures: std::collections::HashMap<std::path::PathBuf, Option<egui::TextureHandle>>,
     clipboard: LinkClipboard,
@@ -340,7 +345,7 @@ impl eframe::App for History {
                     if let Some(texture) = texture {
                         ui.add(egui::Image::new(&*texture).max_size(egui::vec2(125.0, 50.0)));
                     }
-                    ui.hyperlink(&entry.link);
+                    self.links.link(ui, &entry.link, &entry.link);
                     if ui.button("Copy link").clicked() {
                         self.clipboard.copy(ui.ctx(), &entry.link);
                     }
@@ -376,6 +381,7 @@ impl eframe::App for History {
             ui.spinner();
             ui.ctx().request_repaint_after(Duration::from_millis(100));
         }
+        self.links.status(ui);
         if !self.message.is_empty() {
             ui.label(&self.message);
         }
@@ -553,6 +559,7 @@ mod tests {
         let path = temp.path().join("image.png");
         std::fs::write(&path, b"synthetic").unwrap();
         let mut history = History {
+            links: Default::default(),
             confirmation_required: true,
             textures: Default::default(),
             clipboard: Default::default(),

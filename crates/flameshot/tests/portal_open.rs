@@ -20,6 +20,7 @@ struct Portal {
     inode: u64,
     device: u64,
     images: Arc<Mutex<Vec<std::path::PathBuf>>>,
+    urls: Arc<Mutex<Vec<String>>>,
 }
 struct Request(Arc<AtomicU32>);
 #[zbus::interface(name = "org.freedesktop.portal.Request")]
@@ -30,6 +31,50 @@ impl Request {
 }
 #[zbus::interface(name = "org.freedesktop.portal.OpenURI")]
 impl Portal {
+    #[zbus(name = "OpenURI")]
+    async fn open_uri(
+        &self,
+        parent: &str,
+        uri: &str,
+        options: HashMap<String, OwnedValue>,
+        #[zbus(header)] header: Header<'_>,
+        #[zbus(connection)] connection: &Connection,
+    ) -> zbus::fdo::Result<OwnedObjectPath> {
+        assert!(parent.is_empty());
+        assert_eq!(options.len(), 1);
+        self.urls.lock().unwrap().push(uri.to_owned());
+        let sender = header
+            .sender()
+            .unwrap()
+            .as_str()
+            .trim_start_matches(':')
+            .replace('.', "_");
+        let token = <&str>::try_from(options.get("handle_token").unwrap()).unwrap();
+        let status = self.status.load(Ordering::SeqCst);
+        let suffix = if status == 4 { "_unexpected" } else { "" };
+        let path: OwnedObjectPath =
+            format!("/org/freedesktop/portal/desktop/request/{sender}/{token}{suffix}")
+                .try_into()
+                .unwrap();
+        connection
+            .object_server()
+            .at(path.clone(), Request(self.closed.clone()))
+            .await
+            .unwrap();
+        if status != 3 && status != 4 {
+            connection
+                .emit_signal(
+                    header.sender().map(|name| name.as_str()),
+                    path.clone(),
+                    "org.freedesktop.portal.Request",
+                    "Response",
+                    &(status, HashMap::<String, OwnedValue>::new()),
+                )
+                .await
+                .unwrap();
+        }
+        Ok(path)
+    }
     async fn open_file(
         &self,
         parent: &str,
@@ -108,6 +153,7 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
     let status = Arc::new(AtomicU32::new(0));
     let closed = Arc::new(AtomicU32::new(0));
     let images = Arc::new(Mutex::new(Vec::new()));
+    let urls = Arc::new(Mutex::new(Vec::new()));
     let chooser_status = Arc::new(AtomicU32::new(0));
     let chosen_uris = Arc::new(Mutex::new(Vec::<String>::new()));
     let chooser_calls = Arc::new(AtomicU32::new(0));
@@ -123,6 +169,7 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
                 inode: metadata.ino(),
                 device: metadata.dev(),
                 images: images.clone(),
+                urls: urls.clone(),
             },
         )
         .unwrap()
@@ -214,9 +261,12 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
             }
         }
     }
+    exercise_web_protocol(&client, &status, &closed, &urls).await;
     exercise_save_protocol(&client, root.path(), &chooser_status, &chosen_uris, &closed).await;
     if let Ok(tools) = std::env::var("FLAMESHOT_TEST_PRIVATE_DISPLAY_TOOLS") {
         exercise_open_with(root.path(), &tools, &status, &images).await;
+        #[cfg(feature = "imgur")]
+        exercise_history_links(root.path(), &tools, &status, &urls).await;
         exercise_save_ui(
             root.path(),
             &tools,
@@ -686,4 +736,137 @@ async fn exercise_save_ui(
             assert_eq!(std::fs::read(&destination).unwrap(), b"old file");
         }
     }
+}
+
+async fn exercise_web_protocol(
+    connection: &Connection,
+    status: &AtomicU32,
+    closed: &AtomicU32,
+    urls: &Mutex<Vec<String>>,
+) {
+    use flameshot_platform::open_portal::open_web_uri;
+    let uri = "https://example.org/release?q=a%20b#section";
+    let timeout = Duration::from_secs(2);
+    for code in [0, 1, 2, 5] {
+        status.store(code, Ordering::SeqCst);
+        let result = open_web_uri(connection, "", uri, timeout).await;
+        match code {
+            0 => assert!(result.unwrap()),
+            1 => assert!(!result.unwrap()),
+            _ => assert!(result.is_err()),
+        }
+        assert_eq!(urls.lock().unwrap().last().unwrap(), uri);
+    }
+    let before = closed.load(Ordering::SeqCst);
+    for code in [3, 4] {
+        status.store(code, Ordering::SeqCst);
+        assert!(
+            open_web_uri(connection, "", uri, Duration::from_millis(100))
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(closed.load(Ordering::SeqCst), before + 2);
+    let before = urls.lock().unwrap().len();
+    for invalid in ["file:///tmp/image.png", "javascript:alert(1)", "not a url"] {
+        assert!(
+            open_web_uri(connection, "", invalid, timeout)
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(urls.lock().unwrap().len(), before);
+}
+#[cfg(feature = "imgur")]
+async fn exercise_history_links(
+    root: &std::path::Path,
+    tools: &str,
+    status: &AtomicU32,
+    urls: &Mutex<Vec<String>>,
+) {
+    let history = root.join("flameshot/history");
+    std::fs::create_dir_all(&history).unwrap();
+    let path = history.join("imgur-testtoken-abc.png");
+    image::RgbaImage::new(80, 60).save(&path).unwrap();
+    let original = std::fs::read(&path).unwrap();
+    let xdotool = std::path::Path::new(tools).join("usr/bin/xdotool");
+    let tool = |args: &[&str]| {
+        std::process::Command::new(&xdotool)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let mut child = ChildGuard(
+        std::process::Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .arg("history")
+            .env("FLATPAK_ID", "isolated-test")
+            .env("XDG_CONFIG_HOME", root)
+            .env("XDG_CACHE_HOME", root)
+            .env("PATH", "/nonexistent/flameshot-test-tools")
+            .env("LC_ALL", "C")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let window = loop {
+        let output = tool(&[
+            "search",
+            "--onlyvisible",
+            "--name",
+            "^Flameshot Upload History$",
+        ]);
+        if output.status.success() {
+            break String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .last()
+                .unwrap()
+                .to_owned();
+        }
+        assert!(child.0.try_wait().unwrap().is_none());
+        assert!(std::time::Instant::now() < deadline);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    assert!(tool(&["windowfocus", "--sync", &window]).status.success());
+    tokio::time::sleep(Duration::from_millis(400)).await;
+    for code in [0, 1, 2] {
+        status.store(code, Ordering::SeqCst);
+        let before = urls.lock().unwrap().len();
+        assert!(
+            tool(&["mousemove", "--window", &window, "130", "58"])
+                .status
+                .success()
+        );
+        assert!(tool(&["click", "1"]).status.success());
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while urls.lock().unwrap().len() == before {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "History hyperlink did not reach the portal"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert_eq!(
+            urls.lock().unwrap().last().unwrap(),
+            "https://i.imgur.com/abc.png"
+        );
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(child.0.try_wait().unwrap().is_none());
+    }
+    assert!(tool(&["key", "Escape"]).status.success());
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(exit) = child.0.try_wait().unwrap() {
+            assert!(exit.success());
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert_eq!(std::fs::read(path).unwrap(), original);
+    println!(
+        "PASS: actual sandbox history links use OpenURI and retain window/record after success, cancellation and rejection"
+    );
 }

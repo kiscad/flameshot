@@ -23,12 +23,12 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; remaining object-editing parity pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text, X11 INCR and ownership lifecycle verified on Xvfb/Sway; other compositor paths remain |
-| Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, direct-child shutdown and launcher descendants tested; independent CLI/sandbox lifecycle audit remains |
+| Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, configuration flags, completions and manual implemented/tested; final syntax/exit-code and shell acceptance remain |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures/atomic updates tested; live-reload/semantic gaps remain |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
-| Desktop | Notifications, autostart, launcher, configuration windows | Implemented with isolated service/window tests; full desktop integration acceptance remains |
+| Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally validated; Flatpak/Nix/Snap definitions migrated; sandbox/provider builds and clean-distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
@@ -2001,3 +2001,26 @@ Validation passed: all-feature workspace tests (including prior atomic/no-clobbe
 publication tests), all-target Clippy, all-feature/no-default-feature private portal
 tests, the combined D-Bus UI suite with real document FUSE creation/replacement,
 and the complete isolated Xvfb regression. Formatting and diff checks passed.
+
+### Browser links through the sandbox portal
+
+Upload results, upload history and release links now share a link opener. Native
+desktops retain egui's existing hyperlink behavior; Flatpak/Snap use OpenURI with an
+HTTP(S) URL, retaining hover text and a copy-link context menu. Pending requests are
+disabled and displayed with a spinner; cancellation is quiet, and errors allow retry.
+This does not launch a sandbox-local browser or fall back after portal rejection.
+
+OpenURI and OpenFile share the request lifecycle, preserving pre-call subscription,
+unique handles, cancellation/error distinctions, mismatch cleanup and timeout Close.
+Private-bus tests verify exact URL delivery (including query/fragment), immediate
+responses, cancellation/rejection, malformed statuses, timeout/mismatch cleanup and
+local rejection of non-web schemes. The native Xvfb fixture clicks an actual local
+history record's link for success/cancel/rejection with local browser commands
+unavailable, verifies the request and retains the window and record. No Imgur upload
+or real browser launch is involved. Upload-result/release windows use the same widget;
+their complete interactive network flows and actual host browser acceptance remain
+separate requirements.
+
+Validation passed: all-feature workspace tests and all-target Clippy with warnings
+denied, default workspace compilation, no-default-feature private portal tests,
+formatting and the combined isolated D-Bus/Xvfb UI suite. Remote CI remains unrun.

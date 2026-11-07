@@ -30,6 +30,46 @@ pub async fn open_file(
     writable: bool,
     timeout: Duration,
 ) -> Result<bool> {
+    open_request(
+        connection,
+        parent,
+        Target::File {
+            file,
+            ask,
+            writable,
+        },
+        timeout,
+    )
+    .await
+}
+/// Open web links through the desktop portal without requiring a sandbox-local browser.
+pub async fn open_web_uri(
+    connection: &Connection,
+    parent: &str,
+    uri: &str,
+    timeout: Duration,
+) -> Result<bool> {
+    let parsed = url::Url::parse(uri)?;
+    ensure!(
+        matches!(parsed.scheme(), "http" | "https") && parsed.host_str().is_some(),
+        "Link is not an HTTP(S) URL"
+    );
+    open_request(connection, parent, Target::Uri(uri), timeout).await
+}
+enum Target<'a> {
+    File {
+        file: &'a File,
+        ask: bool,
+        writable: bool,
+    },
+    Uri(&'a str),
+}
+async fn open_request(
+    connection: &Connection,
+    parent: &str,
+    target: Target<'_>,
+    timeout: Duration,
+) -> Result<bool> {
     let sender = connection
         .unique_name()
         .context("Portal connection has no bus name")?
@@ -52,14 +92,21 @@ pub async fn open_file(
             "org.freedesktop.portal.OpenURI",
         )
         .await?;
-        let options = HashMap::from([
-            ("handle_token", Value::from(token.as_str())),
-            ("ask", Value::from(ask)),
-            ("writable", Value::from(writable)),
-        ]);
-        let returned: OwnedObjectPath = portal
-            .call("OpenFile", &(parent, Fd::from(file), options))
-            .await?;
+        let mut options = HashMap::from([("handle_token", Value::from(token.as_str()))]);
+        let returned: OwnedObjectPath = match target {
+            Target::File {
+                file,
+                ask,
+                writable,
+            } => {
+                options.insert("ask", Value::from(ask));
+                options.insert("writable", Value::from(writable));
+                portal
+                    .call("OpenFile", &(parent, Fd::from(file), options))
+                    .await?
+            }
+            Target::Uri(uri) => portal.call("OpenURI", &(parent, uri, options)).await?,
+        };
         if returned.as_str() != path {
             close(connection, returned.as_str()).await;
             bail!("OpenURI portal ignored request handle token");
