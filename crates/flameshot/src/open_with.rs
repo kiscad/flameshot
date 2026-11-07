@@ -15,6 +15,7 @@ pub struct OpenWith {
     launched: bool,
     uncertain_launch: bool,
     keep_open: bool,
+    terminal: bool,
     query: String,
     error: String,
 }
@@ -61,6 +62,7 @@ impl OpenWith {
             launched: false,
             uncertain_launch: false,
             keep_open,
+            terminal: false,
             query: String::new(),
             error: String::new(),
         }
@@ -170,6 +172,12 @@ impl OpenWith {
                         ui.label(tr("AppLauncherWidget", "No matching applications"));
                     }
                 }
+                if !self.portal {
+                    ui.checkbox(
+                        &mut self.terminal,
+                        tr("AppLauncherWidget", "Launch in terminal"),
+                    );
+                }
                 if ui
                     .checkbox(
                         &mut self.keep_open,
@@ -210,10 +218,15 @@ impl OpenWith {
                     let completion_lock = self.completion_lock.clone();
                     match launch {
                         Launch::Native(app) => {
+                            let terminal = self.terminal;
                             std::thread::spawn(move || {
-                                let result = applications::launch(&app, &file)
-                                    .map(|()| true)
-                                    .map_err(|e| e.to_string());
+                                let result = if terminal {
+                                    applications::launch_in_terminal(&app, &file)
+                                } else {
+                                    applications::launch(&app, &file)
+                                }
+                                .map(|()| true)
+                                .map_err(|e| e.to_string());
                                 finish_launch(
                                     sender,
                                     result,
@@ -310,6 +323,7 @@ mod tests {
             launched: false,
             uncertain_launch: false,
             keep_open: false,
+            terminal: false,
             query: String::new(),
             error: String::new(),
         }

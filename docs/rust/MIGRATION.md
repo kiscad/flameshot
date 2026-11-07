@@ -2495,3 +2495,31 @@ GIO but has no manual override. Implement and validate this native option, inclu
 Desktop Entry argument expansion, spaced image paths and launcher failures, before
 closing the desktop compatibility gate. Sandbox application selection remains owned
 by the OpenFile portal and cannot promise that native override.
+
+### Restore native manual terminal launch
+
+The native Open With dialog now exposes the legacy translated “Launch in terminal”
+checkbox. Choosing an application with it enabled stages a private Desktop Entry
+with Terminal=true and DBusActivatable=false, then delegates execution to GIO.
+The original entry and action groups remain untouched. Exec %k is bound to the
+original entry path; remaining argument/field-code expansion stays with GIO.
+Temporary entries are removed after launcher completion. Missing/empty Exec commands
+and unavailable terminal launchers report failure through the existing dialog path.
+Portal selection remains compositor-owned and does not show this native-only option.
+
+Quoting follows the Desktop Entry Exec rules:
+https://specifications.freedesktop.org/desktop-entry/latest/exec-variables.html
+Tests use real GIO with a synthetic terminal and verify paths containing spaces,
+percent signs, quotes, backslashes and shell metacharacters, plus %f/%k/%c/%i/%%
+expansion, unchanged source/action groups and missing-terminal failure. The four
+platform application tests and three Open With lifecycle tests (full and minimal
+features) pass. All-feature all-target Clippy, formatting and diff checks pass.
+
+The new private-Xvfb terminal_smoke.py clicks the native terminal checkbox and launches
+a synthetic receiver through a synthetic terminal. The receiver verifies the 80x60
+PNG and original desktop path; the fixture verifies terminal dispatch occurred.
+No real user terminal/application is started. The fixture is added to Rust CI;
+hosted execution remains unverified. Terminal discovery is GIO's host policy rather
+than the legacy hardcoded preference list; acceptance across installed terminal
+emulators is still part of broader desktop validation. GIO launch metadata may name
+the temporary entry, although the application's %k argument names the original.

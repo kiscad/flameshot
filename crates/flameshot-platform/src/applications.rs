@@ -50,6 +50,105 @@ pub fn launch(app: &Application, file: &Path) -> Result<()> {
             .arg(file),
     )
 }
+/// Force terminal execution through GIO, retaining its field-code expansion.
+/// The original desktop entry is never changed. D-Bus activation is disabled in
+/// this temporary entry because it would bypass the requested terminal.
+pub fn launch_in_terminal(app: &Application, file: &Path) -> Result<()> {
+    let entry = terminal_entry(&app.desktop_file)?;
+    run_launcher(
+        Command::new("gio")
+            .arg("launch")
+            .arg(entry.path())
+            .arg(file),
+    )
+}
+fn terminal_entry(path: &Path) -> Result<tempfile::NamedTempFile> {
+    use std::io::Write;
+    let path = std::path::absolute(path)?;
+    let source = std::fs::read_to_string(&path).context("Cannot read application desktop entry")?;
+    let original = path
+        .to_str()
+        .context("Application desktop path is not UTF-8")?;
+    // Quote an Exec argument, then apply the outer Desktop Entry string escaping.
+    let mut argument = String::from("\"");
+    for ch in original.chars() {
+        match ch {
+            '%' => argument.push_str("%%"),
+            '"' | '`' | '$' | '\\' => {
+                argument.push('\\');
+                argument.push(ch);
+            }
+            _ => argument.push(ch),
+        }
+    }
+    argument.push('"');
+    let argument = argument
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t");
+    let mut output = String::new();
+    let mut main = false;
+    let mut found = false;
+    let mut has_exec = false;
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            main = trimmed == "[Desktop Entry]";
+            if main {
+                ensure!(!found, "Duplicate Desktop Entry group");
+                found = true;
+                output.push_str("[Desktop Entry]\nTerminal=true\nDBusActivatable=false\n");
+                continue;
+            }
+        }
+        if main && let Some((key, value)) = line.split_once('=') {
+            match key.trim() {
+                "Terminal" | "DBusActivatable" => continue,
+                "Exec" => {
+                    ensure!(!has_exec, "Duplicate application Exec key");
+                    ensure!(
+                        !value.trim().is_empty(),
+                        "Application Exec command is empty"
+                    );
+                    has_exec = true;
+                    output.push_str("Exec=");
+                    let mut chars = value.chars();
+                    while let Some(ch) = chars.next() {
+                        if ch == '%' {
+                            match chars.next() {
+                                Some('k') => output.push_str(&argument),
+                                Some(code) => {
+                                    output.push('%');
+                                    output.push(code);
+                                }
+                                None => output.push('%'),
+                            }
+                        } else {
+                            output.push(ch);
+                        }
+                    }
+                    output.push('\n');
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        output.push_str(line);
+        output.push('\n');
+    }
+    ensure!(
+        found && has_exec,
+        "Application has no Exec command for terminal launch"
+    );
+    let mut entry = tempfile::Builder::new()
+        .prefix("flameshot-terminal-")
+        .suffix(".desktop")
+        .tempfile()?;
+    entry.write_all(output.as_bytes())?;
+    entry.flush()?;
+    Ok(entry)
+}
 /// Open a local directory with the desktop's configured file manager. Resolve
 /// relative paths before dispatch so names cannot be interpreted as URI schemes
 /// or command options. The external file manager is not owned by Flameshot.
@@ -90,6 +189,86 @@ fn run_launcher(command: &mut Command) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn forced_terminal_preserves_field_expansion_and_original_entry() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let bin = root.path().join("bin");
+        std::fs::create_dir(&bin).unwrap();
+        let terminal = bin.join("gnome-terminal");
+        std::fs::write(&terminal, "#!/usr/bin/python3\nimport os,sys\nwith open(os.environ['FLAMESHOT_TERMINAL_RECEIPT'], 'wb') as f:\n f.write(b'\\0'.join(os.fsencode(v) for v in sys.argv[1:]))\n").unwrap();
+        std::fs::set_permissions(&terminal, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let receipt = root.path().join("receipt");
+        let desktop = root.path().join("entry %k $ ` \\\".desktop");
+        let original = "[Desktop Entry]\nType=Application\nName=Test Viewer\nIcon=test-icon\nExec=/bin/echo %f %k %c %i %%k\nTerminal=false\nDBusActivatable=true\n\n[Desktop Action Example]\nExec=unused %k\nTerminal=false\n";
+        std::fs::write(&desktop, original).unwrap();
+        let image = root.path().join("image $(literal) space.png");
+        std::fs::write(&image, b"synthetic").unwrap();
+        let staged = terminal_entry(&desktop).unwrap();
+        let text = std::fs::read_to_string(staged.path()).unwrap();
+        assert!(text.contains("[Desktop Action Example]\nExec=unused %k\nTerminal=false"));
+        run_launcher(
+            Command::new("/usr/bin/gio")
+                .arg("launch")
+                .arg(staged.path())
+                .arg(&image)
+                .env("PATH", &bin)
+                .env("FLAMESHOT_TERMINAL_RECEIPT", &receipt),
+        )
+        .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !receipt.exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "fake terminal was not started"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let bytes = std::fs::read(receipt).unwrap();
+        let args: Vec<_> = bytes
+            .split(|byte| *byte == 0)
+            .map(|value| String::from_utf8(value.to_vec()).unwrap())
+            .collect();
+        let command = args.iter().position(|arg| arg == "/bin/echo").unwrap();
+        assert_eq!(
+            &args[command + 1..],
+            &[
+                image.to_str().unwrap(),
+                desktop.to_str().unwrap(),
+                "Test Viewer",
+                "--icon",
+                "test-icon",
+                "%k"
+            ]
+        );
+        assert_eq!(std::fs::read_to_string(&desktop).unwrap(), original);
+        // An empty PATH must report a failed launch, not silently bypass Terminal.
+        std::fs::remove_file(terminal).unwrap();
+        assert!(
+            run_launcher(
+                Command::new("/usr/bin/gio")
+                    .arg("launch")
+                    .arg(staged.path())
+                    .arg(&image)
+                    .env("PATH", &bin)
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn terminal_override_requires_an_exec_command() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("test.desktop");
+        for source in [
+            "[Desktop Entry]\nType=Application\nDBusActivatable=true\n",
+            "[Desktop Entry]\nExec=\n",
+            "[Other]\nExec=test\n",
+        ] {
+            std::fs::write(&path, source).unwrap();
+            assert!(terminal_entry(&path).is_err());
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), source);
+        }
+    }
     #[test]
     fn gio_launch_keeps_spaced_paths_and_literal_metacharacters_intact() {
         let root = tempfile::tempdir().unwrap();

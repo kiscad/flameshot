@@ -58,6 +58,8 @@ jobs:
         run: python3 tests/rust/desktop_smoke.py / target/debug/flameshot
       - name: Simplified and traditional Chinese launcher and history
         run: python3 tests/rust/localization_smoke.py / target/debug/flameshot
+      - name: Native terminal launch
+        run: python3 tests/rust/terminal_smoke.py / target/debug/flameshot
       - name: Native Fcitx Pinyin input and text clipboard
         run: python3 tests/rust/ime_smoke.py / target/debug/flameshot
       - name: Private D-Bus tray and application chooser UI
