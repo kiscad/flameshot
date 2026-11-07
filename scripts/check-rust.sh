@@ -13,6 +13,8 @@ FLAMESHOT_TEST_PRIVATE_BUS=1 dbus-run-session -- cargo test --locked -p flamesho
 cargo clippy --locked --workspace --all-features --all-targets -- -D warnings
 cargo test --locked --workspace --all-features
 FLAMESHOT_TEST_PRIVATE_BUS=1 cargo test --locked -p flameshot --test daemon_exit --all-features -- --ignored
-cargo check --locked --workspace --no-default-features
+python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot"
+cargo test --locked --workspace --no-default-features
+FLAMESHOT_TEST_PRIVATE_BUS=1 dbus-run-session -- cargo test --locked -p flameshot --test daemon --no-default-features -- --ignored
 
 python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot"

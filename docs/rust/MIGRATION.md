@@ -2290,3 +2290,17 @@ Sway regression. Temporary event tracing was removed. This establishes the teste
 X11/Fcitx path, not all input engines, candidate positioning or native Wayland IME
 acceptance. Earlier release/source snapshots predate this dependency change and must
 be regenerated before final release.
+
+### Feature-matrix runtime checks after clipboard integration
+
+The complete existing check-rust.sh gate passed after enabling eframe's clipboard
+integration: formatting, default/all-feature Clippy and workspace tests, private-bus
+portal/service/notification checks, daemon signal/bus-loss statuses and completion
+checks. Minimal builds previously only received cargo check in this gate.
+
+The gate now runs the no-default-feature workspace tests and private-bus daemon test
+as well, and checks completions before and after compiling that minimal binary. The
+new minimal commands passed locally, followed by live Bash/Fish completion checks
+and Fish/Zsh syntax checks against the minimal executable. This extends repeatable
+feature-matrix evidence; it does not complete native Wayland IME, packaging installs,
+hosted CI or the final removal of C++ reference sources.
