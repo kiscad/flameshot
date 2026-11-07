@@ -2337,3 +2337,13 @@ now accounts for the absent update-check row in distro builds when selecting a
 language. DEBIAN-INSTALL-VALIDATION.md records hashes, root-image provenance, build
 and install distinctions, and remaining platform gates. Test containers were removed;
 no host installation was replaced.
+
+### Actual Qt-package to Rust-package upgrade
+
+Verified an APT upgrade from Ubuntu's Qt-based Flameshot 12.1.0-2build2 to the local
+Rust 15.0.0-1 package in a separate container. The old executable generated the
+configuration through its CLI. Upgrade retained the complete file, Rust validation
+accepted it, and a subsequent Rust filename update preserved every unrelated line.
+Installed package checksums and absence of Qt linkage also passed. The test container
+was removed. DEBIAN-INSTALL-VALIDATION.md records versions, hashes and scope; this
+is not evidence for all legacy settings or upgrading a running Qt GUI.

@@ -53,3 +53,23 @@ establish all Debian releases, other architectures, containerized source builds,
 Wayland package installation, Flatpak/Snap confinement or hosted CI. The inherited
 changelog still produces its previously recorded version-order warning for the old
 15.0.rc2 entry. Later production changes require refreshed package evidence.
+
+## Upgrade from the packaged Qt implementation
+
+A separate isolated container installed Ubuntu's `12.1.0-2build2` package. That
+executable identified itself as Flameshot 12.1.0 compiled with Qt 5.15.12. Its actual
+CLI wrote a filename pattern and main/contrast colors into an isolated user INI
+that also contained an unknown External section. The generated file's SHA-256 was
+`8328b5f741aac733e1ef443a9531aea665bb55a9bb2dab467dfd929320c77668`.
+
+APT then upgraded it to the local Rust `15.0.0-1` package. The INI bytes were unchanged
+and the Rust config checker accepted them. Updating the filename with the Rust CLI
+changed only that setting's line, preserving all remaining Qt-generated fields and
+the unknown section. Package checksum verification stayed clean; the new executable
+had no Qt linkage and the new package owned no QM catalogs. Old Qt dependency
+packages were not forcibly removed.
+
+This validates the tested Qt 5 package/configuration path, not every historical Qt
+schema or an in-place upgrade while a legacy GUI is running. The container was
+stopped and removed. Local evidence is in target/qt-to-rust-upgrade-validation.json
+and target/qt-upgrade-config-before.ini / target/qt-upgrade-config-after.ini.
