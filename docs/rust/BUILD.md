@@ -41,13 +41,14 @@ scripts/check-rust.sh
 cargo build --locked -p flameshot --all-features
 cargo build --locked -p flameshot-platform --examples
 python3 tests/rust/desktop_smoke.py / target/debug/flameshot
+python3 tests/rust/dbus_ui_smoke.py /
 python3 tests/rust/wayland_smoke.py / target/debug/flameshot
 ```
 
-The tray monitor test also exercises actual D-Bus menu activation and output removal.
-Build its test executable with `cargo test --locked -p flameshot --all-features
---test daemon --no-run`, then pass the executable path printed by Cargo to
-`python3 tests/rust/tray_smoke.py / TEST_EXECUTABLE`.
+The D-Bus UI suite builds the matching test executables and exercises actual tray
+monitor activation/output removal and sandbox Open With success, cancellation,
+errors, keep-open behavior and temporary-file lifetime against private mock services.
+It uses a private Xvfb display and does not launch a real external application.
 
 The test tool root `/` uses installed system tools. A directory containing an
 extracted `usr/bin`, `usr/libexec` and libraries can also be supplied. X11 tests

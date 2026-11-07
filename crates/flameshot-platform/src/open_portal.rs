@@ -18,6 +18,8 @@ const REQUEST: &str = "org.freedesktop.portal.Request";
 static TOKEN: AtomicU64 = AtomicU64::new(1);
 
 /// Returns false for user cancellation. `parent` may be empty for a tray action.
+/// `ask` requests an application chooser; `writable` permits the chosen app to edit
+/// the exported file rather than only read it.
 /// OpenFile opens the supplied directory itself; OpenDirectory would reveal its
 /// parent instead. Subscribe before calling to accept responses preceding the reply.
 pub async fn open_file(
@@ -25,6 +27,7 @@ pub async fn open_file(
     parent: &str,
     file: &File,
     ask: bool,
+    writable: bool,
     timeout: Duration,
 ) -> Result<bool> {
     let sender = connection
@@ -52,6 +55,7 @@ pub async fn open_file(
         let options = HashMap::from([
             ("handle_token", Value::from(token.as_str())),
             ("ask", Value::from(ask)),
+            ("writable", Value::from(writable)),
         ]);
         let returned: OwnedObjectPath = portal
             .call("OpenFile", &(parent, Fd::from(file), options))
@@ -98,7 +102,7 @@ pub async fn open_directory(
         "Save path is not a directory: {}",
         directory.display()
     );
-    open_file(connection, "", &file, false, timeout).await
+    open_file(connection, "", &file, false, false, timeout).await
 }
 
 async fn close(connection: &Connection, path: &str) {

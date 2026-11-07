@@ -1930,3 +1930,33 @@ those environment acceptance gates remain open alongside FileChooser/AppChooser 
 Validation passed: all-feature workspace tests, all-target Clippy with warnings
 denied, formatting, private-bus daemon/portal tests, and no-default-feature portal
 and native GIO directory-dispatch tests. No user desktop file manager was launched.
+
+### Sandbox Open With application chooser
+
+In Flatpak/Snap, Ctrl+O now requests the system application chooser through OpenURI
+OpenFile with `ask=true` and a writable screenshot descriptor. It does not enumerate
+sandbox-local desktop files. Native desktops retain the existing GIO application
+list. Open With reuses existing translated title, instruction and keep-open strings;
+portal-specific implementation details do not appear in the user flow.
+
+The asynchronous result preserves the editor on cancellation or errors. Success
+honors keepOpenAppLauncher, allowing the chooser to be invoked again or the dialog
+to be closed after launch. Unaccepted temporary PNGs are removed when the dialog
+closes; accepted images remain available for delayed reads by the external application.
+The modal spinner repaints while waiting, and errors permit retry.
+
+The isolated Xvfb/portal fixture drives the actual editor using Ctrl+O, checks that
+the received FD decodes as the selected 80x60 PNG, verifies ask/writable options,
+and covers success, cancellation, rejection, keep-open behavior and file lifetime.
+All external application dispatch is mocked on a private bus. This is not installed
+Flatpak/Snap or real host AppChooser UI acceptance, which remains an environment gate.
+The new dbus_ui_smoke.py runner builds matching test executables and runs both this
+fixture and the tray monitor fixture. It is wired into Rust CI; remote CI has not run.
+
+Validation passed: all-feature workspace tests, all-target Clippy with warnings
+denied, no-default-feature portal tests, the complete isolated Xvfb regression and
+the combined private-bus UI suite. Both native fixture harnesses and their child
+processes now set XDG_CACHE_HOME explicitly: an initial local fixture run exposed
+that last-selection caching was otherwise escaping isolation. The corrected suite
+was rerun with the default region cache's bytes and modification time verified
+unchanged. Formatting and diff checks also passed.

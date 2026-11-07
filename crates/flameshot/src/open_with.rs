@@ -1,28 +1,43 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::i18n::tr;
 use eframe::egui;
 use flameshot_platform::applications::{self, Application};
 use std::{io::Write, path::PathBuf, sync::mpsc, time::Duration};
 pub struct OpenWith {
     image: image::RgbaImage,
     apps: Vec<Application>,
+    portal: bool,
+    start_portal: bool,
     listing: Option<mpsc::Receiver<Vec<Application>>>,
-    job: Option<mpsc::Receiver<Result<(), String>>>,
+    job: Option<mpsc::Receiver<Result<bool, String>>>,
     file: Option<PathBuf>,
     launched: bool,
     keep_open: bool,
     query: String,
     error: String,
 }
+enum Launch {
+    Native(Application),
+    Portal,
+}
 impl OpenWith {
     pub fn new(image: image::RgbaImage, keep_open: bool) -> Self {
-        let (sender, receiver) = mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = sender.send(applications::list());
-        });
+        let portal = crate::app_ui::restricted_bus_names();
+        let listing = if portal {
+            None
+        } else {
+            let (sender, receiver) = mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = sender.send(applications::list());
+            });
+            Some(receiver)
+        };
         Self {
             image,
             apps: Vec::new(),
-            listing: Some(receiver),
+            listing,
+            portal,
+            start_portal: portal,
             job: None,
             file: None,
             launched: false,
@@ -46,7 +61,8 @@ impl OpenWith {
         {
             self.job = None;
             match result {
-                Ok(()) => {
+                Ok(false) => return false,
+                Ok(true) => {
                     self.launched = true;
                     if !self.keep_open {
                         return false;
@@ -56,37 +72,59 @@ impl OpenWith {
             }
         }
         let mut keep = true;
-        let mut launch = None;
-        egui::Window::new("Open With")
+        let mut launch = self.start_portal.then_some(Launch::Portal);
+        self.start_portal = false;
+        egui::Window::new(tr("AppLauncherWidget", "Open With"))
             .collapsible(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .default_width(450.0)
             .show(ctx, |ui| {
-                ui.label("Choose an application for this screenshot");
-                ui.text_edit_singleline(&mut self.query);
-                egui::ScrollArea::vertical()
-                    .max_height(300.0)
-                    .show(ui, |ui| {
-                        let query = self.query.to_lowercase();
-                        for app in &self.apps {
-                            if app.name.to_lowercase().contains(&query)
-                                && ui
-                                    .add_enabled(self.job.is_none(), egui::Button::new(&app.name))
-                                    .clicked()
-                            {
-                                launch = Some(app.clone());
+                if self.portal {
+                    if ui
+                        .add_enabled(
+                            self.job.is_none(),
+                            egui::Button::new(tr(
+                                "AppLauncher",
+                                "Choose an app to open the capture",
+                            )),
+                        )
+                        .clicked()
+                    {
+                        launch = Some(Launch::Portal);
+                    }
+                } else {
+                    ui.label(tr("AppLauncher", "Choose an app to open the capture"));
+                    ui.text_edit_singleline(&mut self.query);
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            let query = self.query.to_lowercase();
+                            for app in &self.apps {
+                                if app.name.to_lowercase().contains(&query)
+                                    && ui
+                                        .add_enabled(
+                                            self.job.is_none(),
+                                            egui::Button::new(&app.name),
+                                        )
+                                        .clicked()
+                                {
+                                    launch = Some(Launch::Native(app.clone()));
+                                }
                             }
-                        }
-                    });
+                        });
+                }
                 if self.listing.is_some() || self.job.is_some() {
                     ui.spinner();
                     ctx.request_repaint_after(Duration::from_millis(100));
                 }
-                if self.apps.is_empty() && self.listing.is_none() {
+                if !self.portal && self.apps.is_empty() && self.listing.is_none() {
                     ui.label("No applications found");
                 }
                 if ui
-                    .checkbox(&mut self.keep_open, "Keep open after selection")
+                    .checkbox(
+                        &mut self.keep_open,
+                        tr("AppLauncherWidget", "Keep open after selection"),
+                    )
                     .changed()
                     && let Err(error) = crate::settings::Settings::update(&[(
                         "keepOpenAppLauncher",
@@ -105,7 +143,7 @@ impl OpenWith {
                     keep = false;
                 }
             });
-        if let Some(app) = launch {
+        if keep && let Some(launch) = launch {
             let file = match &self.file {
                 Some(path) => Ok(path.clone()),
                 None => self.write_image(),
@@ -115,11 +153,45 @@ impl OpenWith {
                     self.file = Some(file.clone());
                     let (sender, receiver) = mpsc::channel();
                     self.job = Some(receiver);
-                    std::thread::spawn(move || {
-                        let _ = sender
-                            .send(applications::launch(&app, &file).map_err(|e| e.to_string()));
-                    });
+                    self.error.clear();
                     ctx.request_repaint();
+                    let ctx = ctx.clone();
+                    match launch {
+                        Launch::Native(app) => {
+                            std::thread::spawn(move || {
+                                let _ = sender.send(
+                                    applications::launch(&app, &file)
+                                        .map(|()| true)
+                                        .map_err(|e| e.to_string()),
+                                );
+                                ctx.request_repaint();
+                            });
+                        }
+                        Launch::Portal => {
+                            tokio::spawn(async move {
+                                let result = async {
+                                    let descriptor = std::fs::OpenOptions::new()
+                                        .read(true)
+                                        .write(true)
+                                        .open(&file)?;
+                                    let connection = crate::daemon::session_connection().await?;
+                                    flameshot_platform::open_portal::open_file(
+                                        &connection,
+                                        "",
+                                        &descriptor,
+                                        true,
+                                        true,
+                                        Duration::from_secs(120),
+                                    )
+                                    .await
+                                }
+                                .await;
+                                let _ =
+                                    sender.send(result.map_err(|e: anyhow::Error| e.to_string()));
+                                ctx.request_repaint();
+                            });
+                        }
+                    }
                 }
                 Err(error) => self.error = error.to_string(),
             }

@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     os::unix::fs::MetadataExt,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     },
     time::Duration,
@@ -19,6 +19,7 @@ struct Portal {
     closed: Arc<AtomicU32>,
     inode: u64,
     device: u64,
+    images: Arc<Mutex<Vec<std::path::PathBuf>>>,
 }
 struct Request(Arc<AtomicU32>);
 #[zbus::interface(name = "org.freedesktop.portal.Request")]
@@ -40,9 +41,25 @@ impl Portal {
         assert!(parent.is_empty());
         let file = std::fs::File::from(std::os::fd::OwnedFd::from(fd));
         let metadata = file.metadata().unwrap();
-        assert!(metadata.is_dir());
-        assert_eq!((metadata.dev(), metadata.ino()), (self.device, self.inode));
-        assert!(!bool::try_from(options.get("ask").unwrap()).unwrap());
+        let ask = bool::try_from(options.get("ask").unwrap()).unwrap();
+        assert_eq!(
+            bool::try_from(options.get("writable").unwrap()).unwrap(),
+            ask
+        );
+        if ask {
+            use std::os::fd::AsRawFd;
+            let path = std::fs::read_link(format!("/proc/self/fd/{}", file.as_raw_fd())).unwrap();
+            let decoded = image::ImageReader::new(std::io::BufReader::new(&file))
+                .with_guessed_format()
+                .unwrap()
+                .decode()
+                .unwrap();
+            assert_eq!((decoded.width(), decoded.height()), (80, 60));
+            self.images.lock().unwrap().push(path);
+        } else {
+            assert!(metadata.is_dir());
+            assert_eq!((metadata.dev(), metadata.ino()), (self.device, self.inode));
+        }
         let sender = header
             .sender()
             .unwrap()
@@ -90,6 +107,7 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
     let metadata = directory.metadata().unwrap();
     let status = Arc::new(AtomicU32::new(0));
     let closed = Arc::new(AtomicU32::new(0));
+    let images = Arc::new(Mutex::new(Vec::new()));
     let _server = zbus::connection::Builder::session()
         .unwrap()
         .name("org.freedesktop.portal.Desktop")
@@ -101,6 +119,7 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
                 closed: closed.clone(),
                 inode: metadata.ino(),
                 device: metadata.dev(),
+                images: images.clone(),
             },
         )
         .unwrap()
@@ -182,6 +201,9 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
             }
         }
     }
+    if let Ok(tools) = std::env::var("FLAMESHOT_TEST_PRIVATE_DISPLAY_TOOLS") {
+        exercise_open_with(root.path(), &tools, &status, &images).await;
+    }
     let file = root.path().join("not-a-directory");
     std::fs::write(&file, "data").unwrap();
     assert!(
@@ -196,4 +218,109 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
             .await
             .is_err()
     );
+}
+
+struct ChildGuard(std::process::Child);
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+async fn exercise_open_with(
+    root: &std::path::Path,
+    tools: &str,
+    status: &AtomicU32,
+    images: &Mutex<Vec<std::path::PathBuf>>,
+) {
+    let xdotool = std::path::Path::new(tools).join("usr/bin/xdotool");
+    let tool = |args: &[&str]| {
+        std::process::Command::new(&xdotool)
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    for (code, keep) in [(0, false), (1, false), (0, true), (2, false)] {
+        status.store(code, Ordering::SeqCst);
+        images.lock().unwrap().clear();
+        std::fs::write(root.join("flameshot/flameshot.ini"), format!("[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\nuseX11LegacyScreenshot=true\nkeepOpenAppLauncher={keep}\n")).unwrap();
+        let mut child = ChildGuard(
+            std::process::Command::new(env!("CARGO_BIN_EXE_flameshot"))
+                .args(["gui", "--region", "80x60+10+20", "--raw"])
+                .env("FLATPAK_ID", "isolated-test")
+                .env("XDG_CONFIG_HOME", root)
+                .env("XDG_CACHE_HOME", root)
+                .env("TMPDIR", root)
+                .env("LC_ALL", "C")
+                .env("PATH", "/nonexistent/flameshot-test-tools")
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+                .unwrap(),
+        );
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let window = loop {
+            let output = tool(&["search", "--onlyvisible", "--name", "^Flameshot$"]);
+            if output.status.success() {
+                break String::from_utf8(output.stdout)
+                    .unwrap()
+                    .lines()
+                    .last()
+                    .unwrap()
+                    .to_owned();
+            }
+            assert!(child.0.try_wait().unwrap().is_none(), "Editor exited early");
+            assert!(std::time::Instant::now() < deadline, "Missing editor");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        };
+        assert!(tool(&["windowfocus", "--sync", &window]).status.success());
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(tool(&["key", "ctrl+o"]).status.success());
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let path = loop {
+            if let Some(path) = images.lock().unwrap().first().cloned() {
+                break path;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Open With did not call the app chooser"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        };
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        if code != 0 || keep {
+            assert!(
+                child.0.try_wait().unwrap().is_none(),
+                "Cancellation/keep-open/error discarded editor"
+            );
+            if keep || code == 2 {
+                assert!(tool(&["key", "Escape"]).status.success());
+                tokio::time::sleep(Duration::from_millis(250)).await;
+            }
+            if code != 0 {
+                assert!(tool(&["key", "Return"]).status.success());
+            }
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(exit) = child.0.try_wait().unwrap() {
+                assert!(exit.success(), "{exit}");
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Editor failed to complete"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        if code == 0 {
+            assert!(
+                path.exists(),
+                "Accepted screenshot disappeared before consumer could open it"
+            );
+            std::fs::remove_file(path).unwrap();
+        } else {
+            assert!(!path.exists(), "Unaccepted screenshot was not cleaned up");
+        }
+    }
 }

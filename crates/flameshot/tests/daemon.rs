@@ -105,6 +105,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         Command::new(env!("CARGO_BIN_EXE_flameshot"))
             .env("PATH", &launcher_dir)
             .env("XDG_CONFIG_HOME", temp.path())
+            .env("XDG_CACHE_HOME", temp.path())
             .env("LANG", "C")
             .env("LC_ALL", "C")
             .stdin(Stdio::null())
@@ -162,6 +163,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     let mut duplicate = ChildGuard(
         Command::new(env!("CARGO_BIN_EXE_flameshot"))
             .env("XDG_CONFIG_HOME", temp.path())
+            .env("XDG_CACHE_HOME", temp.path())
             .spawn()
             .unwrap(),
     );
@@ -398,6 +400,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         let _quiet = ChildGuard(
             Command::new(env!("CARGO_BIN_EXE_flameshot"))
                 .env("XDG_CONFIG_HOME", temp.path())
+                .env("XDG_CACHE_HOME", temp.path())
                 .env("LANG", "C")
                 .env("LC_ALL", "C")
                 .env(sandbox_key, sandbox_value)
@@ -473,6 +476,7 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     let _localized = ChildGuard(
         Command::new(env!("CARGO_BIN_EXE_flameshot"))
             .env("XDG_CONFIG_HOME", temp.path())
+            .env("XDG_CACHE_HOME", temp.path())
             .env("LC_ALL", "C")
             .spawn()
             .unwrap(),

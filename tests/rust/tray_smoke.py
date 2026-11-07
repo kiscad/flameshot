@@ -12,7 +12,7 @@ import tempfile
 
 root, test = (Path(p).resolve() for p in sys.argv[1:])
 with tempfile.TemporaryDirectory(prefix='flameshot-tray-') as directory:
-    env = dict(os.environ, XDG_RUNTIME_DIR=directory, XDG_SESSION_TYPE='x11',
+    env = dict(os.environ, XDG_RUNTIME_DIR=directory, XDG_CACHE_HOME=directory, XDG_CONFIG_HOME=directory, XDG_SESSION_TYPE='x11',
                FLAMESHOT_TEST_PRIVATE_BUS='1', FLAMESHOT_TEST_PRIVATE_DISPLAY_TOOLS=str(root),
                LD_LIBRARY_PATH=str(root/'usr/lib/x86_64-linux-gnu')+':'+os.environ.get('LD_LIBRARY_PATH',''))
     env.pop('WAYLAND_DISPLAY', None)
