@@ -2223,3 +2223,13 @@ resources, quoted activation paths, absence of Qt catalog files and desktop/AppS
 metadata. Invalid prefixes must fail without creating even a partial destination.
 The regression passed against the current release executable and is wired into Rust
 CI; hosted CI remains unrun. All test payloads were temporary, with no live install.
+
+### Vendored archive built without a registry cache
+
+Generated the source archive at `r2440.55168bb3`, extracted it into a fresh directory,
+and built/tested all workspace features with --frozen, offline mode, an empty Cargo
+home and an independent build directory. Both commands passed. The extracted staging
+regression passed as well. Build metadata used the archived revision, and no registry
+source cache was populated. SOURCE-VALIDATION.md records the artifact hash and the
+installed-toolchain/system-dependency limitations of this evidence. This does not
+complete clean-system installs, hosted CI or removal of the checkout's C++ reference.
