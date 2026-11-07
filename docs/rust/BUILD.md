@@ -41,6 +41,7 @@ scripts/check-rust.sh
 cargo build --locked -p flameshot --all-features
 cargo build --locked -p flameshot-platform --examples
 python3 tests/rust/desktop_smoke.py / target/debug/flameshot
+python3 tests/rust/localization_smoke.py / target/debug/flameshot
 python3 tests/rust/dbus_ui_smoke.py / --documents
 python3 tests/rust/wayland_smoke.py / target/debug/flameshot
 ```

@@ -2024,3 +2024,32 @@ separate requirements.
 Validation passed: all-feature workspace tests and all-target Clippy with warnings
 denied, default workspace compilation, no-default-feature private portal tests,
 formatting and the combined isolated D-Bus/Xvfb UI suite. Remote CI remains unrun.
+
+### Launcher and update-window localization
+
+Launcher controls now use existing CaptureLauncher, PinWidget and cancellation
+catalog entries. Monitor descriptions preserve output names while translating the
+template; delay displays use the baseline No Delay and singular/plural suffixes.
+Countdown, process-status prefix, optional path, initial region and title strings
+are registered in the catalogs. Update-window titles, status text and actions also
+use catalog lookups, and the window now installs the shared script fallback fonts.
+Raw OS/network error details remain diagnostic text.
+
+New strings were registered in all 49 catalogs without rewriting existing entries.
+Simplified Chinese and traditional Chinese (Taiwan/Hong Kong) translations were
+provided for the new strings. Other new translations remain marked unfinished and
+use the established English source fallback; this is not a claim that every language
+or every Rust UI surface has complete translation coverage.
+
+The new localization_smoke.py uses explicit zh_CN/zh_TW settings with LC_ALL=C,
+checks UTF-8 window titles, drives capture/cancellation/return, and records screenshots.
+Both rendered launcher screenshots were inspected: Chinese glyphs and controls are
+visible without truncation. Updates share the translated catalog/font path but their
+actual network-result window was not driven by this fixture. Placeholder/fallback
+checks cover the new catalog entries. The fixture is included in Rust CI; remote CI
+has not run.
+
+Validation passed: all-feature workspace tests, all-target Clippy with warnings
+denied, no-default-feature workspace compilation, focused catalog tests, zh_CN/zh_TW
+native launcher lifecycle/rendering, and the complete isolated Xvfb suite in English.
+Formatting and diff checks passed. No live update API was called for this UI work.

@@ -124,6 +124,30 @@
         <source>Delay:</source>
         <translation>Delay:</translation>
     </message>
+    <message>
+        <source>Flameshot Launcher</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All screens</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Initial region</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Save path (optional)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Capture in %1…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Capture process exited with %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>CaptureWidget</name>
@@ -1693,6 +1717,41 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
         <location filename="../../src/config/visualseditor.cpp" line="71"/>
         <source>Select All</source>
         <translation>Select All</translation>
+    </message>
+</context>
+<context>
+    <name>RustUpdates</name>
+    <message>
+        <source>Flameshot Updates</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Checking for updates…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Version %1 is available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>You have the latest version</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update check failed: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Open release page</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Ignore this version</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Version ignored</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 </TS>

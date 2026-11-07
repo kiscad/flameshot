@@ -91,6 +91,34 @@ mod tests {
         assert_eq!(tr.translate("Missing", "Copy"), "Copy");
     }
     #[test]
+    fn launcher_and_update_catalogs_keep_placeholders_and_source_fallback() {
+        for locale in ["zh_CN", "zh_TW", "zh_HK"] {
+            let tr = Translator::new(locale);
+            for (context, source) in [
+                ("CaptureLauncher", "Capture in %1…"),
+                ("CaptureLauncher", "Capture process exited with %1"),
+                ("RustUpdates", "Version %1 is available"),
+                ("RustUpdates", "Update check failed: %1"),
+            ] {
+                let text = tr.translate(context, source);
+                assert_ne!(text, source, "{locale}: {source}");
+                assert_eq!(text.matches("%1").count(), 1);
+            }
+        }
+        assert_eq!(
+            Translator::new("zh_CN").translate("CaptureLauncher", "Flameshot Launcher"),
+            "Flameshot 启动器"
+        );
+        assert_eq!(
+            Translator::new("zh_TW").translate("CaptureLauncher", "Flameshot Launcher"),
+            "Flameshot 啟動器"
+        );
+        assert_eq!(
+            Translator::new("unknown").translate("RustUpdates", "Open release page"),
+            "Open release page"
+        );
+    }
+    #[test]
     fn unknown_locale_and_unfinished_entries_fall_back_to_source() {
         assert_eq!(
             Translator::new("unknown").translate("CopyTool", "Copy"),

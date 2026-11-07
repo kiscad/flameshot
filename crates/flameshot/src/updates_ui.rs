@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::i18n::tr;
 use eframe::egui;
 use flameshot_platform::updates::{self, Update};
 pub fn show() -> anyhow::Result<()> {
@@ -10,17 +11,18 @@ pub fn show() -> anyhow::Result<()> {
         let _ = sender.send(result);
     });
     eframe::run_native(
-        "Flameshot Updates",
+        tr("RustUpdates", "Flameshot Updates"),
         eframe::NativeOptions {
             viewport: crate::app_ui::viewport().with_inner_size([440.0, 180.0]),
             ..Default::default()
         },
-        Box::new(move |_| {
+        Box::new(move |cc| {
+            crate::i18n::install_fonts(&cc.egui_ctx);
             Ok(Box::new(Updates {
                 links: Default::default(),
                 job: Some(receiver),
                 update: None,
-                message: "Checking for updates…".into(),
+                message: tr("RustUpdates", "Checking for updates…").into(),
             }))
         }),
     )
@@ -40,14 +42,18 @@ impl eframe::App for Updates {
             self.job = None;
             match result {
                 Ok(Some(update)) => {
-                    self.message = format!("Version {} is available", update.version);
+                    self.message =
+                        tr("RustUpdates", "Version %1 is available").replace("%1", &update.version);
                     self.update = Some(update);
                 }
-                Ok(None) => self.message = "You have the latest version".into(),
-                Err(e) => self.message = format!("Update check failed: {e}"),
+                Ok(None) => self.message = tr("RustUpdates", "You have the latest version").into(),
+                Err(e) => {
+                    self.message =
+                        tr("RustUpdates", "Update check failed: %1").replace("%1", &e.to_string())
+                }
             }
         }
-        ui.heading("Flameshot Updates");
+        ui.heading(tr("RustUpdates", "Flameshot Updates"));
         ui.label(&self.message);
         if self.job.is_some() {
             ui.spinner();
@@ -55,19 +61,25 @@ impl eframe::App for Updates {
                 .request_repaint_after(std::time::Duration::from_millis(100));
         }
         if let Some(update) = &self.update {
-            self.links.link(ui, "Open release page", &update.url);
-            if ui.button("Ignore this version").clicked() {
+            self.links
+                .link(ui, tr("RustUpdates", "Open release page"), &update.url);
+            if ui
+                .button(tr("RustUpdates", "Ignore this version"))
+                .clicked()
+            {
                 match crate::settings::Settings::update(&[(
                     "ignoreUpdateToVersion",
                     update.version.clone(),
                 )]) {
-                    Ok(()) => self.message = "Version ignored".into(),
+                    Ok(()) => self.message = tr("RustUpdates", "Version ignored").into(),
                     Err(e) => self.message = e.to_string(),
                 }
             }
         }
         self.links.status(ui);
-        if ui.button("Close").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        if ui.button(tr("UtilityPanel", "Close")).clicked()
+            || ui.input(|i| i.key_pressed(egui::Key::Escape))
+        {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }

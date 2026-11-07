@@ -56,6 +56,8 @@ jobs:
           cargo build --locked -p flameshot-platform --examples
       - name: Real X11 smoke
         run: python3 tests/rust/desktop_smoke.py / target/debug/flameshot
+      - name: Simplified and traditional Chinese launcher
+        run: python3 tests/rust/localization_smoke.py / target/debug/flameshot
       - name: Private D-Bus tray and application chooser UI
         run: python3 tests/rust/dbus_ui_smoke.py / --documents
       - name: Native Wayland and mixed-scale smoke

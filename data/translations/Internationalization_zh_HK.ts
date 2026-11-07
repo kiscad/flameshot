@@ -201,6 +201,30 @@
         <source>WxH+x+y</source>
         <translation>WxH+x+y</translation>
     </message>
+    <message>
+        <source>Flameshot Launcher</source>
+        <translation>Flameshot 啟動器</translation>
+    </message>
+    <message>
+        <source>All screens</source>
+        <translation>所有螢幕</translation>
+    </message>
+    <message>
+        <source>Initial region</source>
+        <translation>初始選取區域</translation>
+    </message>
+    <message>
+        <source>Save path (optional)</source>
+        <translation>儲存路徑（選填）</translation>
+    </message>
+    <message>
+        <source>Capture in %1…</source>
+        <translation>%1 秒後擷取畫面…</translation>
+    </message>
+    <message>
+        <source>Capture process exited with %1</source>
+        <translation>擷取畫面程序已結束：%1</translation>
+    </message>
 </context>
 <context>
     <name>CaptureWidget</name>
@@ -3361,6 +3385,41 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
         <location filename="../../build/_deps/qtcolorwidgets-src/src/QtColorWidgets/swatch.cpp" line="864"/>
         <source>%1 (%2)</source>
         <translation>%1 (%2)</translation>
+    </message>
+</context>
+<context>
+    <name>RustUpdates</name>
+    <message>
+        <source>Flameshot Updates</source>
+        <translation>Flameshot 更新</translation>
+    </message>
+    <message>
+        <source>Checking for updates…</source>
+        <translation>正在檢查更新…</translation>
+    </message>
+    <message>
+        <source>Version %1 is available</source>
+        <translation>有新版本 %1 可用</translation>
+    </message>
+    <message>
+        <source>You have the latest version</source>
+        <translation>目前已是最新版本</translation>
+    </message>
+    <message>
+        <source>Update check failed: %1</source>
+        <translation>檢查更新失敗：%1</translation>
+    </message>
+    <message>
+        <source>Open release page</source>
+        <translation>開啟版本發布頁面</translation>
+    </message>
+    <message>
+        <source>Ignore this version</source>
+        <translation>忽略此版本</translation>
+    </message>
+    <message>
+        <source>Version ignored</source>
+        <translation>已忽略此版本</translation>
     </message>
 </context>
 </TS>

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::i18n::tr;
 use anyhow::{Result, ensure};
 use eframe::egui;
 use flameshot_core::region::Region;
@@ -93,7 +94,7 @@ pub fn show() -> Result<()> {
         error,
     };
     eframe::run_native(
-        "Flameshot Launcher",
+        tr("CaptureLauncher", "Flameshot Launcher"),
         eframe::NativeOptions {
             viewport: crate::app_ui::viewport().with_inner_size([500.0, 400.0]),
             ..Default::default()
@@ -167,7 +168,8 @@ impl eframe::App for Launcher {
             self.job = None;
             self.error = match result {
                 Ok(status) if status.success() || status.code() == Some(2) => String::new(),
-                Ok(status) => format!("Capture process exited with {status}"),
+                Ok(status) => tr("CaptureLauncher", "Capture process exited with %1")
+                    .replace("%1", &status.to_string()),
                 Err(error) => error,
             };
             if let Ok(Some(region)) = crate::region_cache::load() {
@@ -179,11 +181,11 @@ impl eframe::App for Launcher {
         }
         if let Some(deadline) = self.deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            ui.heading(format!(
-                "Capture in {}…",
-                remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0)
+            ui.heading(tr("CaptureLauncher", "Capture in %1…").replace(
+                "%1",
+                &(remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0)).to_string(),
             ));
-            if ui.button("Cancel").clicked() {
+            if ui.button(tr("ColorGrabWidget", "Cancel")).clicked() {
                 self.deadline = None;
             } else if remaining.is_zero() {
                 self.deadline = None;
@@ -197,37 +199,67 @@ impl eframe::App for Launcher {
             return;
         }
         egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.heading("Capture Launcher");
+            ui.heading(tr("CaptureLauncher", "Capture Launcher"));
             ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.mode, Mode::Region, "Rectangular Region");
-                ui.selectable_value(&mut self.mode, Mode::Full, "Full Screen");
+                ui.selectable_value(
+                    &mut self.mode,
+                    Mode::Region,
+                    tr("CaptureLauncher", "Rectangular Region"),
+                );
+                ui.selectable_value(
+                    &mut self.mode,
+                    Mode::Full,
+                    tr("CaptureLauncher", "Full Screen"),
+                );
             });
-            egui::ComboBox::from_label("Screen")
+            egui::ComboBox::from_label(tr("CaptureLauncher", "Monitor:"))
                 .selected_text(
                     self.selected
                         .and_then(|i| self.screens.get(i))
                         .map(|s| s.name.as_str())
-                        .unwrap_or("All screens"),
+                        .unwrap_or(tr("CaptureLauncher", "All screens")),
                 )
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.selected, None, "All screens");
+                    ui.selectable_value(
+                        &mut self.selected,
+                        None,
+                        tr("CaptureLauncher", "All screens"),
+                    );
                     for (i, screen) in self.screens.iter().enumerate() {
                         ui.selectable_value(
                             &mut self.selected,
                             Some(i),
-                            format!(
-                                "{}: {} ({}×{})",
-                                i + 1,
-                                screen.name,
-                                screen.bounds.width,
-                                screen.bounds.height
-                            ),
+                            tr("CaptureLauncher", "Monitor %1: %2 (%3x%4)")
+                                .replace("%1", &(i + 1).to_string())
+                                .replace("%3", &screen.bounds.width.to_string())
+                                .replace("%4", &screen.bounds.height.to_string())
+                                .replace("%2", &screen.name),
                         );
                     }
                 });
-            ui.add(egui::Slider::new(&mut self.delay, 0..=60).text("Delay (seconds)"));
+            ui.add(
+                egui::Slider::new(&mut self.delay, 0..=60)
+                    .text(tr("CaptureLauncher", "Delay:"))
+                    .custom_formatter(|value, _| {
+                        let value = value as u32;
+                        if value == 0 {
+                            tr("CaptureLauncher", "No Delay").into()
+                        } else {
+                            format!(
+                                "{value}{}",
+                                tr(
+                                    "CaptureLauncher",
+                                    if value == 1 { " second" } else { " seconds" }
+                                )
+                            )
+                        }
+                    }),
+            );
             if self.mode == Mode::Region {
-                ui.checkbox(&mut self.use_region, "Initial region");
+                ui.checkbox(
+                    &mut self.use_region,
+                    tr("CaptureLauncher", "Initial region"),
+                );
                 if self.use_region {
                     ui.horizontal(|ui| {
                         ui.add(egui::DragValue::new(&mut self.region.x).prefix("X "));
@@ -245,13 +277,15 @@ impl eframe::App for Launcher {
                     });
                 }
             }
-            ui.checkbox(&mut self.clipboard, "Copy to clipboard");
-            ui.label("Save path (optional)");
+            ui.checkbox(&mut self.clipboard, tr("PinWidget", "Copy to clipboard"));
+            ui.label(tr("CaptureLauncher", "Save path (optional)"));
             ui.text_edit_singleline(&mut self.path);
             if !self.error.is_empty() {
                 ui.colored_label(egui::Color32::RED, &self.error);
             }
-            if ui.button("Launch").clicked()
+            if ui
+                .button(tr("CaptureLauncher", "Take new screenshot"))
+                .clicked()
                 || (!ctx.egui_wants_keyboard_input()
                     && ctx.input(|i| i.key_pressed(egui::Key::Enter)))
             {
