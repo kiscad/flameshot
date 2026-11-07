@@ -2471,3 +2471,27 @@ translation audit work, so this does not close the global resources acceptance g
 Final Chinese editor screenshots confirm Upload/Open With are translated. The
 65 no-default-feature application unit tests also pass (one existing ignored test),
 as do formatting and diff checks.
+
+### Localize application chooser feedback and record terminal parity gap
+
+The native application chooser now translates its search hint, empty-list feedback,
+Close button and disconnected-worker errors. Filtering an existing list to no matches
+shows a distinct translated message instead of a blank list. Six messages were added
+to all 49 AppLauncherWidget catalogs, with Chinese translations and existing
+unambiguous translations reused elsewhere. Catalog XML and duplicate keys checked.
+
+The private localization fixture opens the native chooser after cancelling Save,
+captures it in Simplified/Traditional Chinese, closes it with Escape and returns to
+the launcher. No listed external application is started. Screenshots were inspected;
+application names themselves follow the desktop entries/environment locale. The
+three Open With lifecycle tests and all-feature all-target Clippy pass, along with
+the expanded localization fixture, formatting and diff checks. Search no-match
+feedback is implemented; this fixture does not automate entering the search query.
+
+Source comparison found a remaining behavior gap: legacy applauncherwidget.cpp
+provides a manual “Launch in terminal” checkbox in addition to honoring the desktop
+entry's Terminal flag. Rust currently delegates the entry's Terminal behavior to
+GIO but has no manual override. Implement and validate this native option, including
+Desktop Entry argument expansion, spaced image paths and launcher failures, before
+closing the desktop compatibility gate. Sandbox application selection remains owned
+by the OpenFile portal and cannot promise that native override.

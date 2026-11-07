@@ -83,6 +83,30 @@
         <source>Unable to launch in terminal.</source>
         <translation>Não foi possível abrir no terminal.</translation>
     </message>
+    <message>
+        <source>No applications found</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No matching applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Search applications</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Fechar</translation>
+    </message>
+    <message>
+        <source>Application launcher worker stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Application listing worker stopped</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>ArrowTool</name>

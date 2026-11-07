@@ -67,6 +67,13 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
         time.sleep(.3)
         assert process.poll() is None
         assert tool('getwindowname',capture).returncode==0
+        tool('key','ctrl+o')
+        time.sleep(.7)
+        captured=subprocess.run([binary,'full','--raw'],capture_output=True,timeout=10)
+        assert captured.returncode==0,captured.stderr.decode()
+        Path(artifacts,f'rust-open-with-{locale}.png').write_bytes(captured.stdout)
+        tool('key','Escape') # Close Open With without launching an application.
+        time.sleep(.3)
         tool('key','Escape')
         launcher=window('^'+title+'$')
         tool('windowfocus','--sync',launcher)

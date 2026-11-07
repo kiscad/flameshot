@@ -83,6 +83,30 @@
         <source>Unable to write in</source>
         <translation>無法寫入</translation>
     </message>
+    <message>
+        <source>No applications found</source>
+        <translation>找不到應用程式</translation>
+    </message>
+    <message>
+        <source>No matching applications</source>
+        <translation>沒有符合的應用程式</translation>
+    </message>
+    <message>
+        <source>Search applications</source>
+        <translation>搜尋應用程式</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>關閉</translation>
+    </message>
+    <message>
+        <source>Application launcher worker stopped</source>
+        <translation>應用程式啟動工作已停止</translation>
+    </message>
+    <message>
+        <source>Application listing worker stopped</source>
+        <translation>應用程式清單讀取工作已停止</translation>
+    </message>
 </context>
 <context>
     <name>ArrowTool</name>

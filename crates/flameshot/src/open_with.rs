@@ -77,7 +77,7 @@ impl OpenWith {
                 // The external program may have opened the image before its
                 // worker stopped. Do not convert an unknown outcome to failure.
                 self.uncertain_launch = true;
-                Err("Application launcher worker stopped".into())
+                Err(tr("AppLauncherWidget", "Application launcher worker stopped").into())
             }
         };
         self.job = None;
@@ -93,7 +93,8 @@ impl OpenWith {
                 Err(mpsc::TryRecvError::Empty) => {}
                 Err(mpsc::TryRecvError::Disconnected) => {
                     self.listing = None;
-                    self.error = "Application listing worker stopped".into();
+                    self.error =
+                        tr("AppLauncherWidget", "Application listing worker stopped").into();
                 }
             }
         }
@@ -132,7 +133,10 @@ impl OpenWith {
                     }
                 } else {
                     ui.label(tr("AppLauncher", "Choose an app to open the capture"));
-                    ui.text_edit_singleline(&mut self.query);
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.query)
+                            .hint_text(tr("AppLauncherWidget", "Search applications")),
+                    );
                     egui::ScrollArea::vertical()
                         .max_height(300.0)
                         .show(ui, |ui| {
@@ -155,8 +159,16 @@ impl OpenWith {
                     ui.spinner();
                     ctx.request_repaint_after(Duration::from_millis(100));
                 }
-                if !self.portal && self.apps.is_empty() && self.listing.is_none() {
-                    ui.label("No applications found");
+                if !self.portal && self.listing.is_none() {
+                    if self.apps.is_empty() {
+                        ui.label(tr("AppLauncherWidget", "No applications found"));
+                    } else if !self
+                        .apps
+                        .iter()
+                        .any(|app| app.name.to_lowercase().contains(&self.query.to_lowercase()))
+                    {
+                        ui.label(tr("AppLauncherWidget", "No matching applications"));
+                    }
                 }
                 if ui
                     .checkbox(
@@ -175,7 +187,7 @@ impl OpenWith {
                     ui.colored_label(egui::Color32::RED, &self.error);
                 }
                 if self.job.is_none()
-                    && (ui.button("Close").clicked()
+                    && (ui.button(tr("AppLauncherWidget", "Close")).clicked()
                         || ctx.input(|i| i.key_pressed(egui::Key::Escape)))
                 {
                     keep = false;
