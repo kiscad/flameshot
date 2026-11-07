@@ -1905,6 +1905,14 @@ Seçmek için tıklayın</translation>
         <source>Close</source>
         <translation>Kapat</translation>
     </message>
+    <message>
+        <source>Original size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>PixelateTool</name>

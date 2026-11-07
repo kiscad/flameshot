@@ -3181,3 +3181,31 @@ fixtures with real document-portal saves, and Sway with Pinyin, scaled grids and
 precision picking. The contract checks run in default, all-feature and minimal builds.
 All reference/native checks used private buses and isolated desktop fixtures. Hosted
 CI and the remaining migration acceptance gates are still pending.
+
+### Localize the existing pinned-image menu
+
+The pin window's rotation, original-size, opacity and close labels previously bypassed
+the translator, and its egui context did not install the script-specific fonts used
+by other windows. It now uses the existing PinWidget translations for rotation/close,
+registers Original size and Opacity in all 49 catalogs, and installs the shared fonts
+and configured UI theme when creating the window. Simplified/traditional Chinese
+translations are supplied; unfinished languages retain source-text fallback. The
+Hong Kong rotation/close entries used here are now completed instead of falling back
+to English because of unfinished translation markers.
+
+The Chinese catalog coverage check includes all five pin-menu labels. The private-Xvfb
+localization fixture now opens a synthetic pinned image in Simplified and Traditional
+Chinese, captures its menu, rotates it, zooms, restores original size and closes it.
+The captured menus were visually checked for readable Chinese glyphs.
+
+This closes the identified pin-menu localization gap, not pin feature parity. Source
+comparison also identified missing Copy to clipboard and Save to file menu actions;
+legacy increment/decrement opacity actions remain to be reconciled with the current
+slider/keyboard controls. Those are explicit remaining pin acceptance items.
+
+Validation passed: Chinese catalog/fallback checks, the expanded Simplified/Traditional
+Chinese native fixture, the complete Rust gate with Fish/Zsh checks, and the full Sway
+fixture with Pinyin, pin compositing/rotation, scaled grids and precision color picking.
+GUI tests used private displays, D-Bus sessions and XDG directories. This verifies the
+existing localized pin controls; full pin menu parity, hosted CI and other migration
+acceptance gates remain pending.

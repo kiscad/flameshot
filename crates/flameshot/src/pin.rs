@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::i18n::tr;
 use eframe::egui;
 use flameshot_core::qt_wire::Pin;
 fn scaled_size(width: u32, height: u32, scale: f64, zoom: f32) -> anyhow::Result<egui::Vec2> {
@@ -37,6 +38,8 @@ pub fn show(pin: Pin) -> anyhow::Result<()> {
             ..Default::default()
         },
         Box::new(move |cc| {
+            crate::i18n::install_fonts(&cc.egui_ctx);
+            crate::theme::Theme::from_settings(&settings).apply(&cc.egui_ctx);
             Ok(Box::new(Pinned {
                 shortcuts,
                 texture: cc.egui_ctx.load_texture("pin", pixels, texture_options),
@@ -169,21 +172,23 @@ impl eframe::App for Pinned {
             self.resize(&ctx);
         }
         response.context_menu(|ui| {
-            if ui.button("Rotate left").clicked() {
+            if ui.button(tr("PinWidget", "Rotate Left")).clicked() {
                 self.rotate(false, &ctx);
                 ui.close();
             }
-            if ui.button("Rotate right").clicked() {
+            if ui.button(tr("PinWidget", "Rotate Right")).clicked() {
                 self.rotate(true, &ctx);
                 ui.close();
             }
-            if ui.button("Original size").clicked() {
+            if ui.button(tr("PinWidget", "Original size")).clicked() {
                 self.zoom = 1.0;
                 self.resize(&ctx);
                 ui.close();
             }
-            ui.add(egui::Slider::new(&mut self.opacity, 0.0..=1.0).text("Opacity"));
-            if ui.button("Close").clicked() {
+            ui.add(
+                egui::Slider::new(&mut self.opacity, 0.0..=1.0).text(tr("PinWidget", "Opacity")),
+            );
+            if ui.button(tr("PinWidget", "Close")).clicked() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
         });

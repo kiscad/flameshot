@@ -1910,6 +1910,14 @@ Klik untuk memilih</translation>
         <source>Close</source>
         <translation>Tutup</translation>
     </message>
+    <message>
+        <source>Original size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>PixelateTool</name>

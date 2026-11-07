@@ -2228,4 +2228,15 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>PinWidget</name>
+    <message>
+        <source>Original size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

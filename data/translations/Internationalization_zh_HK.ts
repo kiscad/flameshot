@@ -1902,12 +1902,12 @@ Click to select</source>
     <message>
         <location filename="../../src/tools/pin/pinwidget.cpp" line="298"/>
         <source>Rotate Right</source>
-        <translation type="unfinished"></translation>
+        <translation>向右旋轉</translation>
     </message>
     <message>
         <location filename="../../src/tools/pin/pinwidget.cpp" line="303"/>
         <source>Rotate Left</source>
-        <translation type="unfinished"></translation>
+        <translation>向左旋轉</translation>
     </message>
     <message>
         <location filename="../../src/tools/pin/pinwidget.cpp" line="308"/>
@@ -1922,7 +1922,15 @@ Click to select</source>
     <message>
         <location filename="../../src/tools/pin/pinwidget.cpp" line="322"/>
         <source>Close</source>
-        <translation type="unfinished">關閉</translation>
+        <translation>關閉</translation>
+    </message>
+    <message>
+        <source>Original size</source>
+        <translation>原始大小</translation>
+    </message>
+    <message>
+        <source>Opacity</source>
+        <translation>不透明度</translation>
     </message>
 </context>
 <context>

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Check Chinese launcher/history rendering and lifecycle on private Xvfb.
+"""Check Chinese desktop-window rendering and lifecycle on private Xvfb.
 Usage: localization_smoke.py TOOL_ROOT FLAMESHOT_BINARY
 """
 import os
@@ -140,7 +140,45 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
             if process.poll() is None:process.kill();process.wait()
         print('PASS:',locale,'localized history title and intact local record')
 
+
+    import struct,io
+    from PIL import Image
+    image=Image.new('RGBA',(400,300),(255,0,0,255));image.paste((0,255,0,255),(200,0,400,300))
+    data=io.BytesIO();image.save(data,format='PNG')
+    pin_file=config.parent/'localized-pin.bin'
+    pin_file.write_bytes(struct.pack('>I',1)+data.getvalue()+struct.pack('>iiiid',100,100,499,399,1.0))
+    with pin_file.open('rb') as source:
+        process=subprocess.Popen([binary,'internal-pin'],stdin=source,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    try:
+        identifier=window('^flameshot-pin$')
+        tool('windowfocus','--sync',identifier);time.sleep(.5)
+        def pin_size():
+            values=dict(line.split('=',1) for line in tool('getwindowgeometry','--shell',identifier).stdout.decode().splitlines() if '=' in line)
+            return int(values['WIDTH']),int(values['HEIGHT'])
+        def wait_size(expected):
+            deadline=time.monotonic()+5
+            while pin_size()!=expected:
+                assert time.monotonic()<deadline,(locale,pin_size(),expected)
+                time.sleep(.1)
+        wait_size((400,300))
+        tool('mousemove','--window',identifier,'20','20');tool('click','3');time.sleep(.3)
+        captured=subprocess.run([binary,'full','--raw'],capture_output=True,timeout=10)
+        assert captured.returncode==0,captured.stderr.decode()
+        Path(artifacts,f'rust-pin-{locale}-menu.png').write_bytes(captured.stdout)
+        tool('key','--delay','150','Down','Down','Return')
+        wait_size((300,400))
+        tool('mousemove','--window',identifier,'150','200');tool('click','4')
+        wait_size((330,440))
+        tool('mousemove','--window',identifier,'20','20');tool('click','3');time.sleep(.3)
+        tool('key','--delay','150','Down','Down','Down','Return')
+        wait_size((300,400))
+        tool('key','Escape');out,err=process.communicate(timeout=10)
+        assert process.returncode==0,err.decode()
+    finally:
+        if process.poll() is None:process.kill();process.wait()
+    print('PASS:',locale,'localized pin menu, rotation, zoom reset and close')
+
 '''
-        subprocess.run(['dbus-run-session','--config-file',str(config),'--',sys.executable,'-c',driver,str(binary),str(root/'usr/bin/xdotool'),str(artifacts)],env=env,check=True,timeout=75)
+        subprocess.run(['dbus-run-session','--config-file',str(config),'--',sys.executable,'-c',driver,str(binary),str(root/'usr/bin/xdotool'),str(artifacts)],env=env,check=True,timeout=100)
     finally:
         display.terminate();display.wait(timeout=5)

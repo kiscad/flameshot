@@ -1966,6 +1966,14 @@ Click to select</source>
         <source>Close</source>
         <translation>关闭</translation>
     </message>
+    <message>
+        <source>Original size</source>
+        <translation>原始大小</translation>
+    </message>
+    <message>
+        <source>Opacity</source>
+        <translation>不透明度</translation>
+    </message>
 </context>
 <context>
     <name>PixelateTool</name>

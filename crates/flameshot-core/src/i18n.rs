@@ -142,7 +142,7 @@ mod tests {
         );
     }
     #[test]
-    fn chinese_editor_labels_are_translated_and_keep_shortcut_hints() {
+    fn chinese_editor_and_pin_labels_are_translated_and_keep_shortcut_hints() {
         for locale in ["zh_CN", "zh_TW", "zh_HK"] {
             let tr = Translator::new(locale);
             for source in [
@@ -154,6 +154,19 @@ mod tests {
             ] {
                 assert_ne!(
                     tr.translate("RustEditor", source),
+                    source,
+                    "{locale}: {source}"
+                );
+            }
+            for source in [
+                "Rotate Left",
+                "Rotate Right",
+                "Original size",
+                "Opacity",
+                "Close",
+            ] {
+                assert_ne!(
+                    tr.translate("PinWidget", source),
                     source,
                     "{locale}: {source}"
                 );

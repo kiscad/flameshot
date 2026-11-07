@@ -1856,6 +1856,14 @@ Please solve them manually in the configuration file.</source>
         <source>Close</source>
         <translation type="unfinished">Close</translation>
     </message>
+    <message>
+        <source>Original size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>PixelateTool</name>

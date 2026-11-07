@@ -1466,6 +1466,14 @@ Click to select</source>
         <source>Close</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Original size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>PixelateTool</name>

@@ -1902,6 +1902,14 @@ Cliceáil chun a roghnú</translation>
         <source>Close</source>
         <translation>Dún</translation>
     </message>
+    <message>
+        <source>Original size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opacity</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>PixelateTool</name>
