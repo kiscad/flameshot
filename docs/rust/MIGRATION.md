@@ -26,7 +26,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, configuration flags, completions and manual implemented/tested; final syntax/exit-code and shell acceptance remain |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
-| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures/atomic updates tested; live-reload/semantic gaps remain |
+| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures/atomic updates and idle-window reload tested; concurrent-edit/semantic gaps remain |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
@@ -2409,3 +2409,20 @@ remain intact. Platform tests, full/minimal config integration checks, all-featu
 Clippy, formatting and diff checks passed. This is rollback on reported failure,
 not crash/power-loss atomicity across two filesystem resources or coordination with
 legacy Qt/external writers.
+
+### Refresh idle configuration windows without replacing drafts
+
+Configuration windows now poll settings once per second while open. A clean form
+adopts external changes and updates its committed baseline without writing the file.
+Any pending General, shortcut, startup or explicit toolbar-reset edit postpones the
+refresh, so background reads cannot erase a local draft. Read/parse failure preserves
+the current form and reports an error; a later successful refresh clears the error.
+Language changes continue to show the restart notice against the window's original
+language. This does not add same-field conflict detection: saving a pending local
+change still uses the existing delta-update semantics.
+
+Seven all-feature configuration model tests and all-feature all-target Clippy passed.
+The private Xvfb fixture additionally checks rendered fields change after an external
+CLI filename update without clicking Save and verifies the INI remains unchanged.
+The full Xvfb suite and all seven no-default-feature form tests passed, along with
+formatting and diff checks.

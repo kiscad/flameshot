@@ -410,9 +410,27 @@ print('PASS: capture lock is released after a killed editor')
         tool('windowfocus','--sync',window)
         time.sleep(.2)
         original_config=test_config.read_text()
+        import io
+        from PIL import Image
+        geometry=dict(line.split('=',1) for line in tool('getwindowgeometry','--shell',window).stdout.decode().splitlines() if '=' in line)
+        config_x,config_y=int(geometry['X']),int(geometry['Y'])
+        def config_fields_pixels(name):
+            captured=subprocess.run(bus_command+[str(binary),'full','--raw'],env=env,capture_output=True,timeout=20)
+            assert captured.returncode==0,captured.stderr.decode()
+            (artifact_dir/name).write_bytes(captured.stdout)
+            return Image.open(io.BytesIO(captured.stdout)).convert('RGB').crop((config_x,config_y+70,config_x+300,config_y+220)).tobytes()
+        tool('mousemove','900','700')
+        time.sleep(.2)
+        fields_before=config_fields_pixels('rust-config-refresh-before.png')
         external=subprocess.run([str(binary),'config','--filename','%F-external'],env=env,capture_output=True,timeout=10)
         assert external.returncode==0,external.stderr.decode()
         latest_config=test_config.read_text()
+        deadline=time.monotonic()+5
+        while config_fields_pixels('rust-config-refresh-after.png')==fields_before:
+            assert time.monotonic()<deadline,'Idle configuration window did not reflect external filename change'
+            time.sleep(.2)
+        assert test_config.read_text()==latest_config,'Background refresh wrote the configuration'
+        print('PASS: idle configuration window reflects external CLI change without saving')
         tool('mousemove','--window',window,'300','300')
         tool('click','--repeat','60','--delay','10','5')
         time.sleep(.5)

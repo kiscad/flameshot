@@ -37,6 +37,8 @@ pub fn show() -> anyhow::Result<()> {
                 settings,
                 path,
                 status: String::new(),
+                last_refresh: std::time::Instant::now(),
+                reload_error: None,
             };
             config.remember();
             Ok(Box::new(config))
@@ -54,8 +56,27 @@ struct Config {
     shortcut_baseline: std::collections::BTreeMap<String, String>,
     startup_baseline: bool,
     status: String,
+    last_refresh: std::time::Instant,
+    reload_error: Option<String>,
 }
 impl Config {
+    fn is_dirty(&self) -> bool {
+        !self.changes().is_empty()
+            || !self.shortcut_changes().is_empty()
+            || self.settings.startup_launch != self.startup_baseline
+    }
+    fn refresh_if_clean(&mut self, load: impl FnOnce() -> anyhow::Result<Settings>) {
+        if self.is_dirty() {
+            return;
+        }
+        match load() {
+            Ok(settings) => {
+                self.reload_saved(settings);
+                self.reload_error = None;
+            }
+            Err(error) => self.reload_error = Some(error.to_string()),
+        }
+    }
     fn language_restart_needed(&self) -> bool {
         self.baseline
             .get("uiLanguage")
@@ -253,6 +274,12 @@ impl Config {
 }
 impl eframe::App for Config {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        let refresh_interval = std::time::Duration::from_secs(1);
+        if self.last_refresh.elapsed() >= refresh_interval {
+            self.refresh_if_clean(Settings::load);
+            self.last_refresh = std::time::Instant::now();
+        }
+        ui.ctx().request_repaint_after(refresh_interval);
         if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -514,6 +541,9 @@ impl eframe::App for Config {
                 };
             }
             ui.label(&self.status);
+            if let Some(error) = &self.reload_error {
+                ui.label(format!("Cannot reload settings: {error}"));
+            }
             if self.language_restart_needed() {
                 let notice = ui.label(crate::i18n::tr(
                     "VisualsEditor",
@@ -541,9 +571,55 @@ mod tests {
             shortcut_baseline: Default::default(),
             startup_baseline: false,
             status: String::new(),
+            last_refresh: std::time::Instant::now(),
+            reload_error: None,
         };
         form.remember();
         form
+    }
+    #[test]
+    fn background_refresh_preserves_every_kind_of_unsaved_draft() {
+        let mut forms = [form(), form(), form(), form()];
+        forms[0].path = "/tmp/draft".into();
+        forms[1]
+            .settings
+            .shortcuts
+            .insert("TYPE_ACCEPT".into(), "F9".into());
+        forms[2].settings.startup_launch = !forms[2].startup_baseline;
+        forms[3].buttons_reset = true;
+        for mut form in forms {
+            assert!(form.is_dirty());
+            let before = form.values();
+            let shortcuts = form.settings.shortcuts.clone();
+            let startup = form.settings.startup_launch;
+            form.refresh_if_clean(|| panic!("must not load over an unsaved draft"));
+            assert_eq!(form.values(), before);
+            assert_eq!(form.settings.shortcuts, shortcuts);
+            assert_eq!(form.settings.startup_launch, startup);
+        }
+    }
+    #[test]
+    fn background_refresh_recovers_after_invalid_external_configuration() {
+        let mut form = form();
+        let before = form.values();
+        form.refresh_if_clean(|| anyhow::bail!("invalid external settings"));
+        assert_eq!(form.values(), before);
+        assert_eq!(
+            form.reload_error.as_deref(),
+            Some("invalid external settings")
+        );
+        assert!(!form.is_dirty());
+        form.refresh_if_clean(|| {
+            Ok(Settings {
+                filename_pattern: "external".into(),
+                language: "zh_CN".into(),
+                ..Settings::default()
+            })
+        });
+        assert_eq!(form.settings.filename_pattern, "external");
+        assert!(form.reload_error.is_none());
+        assert!(form.language_restart_needed());
+        assert!(!form.is_dirty());
     }
     #[test]
     fn saved_reload_updates_external_fields_and_keeps_original_language() {
