@@ -2347,3 +2347,18 @@ accepted it, and a subsequent Rust filename update preserved every unrelated lin
 Installed package checksums and absence of Qt linkage also passed. The test container
 was removed. DEBIAN-INSTALL-VALIDATION.md records versions, hashes and scope; this
 is not evidence for all legacy settings or upgrading a running Qt GUI.
+
+### Text editor and monitor chooser localization
+
+Text-dialog title, font/size controls, empty-text guidance and Apply now use the
+RustEditor catalog context; Cancel reuses the existing catalog entry. Monitor-picker
+title/instructions and the editor's font-family label use the same translation
+mechanism. Seven new strings were registered in all 49 catalogs, with simplified
+and traditional Chinese translations and unfinished/source fallback elsewhere.
+
+The native Fcitx fixture now accepts FLAMESHOT_TEST_LANGUAGE for localized UI checks.
+Its Chinese run passed commit/copy/paste/composition cancellation/export, and the
+rendered text dialog was inspected with readable, unclipped controls. Text-edit
+state tests, all-feature Clippy, no-default-feature compilation, and the full Sway
+suite with native IME also passed. This does not complete translation coverage of
+all remaining controls or all languages.

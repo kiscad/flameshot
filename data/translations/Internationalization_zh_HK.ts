@@ -3422,4 +3422,35 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
         <translation>已忽略此版本</translation>
     </message>
 </context>
+<context>
+    <name>RustEditor</name>
+    <message>
+        <source>Edit text</source>
+        <translation>編輯文字</translation>
+    </message>
+    <message>
+        <source>Font family</source>
+        <translation>字型</translation>
+    </message>
+    <message>
+        <source>Pixels: </source>
+        <translation>像素：</translation>
+    </message>
+    <message>
+        <source>Apply empty text to remove this annotation.</source>
+        <translation>套用空白文字將刪除此標註。</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>套用</translation>
+    </message>
+    <message>
+        <source>Select a monitor</source>
+        <translation>選擇螢幕</translation>
+    </message>
+    <message>
+        <source>Choose a screen to edit. Number keys 1–9 select a screen.</source>
+        <translation>選擇要編輯的螢幕。可用數字鍵 1–9 選擇。</translation>
+    </message>
+</context>
 </TS>

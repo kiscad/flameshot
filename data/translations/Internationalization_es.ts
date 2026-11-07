@@ -3418,4 +3418,35 @@ Puede ser que necesites preceder el símbolo &quot;#&quot; con &quot;\&quot;, co
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>RustEditor</name>
+    <message>
+        <source>Edit text</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Font family</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pixels: </source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply empty text to remove this annotation.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a monitor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose a screen to edit. Number keys 1–9 select a screen.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

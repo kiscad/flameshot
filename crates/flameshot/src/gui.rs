@@ -353,11 +353,14 @@ impl Editor {
             }
         }
         let mut chosen = None;
-        egui::Window::new("Select a monitor")
+        egui::Window::new(tr("RustEditor", "Select a monitor"))
             .collapsible(false)
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(&ctx, |ui| {
-                ui.label("Choose a screen to edit. Number keys 1–9 select a screen.");
+                ui.label(tr(
+                    "RustEditor",
+                    "Choose a screen to edit. Number keys 1–9 select a screen.",
+                ));
                 ui.horizontal_wrapped(|ui| {
                     for (index, (name, _)) in self.options.screens.iter().enumerate() {
                         ui.vertical(|ui| {
@@ -1506,7 +1509,7 @@ impl eframe::App for Editor {
                         ui.label("Click the image to enter text, or type here to place repeated labels");
                         ui.text_edit_multiline(&mut self.text);
                         ui.horizontal(|ui| {
-                            ui.label("Font family");
+                            ui.label(tr("RustEditor", "Font family"));
                             if ui.text_edit_singleline(&mut self.font_family).changed() && let Err(error) = crate::settings::Settings::update(&[("fontFamily", self.font_family.clone())]) { self.error = error.to_string(); }
                         });
 

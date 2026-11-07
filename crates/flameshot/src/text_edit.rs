@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+use crate::i18n::tr;
 use eframe::egui;
 use flameshot_core::editor::{Annotation, Document, EditError};
 
@@ -146,7 +147,7 @@ impl TextEdit {
         let mut open = true;
         let mut cancel = !protected && ctx.input(|input| input.key_pressed(egui::Key::Escape));
         let mut apply = commit_shortcut;
-        egui::Window::new("Edit text")
+        egui::Window::new(tr("RustEditor", "Edit text"))
             .default_pos(egui::pos2(20.0, 20.0))
             .default_width(440.0)
             .collapsible(false)
@@ -171,22 +172,25 @@ impl TextEdit {
                         self.focus = false;
                     }
                     ui.horizontal(|ui| {
-                        ui.label("Font family");
+                        ui.label(tr("RustEditor", "Font family"));
                         ui.text_edit_singleline(family);
                         ui.add(
                             egui::DragValue::new(font_size)
                                 .range(1.0..=1000.0)
-                                .prefix("Pixels: "),
+                                .prefix(tr("RustEditor", "Pixels: ")),
                         );
                         ui.color_edit_button_srgba_unmultiplied(color);
                     });
                 }
-                ui.label("Apply empty text to remove this annotation.");
+                ui.label(tr(
+                    "RustEditor",
+                    "Apply empty text to remove this annotation.",
+                ));
                 ui.horizontal(|ui| {
                     apply |= ui
-                        .add_enabled(!protected, egui::Button::new("Apply"))
+                        .add_enabled(!protected, egui::Button::new(tr("RustEditor", "Apply")))
                         .clicked();
-                    cancel |= ui.button("Cancel").clicked();
+                    cancel |= ui.button(tr("ColorGrabWidget", "Cancel")).clicked();
                 });
                 if !self.error.is_empty() {
                     ui.colored_label(egui::Color32::RED, &self.error);
