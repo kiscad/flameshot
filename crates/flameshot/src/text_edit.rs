@@ -1,7 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 use crate::i18n::tr;
 use eframe::egui;
-use flameshot_core::editor::{Annotation, Document, EditError};
+use flameshot_core::editor::{Annotation, Document, EditError, TextAlignment, TextStyle};
+
+pub(crate) fn format_controls(ui: &mut egui::Ui, format: &mut TextStyle) {
+    ui.horizontal_wrapped(|ui| {
+        ui.checkbox(&mut format.bold, tr("TextConfig", "Bold"));
+        ui.checkbox(&mut format.italic, tr("TextConfig", "Italic"));
+        ui.checkbox(&mut format.underline, tr("TextConfig", "Underline"));
+        ui.checkbox(&mut format.strikeout, tr("TextConfig", "StrikeOut"));
+    });
+    ui.horizontal_wrapped(|ui| {
+        for (alignment, label) in [
+            (TextAlignment::Left, "Left Align"),
+            (TextAlignment::Center, "Center Align"),
+            (TextAlignment::Right, "Right Align"),
+        ] {
+            ui.selectable_value(&mut format.alignment, alignment, tr("TextConfig", label));
+        }
+    });
+}
 
 pub struct TextEdit {
     previewed: Option<Annotation>,
@@ -14,6 +32,21 @@ pub struct TextEdit {
     error: String,
 }
 impl TextEdit {
+    pub fn creation_defaults(&self) -> Option<(f32, String, TextStyle)> {
+        if self.index.is_some() {
+            return None;
+        }
+        match &self.draft {
+            Annotation::Text {
+                text,
+                font_size,
+                family,
+                format,
+                ..
+            } if !text.is_empty() => Some((*font_size, family.clone(), *format)),
+            _ => None,
+        }
+    }
     pub fn new(document: &Document, index: usize) -> Option<Self> {
         let original = document.annotations().get(index)?.clone();
         if !matches!(original, Annotation::Text { .. }) {
@@ -157,6 +190,7 @@ impl TextEdit {
                     text,
                     font_size,
                     family,
+                    format,
                     color,
                     ..
                 } = &mut self.draft
@@ -181,6 +215,7 @@ impl TextEdit {
                         );
                         ui.color_edit_button_srgba_unmultiplied(color);
                     });
+                    format_controls(ui, format);
                 }
                 ui.label(tr(
                     "RustEditor",
@@ -222,6 +257,7 @@ mod tests {
             text: "Original".into(),
             font_size: 12.0,
             family: "serif".into(),
+            format: Default::default(),
             color: [255, 0, 0, 128],
         })
         .unwrap();
@@ -331,6 +367,7 @@ mod tests {
             text,
             font_size,
             family,
+            format,
             color,
             ..
         } = &mut edit.draft
@@ -339,6 +376,13 @@ mod tests {
             *font_size = 24.0;
             *family = "sans-serif".into();
             *color = [0, 255, 0, 255];
+            *format = TextStyle {
+                bold: true,
+                italic: true,
+                underline: true,
+                strikeout: true,
+                alignment: TextAlignment::Right,
+            };
         }
         assert_eq!(doc.annotations(), std::slice::from_ref(&original));
         edit.apply(&mut doc).unwrap();

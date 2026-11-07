@@ -4,6 +4,22 @@ use crate::geometry::PixelRect;
 use image::{Rgba, RgbaImage};
 use tiny_skia::{FillRule, LineCap, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum TextAlignment {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TextStyle {
+    pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub strikeout: bool,
+    pub alignment: TextAlignment,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
     pub x: f32,
@@ -34,6 +50,7 @@ pub enum Annotation {
         text: String,
         font_size: f32,
         family: String,
+        format: TextStyle,
         color: [u8; 4],
     },
     Pencil {
@@ -470,12 +487,23 @@ impl Document {
                     text,
                     font_size,
                     family,
+                    format,
                     color,
                 } => {
                     let mut renderer = self.text_renderer.borrow_mut();
                     renderer
                         .get_or_insert_with(crate::text::TextRenderer::new)
-                        .draw(&mut image, *position, text, *font_size, family, *color);
+                        .draw(
+                            &mut image,
+                            *position,
+                            text,
+                            crate::text::TextAppearance {
+                                size: *font_size,
+                                family,
+                                color: *color,
+                                format: *format,
+                            },
+                        );
                 }
                 Annotation::Invert(region) => {
                     if let Some(r) = clip(*region, &image) {
@@ -1237,6 +1265,7 @@ mod tests {
                     text: "hello".into(),
                     font_size: 24.0,
                     family: "Sans".into(),
+                    format: Default::default(),
                     color: [255; 4],
                 },
                 SizeKind::Text,
@@ -1512,6 +1541,7 @@ mod tests {
                 text: "AB\nCD".into(),
                 font_size: 18.0,
                 family: "DejaVu Sans".into(),
+                format: Default::default(),
                 color: style.color,
             },
         ];
@@ -1551,6 +1581,7 @@ mod tests {
             text: "I                 I".into(),
             font_size: 20.0,
             family: "DejaVu Sans".into(),
+            format: Default::default(),
             color: [255, 0, 0, 255],
         })
         .unwrap();

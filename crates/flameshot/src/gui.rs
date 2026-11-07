@@ -240,6 +240,7 @@ struct Editor {
     text: String,
     font_size: f32,
     font_family: String,
+    text_style: flameshot_core::editor::TextStyle,
     error: String,
     show_help: bool,
     selected_object: Option<usize>,
@@ -314,6 +315,7 @@ impl Editor {
                 settings.draw_color[3],
             ),
             font_family: settings.font_family.clone(),
+            text_style: Default::default(),
             width: settings.draw_thickness.min(10000.0),
             text: String::new(),
             font_size: (settings.font_size * 4.0 / 3.0).min(1000.0),
@@ -1193,7 +1195,18 @@ impl eframe::App for Editor {
                 .any(|action| action == "TYPE_COMMIT_CURRENT_TOOL");
             match editor.show(ui.ctx(), &mut self.document, commit) {
                 None => self.text_editor = Some(editor),
-                Some(_applied) => {
+                Some(applied) => {
+                    if applied && let Some((size, family, format)) = editor.creation_defaults() {
+                        self.font_size = size;
+                        if self.font_family != family
+                            && let Err(error) =
+                                crate::settings::Settings::update(&[("fontFamily", family.clone())])
+                        {
+                            self.error = error.to_string();
+                        }
+                        self.font_family = family;
+                        self.text_style = format;
+                    }
                     self.dismissed_dialog_frame = Some(ui.ctx().cumulative_frame_nr());
                     self.dirty = true;
                     ui.ctx().request_repaint();
@@ -1550,6 +1563,7 @@ impl eframe::App for Editor {
                             ui.label(tr("RustEditor", "Font family"));
                             if ui.text_edit_singleline(&mut self.font_family).changed() && let Err(error) = crate::settings::Settings::update(&[("fontFamily", self.font_family.clone())]) { self.error = error.to_string(); }
                         });
+                        crate::text_edit::format_controls(ui, &mut self.text_style);
 
                     }
                     if !self.error.is_empty() {
@@ -1828,6 +1842,7 @@ impl eframe::App for Editor {
                     text: String::new(),
                     font_size: self.font_size,
                     family: self.font_family.clone(),
+                    format: self.text_style,
                     color: self.color.to_srgba_unmultiplied(),
                 });
                 self.shortcuts.reset();
@@ -1839,6 +1854,7 @@ impl eframe::App for Editor {
                 text: self.text.clone(),
                 font_size: self.font_size,
                 family: self.font_family.clone(),
+                format: self.text_style,
                 color: self.color.to_srgba_unmultiplied(),
             }) {
                 Ok(()) => self.dirty = true,

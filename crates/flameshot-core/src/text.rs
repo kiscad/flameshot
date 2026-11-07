@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-use crate::editor::Point;
+use crate::editor::{Point, TextAlignment, TextStyle};
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Wrap};
 use image::{Pixel, Rgba, RgbaImage};
 
+pub(crate) struct TextAppearance<'a> {
+    pub size: f32,
+    pub family: &'a str,
+    pub color: [u8; 4],
+    pub format: TextStyle,
+}
 pub(crate) struct TextRenderer {
     fonts: FontSystem,
     cache: SwashCache,
@@ -79,10 +85,14 @@ impl TextRenderer {
         image: &mut RgbaImage,
         position: Point,
         text: &str,
-        size: f32,
-        family: &str,
-        color: [u8; 4],
+        appearance: TextAppearance<'_>,
     ) {
+        let TextAppearance {
+            size,
+            family,
+            color,
+            format,
+        } = appearance;
         let mut buffer = Buffer::new(&mut self.fonts, Metrics::new(size, size * 1.25));
         let mut buffer = buffer.borrow_with(&mut self.fonts);
         buffer.set_size(None, Some(image.height() as f32 + position.y.abs()));
@@ -92,7 +102,46 @@ impl TextRenderer {
         } else {
             Family::Name(family)
         };
-        buffer.set_text(text, &Attrs::new().family(family), Shaping::Advanced, None);
+        let mut attrs = Attrs::new()
+            .family(family)
+            .weight(if format.bold {
+                cosmic_text::Weight::BOLD
+            } else {
+                cosmic_text::Weight::NORMAL
+            })
+            .style(if format.italic {
+                cosmic_text::Style::Italic
+            } else {
+                cosmic_text::Style::Normal
+            });
+        if format.underline {
+            attrs = attrs.underline(cosmic_text::UnderlineStyle::Single);
+        }
+        if format.strikeout {
+            attrs = attrs.strikethrough();
+        }
+        buffer.set_text(
+            text,
+            &attrs,
+            Shaping::Advanced,
+            Some(cosmic_text::Align::Left),
+        );
+        if format.alignment != TextAlignment::Left {
+            // Align shorter lines inside the annotation's natural widest line,
+            // rather than against the capture canvas or a clipped viewport.
+            buffer.set_size(None, None);
+            let width = buffer
+                .layout_runs()
+                .map(|run| run.line_w)
+                .fold(1.0_f32, f32::max);
+            buffer.set_size(Some(width), Some(image.height() as f32 + position.y.abs()));
+            let align = match format.alignment {
+                TextAlignment::Left => cosmic_text::Align::Left,
+                TextAlignment::Center => cosmic_text::Align::Center,
+                TextAlignment::Right => cosmic_text::Align::Right,
+            };
+            buffer.set_text(text, &attrs, Shaping::Advanced, Some(align));
+        }
         let opacity = color[3];
         buffer.draw(
             &mut self.cache,
@@ -122,6 +171,118 @@ mod tests {
         geometry::PixelRect,
     };
     use image::RgbaImage;
+    fn styled(format: crate::editor::TextStyle, text: &str) -> Document {
+        let mut doc = Document::new(RgbaImage::new(360, 140), 10).unwrap();
+        doc.add(Annotation::Text {
+            position: Point { x: 10.0, y: 5.0 },
+            text: text.into(),
+            font_size: 32.0,
+            family: "DejaVu Sans".into(),
+            color: [255, 0, 0, 255],
+            format,
+        })
+        .unwrap();
+        doc
+    }
+    #[test]
+    fn formatting_changes_pixels_and_alignment_uses_annotation_width() {
+        use crate::editor::{TextAlignment, TextStyle};
+        let normal = styled(TextStyle::default(), "MMMM\nI").render().unwrap();
+        for format in [
+            TextStyle {
+                bold: true,
+                ..Default::default()
+            },
+            TextStyle {
+                italic: true,
+                ..Default::default()
+            },
+            TextStyle {
+                underline: true,
+                ..Default::default()
+            },
+            TextStyle {
+                strikeout: true,
+                ..Default::default()
+            },
+        ] {
+            assert_ne!(
+                styled(format, "MMMM\nI").render().unwrap(),
+                normal,
+                "{format:?}"
+            );
+        }
+        let mut starts = Vec::new();
+        for alignment in [
+            TextAlignment::Left,
+            TextAlignment::Center,
+            TextAlignment::Right,
+        ] {
+            let pixels = styled(
+                TextStyle {
+                    alignment,
+                    ..Default::default()
+                },
+                "MMMM\nI",
+            )
+            .render()
+            .unwrap();
+            starts.push(
+                pixels
+                    .enumerate_pixels()
+                    .filter(|(_, y, p)| *y >= 45 && p[3] > 0)
+                    .map(|(x, _, _)| x)
+                    .min()
+                    .unwrap(),
+            );
+            assert_eq!(
+                image::imageops::crop_imm(&pixels, 0, 0, 360, 40).to_image(),
+                image::imageops::crop_imm(&normal, 0, 0, 360, 40).to_image()
+            );
+        }
+        assert!(starts[0] < starts[1] && starts[1] < starts[2], "{starts:?}");
+    }
+    #[test]
+    fn decorated_preview_export_picking_and_undo_share_pixels() {
+        use crate::editor::TextStyle;
+        let mut doc = styled(TextStyle::default(), "M     M");
+        let plain = doc.render().unwrap();
+        let mut annotation = doc.annotations()[0].clone();
+        if let Annotation::Text { format, .. } = &mut annotation {
+            format.underline = true;
+            format.strikeout = true;
+        }
+        let preview = doc.preview_replacement(0, Some(&annotation)).unwrap();
+        doc.replace(0, annotation).unwrap();
+        assert_eq!(doc.render().unwrap(), preview);
+        assert_eq!(
+            doc.export(PixelRect {
+                x: 0,
+                y: 0,
+                width: 360,
+                height: 140
+            })
+            .unwrap(),
+            preview
+        );
+        let (x, y, _) = preview
+            .enumerate_pixels()
+            .find(|(x, y, p)| {
+                (55..75).contains(x) && *y < 45 && p[3] > 0 && plain.get_pixel(*x, *y)[3] == 0
+            })
+            .unwrap();
+        assert_eq!(
+            doc.hit_test(Point {
+                x: x as f32,
+                y: y as f32
+            }),
+            Some(0)
+        );
+        assert!(doc.undo());
+        assert_eq!(doc.render().unwrap(), plain);
+        assert!(doc.redo());
+        assert_eq!(doc.render().unwrap(), preview);
+    }
     #[test]
     fn multiline_text_is_rasterized_exported_and_undoable() {
         let base = RgbaImage::new(300, 140);
@@ -131,6 +292,7 @@ mod tests {
             text: "Hello Rust\nSecond line".into(),
             font_size: 24.0,
             family: String::new(),
+            format: Default::default(),
             color: [255, 0, 0, 128],
         })
         .unwrap();

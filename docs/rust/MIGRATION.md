@@ -20,7 +20,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | --- | --- | --- |
 | Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
 | Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway, headless GNOME and KWin 5 capture cases pass; broader compositor acceptance remains |
-| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text editing, rendered picking, live movement and selected color/size implemented/tested; text emphasis/decorations/alignment and remaining parity pending |
+| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text formatting and editing, rendered picking, live movement and selected color/size implemented/tested; remaining parity audit pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
@@ -2772,3 +2772,36 @@ those formatting properties. They must be represented per annotation and support
 in shared preview/export/picking, edit cancellation and undo/redo, with the existing
 TextConfig translations reused. This remains implementation work, not a completed
 editor acceptance claim; arbitrary font-weight choices are not a legacy requirement.
+
+### Implement legacy text formatting in the Rust editor
+
+Text annotations now carry bold, italic, underline, strikeout and left/center/right
+alignment. Defaults are normal, undecorated and left aligned. The shared cosmic-text
+renderer selects font weight/style and draws font-metric decorations. Multiline
+alignment uses the annotation's natural widest line rather than the capture canvas;
+preview, export and rendered picking all consume the same per-annotation properties.
+Move/size/color operations preserve them through the existing clone/edit model.
+
+The text tool and text-edit dialog expose all seven legacy TextConfig controls and
+reuse their existing catalogs. Draft formatting previews without changing history;
+Apply creates/replaces one annotation, Cancel preserves the document, and undo/redo
+restores the complete formatting state. Applied new-text formatting becomes the
+current capture tool's defaults; editing an existing annotation does not change those
+defaults. A changed family on new-text Apply is persisted through the existing settings
+transaction. Formatting does not introduce new INI keys or an external Qt dependency.
+
+Core tests verify pixel changes for each emphasis/decoration, multiline alignment,
+selection on decorations, exact preview/export equality and undo/redo. Text-edit tests
+include formatting in isolated draft/replacement transactions. The new private Xvfb
+text_format_smoke.py clicks every format control and alignment, applies/cancels an
+existing-text edit, checks undo/redo, and exports the image. Screen comparisons omit
+the selection border; final screenshot-vs-PNG comparison allows one channel level for
+display quantization, while core image comparisons remain byte-exact. The rendered
+export target/rust-text-formatted-export.png was inspected. The fixture is listed in
+BUILD.md and Rust CI; hosted execution is still unverified.
+
+The complete check-rust.sh gate passed with all packaged shell checks enabled. The
+full Xvfb desktop suite, native X11 Fcitx Pinyin fixture and Sway/IME/fractional-output
+suite also passed. Python syntax, formatting and diff checks pass. This closes the
+specific text-formatting implementation gap identified above; it does not establish
+completion of every remaining editor or migration acceptance item.
