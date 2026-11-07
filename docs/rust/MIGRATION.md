@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE IME/hotplug and broader scale/rotation acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE IME and broader scale/rotation acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2628,3 +2628,22 @@ Clippy, formatting, Python syntax and diff checks pass. KDE-VALIDATION.md record
 hashes, dimensions, reproduction and evidence limits. The container was stopped and
 removed after cleanup verification. Hotplug/KDE IME and broader scale combinations
 remain open; this is not completion of the whole migration.
+
+### KWin output disable/re-enable with active editors and chooser
+
+Extended the native window probe to report the fullscreen protocol flag and added
+--hotplug to the KWin fixture. Both integer and fractional mixed-scale configurations
+pass: an editor on a disabled virtual output moves to the remaining output, remains
+fullscreen and exports its captured image unchanged. Fresh captures observe the
+single-output layout, reject its obsolete screen number with status 1/empty stdout,
+and recognize the second output again after re-enabling it. Disabling an output
+while the chooser is open also preserves its snapshot and fullscreen placement when
+that snapshot screen is chosen afterward.
+
+The successful final driver gives portal consent controls one second before sending
+Enter. An earlier fractional run returned actual cancellation and was not counted as
+success or automatically retried by application code. The application itself needed
+no change for these lifecycle cases. Tests cover connected virtual outputs being
+disabled/re-enabled, not physical connector removal/GPU behavior. Detailed evidence
+and reproduction are in KDE-VALIDATION.md. Helper build, all-feature all-target Clippy,
+formatting, Python syntax and diff checks pass; the private container was cleaned up.

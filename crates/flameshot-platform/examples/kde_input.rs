@@ -14,6 +14,7 @@ use wayland_protocols_plasma::plasma_window_management::client::{
 struct WindowInfo {
     app_id: String,
     geometry: Option<(i32, i32, u32, u32)>,
+    fullscreen: bool,
 }
 #[derive(Default)]
 struct State {
@@ -57,6 +58,11 @@ impl Dispatch<window::OrgKdePlasmaWindow, u32> for State {
             } => {
                 if let Some(window) = state.windows.get_mut(id) {
                     window.geometry = Some((x, y, width, height));
+                }
+            }
+            window::Event::StateChanged { flags } => {
+                if let Some(window) = state.windows.get_mut(id) {
+                    window.fullscreen = flags & management::State::Fullscreen as u32 != 0;
                 }
             }
             window::Event::Unmapped => {
@@ -113,6 +119,21 @@ fn main() -> anyhow::Result<()> {
                     .and_then(|window| window.geometry)
                 {
                     println!("{x} {y} {width} {height}");
+                } else {
+                    println!("none");
+                }
+                std::io::stdout().flush()?;
+                continue;
+            }
+            ["fullscreen", app_id] => {
+                queue.roundtrip(&mut state)?;
+                queue.roundtrip(&mut state)?;
+                if let Some(window) = state
+                    .windows
+                    .values()
+                    .find(|window| window.app_id == *app_id)
+                {
+                    println!("{}", window.fullscreen);
                 } else {
                     println!("none");
                 }

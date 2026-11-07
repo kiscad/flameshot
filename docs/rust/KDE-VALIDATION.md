@@ -87,7 +87,7 @@ Run this mode separately from `--clipboard`. It additionally requires
 python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input --multi-monitor
 ```
 
-Fractional scaling is covered in the follow-up below; hotplug and native KDE IME remain separate acceptance work.
+Fractional scaling and virtual-output lifecycle are covered in the follow-ups below; native KDE IME remains separate acceptance work.
 
 ## Fractional-scale crop boundaries
 
@@ -127,6 +127,39 @@ assumed. The complete Sway/IME fixture passes with these checks.
 All-feature workspace tests, focused geometry tests, all-target Clippy, formatting,
 Python syntax and diff checks pass. These are representative fractional-scale
 cases, not every scale/rotation combination or a KDE hotplug/IME acceptance claim.
+
+## Output disable/re-enable while editing
+
+The `--hotplug` extension passed with both scales 1/2 and 1/1.5. It uses KScreen to
+disable and re-enable a connected virtual output. This exercises the compositor's
+logical output lifecycle; it is not a physical cable-removal or GPU-driver test.
+
+The test opens the second-screen editor, disables that output, and reads both native
+window geometry and the KWin fullscreen state flag. The window moves to the remaining
+output and remains fullscreen. Its captured image is still exported with the original
+second-screen dimensions/colors even after the synthetic background process is stopped.
+A fresh capture sees only the remaining screen, and requesting screen number 1 returns
+status 1 with empty stdout and the out-of-range diagnostic. Re-enabling the output
+restores correct fresh screenshot dimensions/colors.
+
+A second case disables the output while the monitor chooser is open. Choosing that
+screen from the already-captured snapshot still preserves its image and stays fullscreen
+on the remaining output. The helper now explicitly checks the fullscreen protocol flag,
+so a merely screen-sized floating window would not satisfy the check.
+
+```sh
+python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input --hotplug
+python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input --hotplug --fractional
+```
+
+Logs and layout records are in `target/kde-hotplug.log`,
+`target/kde-hotplug-fractional.log` and the matching artifact directories. The hotplug
+consent driver polls at one-second intervals: an earlier faster attempt received an
+actual portal cancellation after reconfiguration and was counted as a failed run,
+not silently retried. Both final modes pass; application cancellation handling was
+not changed. No production application code needed modification for these cases.
+Helper compilation/Clippy, formatting, Python syntax and diff checks pass. No test
+desktop processes remained, and the disposable container was stopped and removed.
 
 ## Reproduce
 
@@ -181,6 +214,6 @@ python3 /validation/kde_smoke.py /usr/bin/flameshot /validation/kde_input --clip
 
 No real terminal, browser, uploader or user desktop is invoked. Remaining KDE
 coverage includes native IME, additional scale/rotation combinations and negative-origin
-outputs, hotplug and installed sandbox behavior. The plain `screen` command cannot
+outputs, physical hardware removal and installed sandbox behavior. The plain `screen` command cannot
 infer the pointer's monitor on this Wayland backend; the existing diagnostic asks
 for `--number`. Hosted CI has not run this fixture.

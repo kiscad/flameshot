@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER [--clipboard] [--multi-monitor] [--fractional]
+"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER [--clipboard] [--multi-monitor] [--fractional] [--hotplug]
 Requires KWin 5, KDE portal, Qt Wayland, PyQt5, Pillow and private-session tools.
 """
 import os
@@ -15,7 +15,7 @@ import shutil
 import json
 from PIL import Image
 binary,helper=map(lambda p:Path(p).resolve(),sys.argv[1:3])
-if '--fractional' in sys.argv and '--multi-monitor' not in sys.argv:sys.argv.insert(3,'--multi-monitor')
+if any(flag in sys.argv for flag in ['--fractional','--hotplug']) and '--multi-monitor' not in sys.argv:sys.argv.insert(3,'--multi-monitor')
 if '--inside' not in sys.argv:
     assert not ('--clipboard' in sys.argv and '--multi-monitor' in sys.argv),'Run clipboard and monitor fixtures separately'
     with tempfile.TemporaryDirectory(prefix='flameshot-kde-') as directory:
@@ -32,7 +32,7 @@ if '--inside' not in sys.argv:
         env=os.environ.copy()
         for key in ['DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','DBUS_SYSTEM_BUS_ADDRESS','SESSION_MANAGER']:env.pop(key,None)
         env.update(XDG_RUNTIME_DIR=str(root/'runtime'),XDG_CONFIG_HOME=str(root/'config'),XDG_DATA_HOME=str(root/'data'),XDG_CACHE_HOME=str(root/'cache'),TMPDIR=str(root/'tmp'),XDG_CURRENT_DESKTOP='KDE',XDG_SESSION_TYPE='wayland',QT_QPA_PLATFORM='wayland',LIBGL_ALWAYS_SOFTWARE='1',KWIN_COMPOSE='O2')
-        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),*[flag for flag in ['--clipboard','--multi-monitor','--fractional'] if flag in sys.argv],'--inside',str(root)],env=env,start_new_session=True)
+        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),*[flag for flag in ['--clipboard','--multi-monitor','--fractional','--hotplug'] if flag in sys.argv],'--inside',str(root)],env=env,start_new_session=True)
         try:
             status=session.wait(timeout=100)
         except subprocess.TimeoutExpired:
@@ -89,7 +89,7 @@ for screen in app.screens():
     w.setStyleSheet('background:rgb('+color+')');w.showFullScreen();windows.append(w)
 app.exec_()
 """
-    start('background',['/usr/bin/python3','-c',background_code])
+    background=start('background',['/usr/bin/python3','-c',background_code])
     start('permission-store',['/usr/libexec/xdg-permission-store'])
     start('portal-kde',['/usr/lib/x86_64-linux-gnu/libexec/xdg-desktop-portal-kde'])
     wait_for(lambda:owned('org.freedesktop.impl.portal.desktop.kde'))
@@ -144,6 +144,94 @@ app.exec_()
         if '--fractional' in sys.argv and command!='full':
             assert all(image.getpixel((x,y))==color for x in [0,image.width-1] for y in [0,20,image.height-1]),'Monitor crop contains adjacent output pixels'
         print('PASS: KWin/KDE real portal',command,size,'and background pixels',flush=True)
+    if '--hotplug' in sys.argv:
+        def geometry():
+            pointer.stdin.write('geometry org.flameshot.Flameshot\n');pointer.stdin.flush()
+            return pointer.stdout.readline().strip()
+        def fullscreen():
+            pointer.stdin.write('fullscreen org.flameshot.Flameshot\n');pointer.stdin.flush()
+            return pointer.stdout.readline().strip()=='true'
+        def configure(*options):
+            result=subprocess.run(['kscreen-doctor',*options],env=env,capture_output=True,text=True,timeout=10)
+            assert result.returncode==0,result.stderr+result.stdout
+        def layout_outputs(name):
+            result=subprocess.run(['kscreen-doctor','--json'],env=env,capture_output=True,text=True,check=True,timeout=10)
+            (root/(name+'.log')).write_text(result.stdout)
+            return [output for output in json.loads(result.stdout)['outputs'] if output['enabled']]
+        def finish_capture(process):
+            deadline=time.monotonic()+20
+            while True:
+                try:return process.communicate(timeout=1)[0]
+                except subprocess.TimeoutExpired:
+                    assert time.monotonic()<deadline,'Hotplug capture did not finish'
+                    key(28)
+        editor=start('hotplug-editor',[str(binary),'gui','--region','screen1','--raw'],stdout=subprocess.PIPE)
+        expected_geometry='0 0 683 512' if '--fractional' in sys.argv else '0 0 512 384'
+        deadline=time.monotonic()+20
+        while geometry()!=expected_geometry:
+            assert editor.poll() is None and time.monotonic()<deadline,'Second-screen editor did not map'
+            # Consent can precede the native window. Do not accept an editor
+            # whose initial window geometry is still being configured.
+            if geometry()=='none':key(28)
+            time.sleep(.1)
+        configure('output.Virtual-1.disable')
+        active=layout_outputs('outputs-disabled')
+        assert len(active)==1 and active[0]['name']=='Virtual-0',active
+        primary=active[0]
+        expected=f"{primary['pos']['x']} {primary['pos']['y']} 1024 768"
+        wait_for(lambda:geometry()==expected and fullscreen())
+        background.terminate();background.wait(timeout=5)
+        key(28)
+        data=finish_capture(editor)
+        assert editor.returncode==0,editor.returncode
+        image=Image.open(io.BytesIO(data)).convert('RGB')
+        retained_size=(1025,768) if '--fractional' in sys.argv else (1024,768)
+        assert image.size==retained_size,image.size
+        assert image.getpixel((20,20))==(160,80,32)
+        print('PASS: disabled output moves editor to remaining screen while retaining captured image',flush=True)
+        fresh=start('hotplug-single',[str(binary),'full','--raw'],stdout=subprocess.PIPE)
+        data=finish_capture(fresh)
+        assert fresh.returncode==0,(fresh.returncode,(root/'hotplug-single.log').read_text())
+        assert Image.open(io.BytesIO(data)).size==(1024,768)
+        invalid=start('hotplug-invalid',[str(binary),'screen','--number','1','--raw'],stdout=subprocess.PIPE)
+        data=finish_capture(invalid)
+        assert invalid.returncode==1 and not data,(invalid.returncode,len(data))
+        assert 'out of range' in (root/'hotplug-invalid.log').read_text()
+        configure(f'output.Virtual-0.position.{logical_width},0','output.Virtual-1.enable',f'output.Virtual-1.scale.{scale}','output.Virtual-1.position.0,0')
+        assert len(layout_outputs('outputs-restored'))==2
+        background=start('background-restored',['/usr/bin/python3','-c',background_code])
+        time.sleep(.5)
+        restored=start('hotplug-restored',[str(binary),'screen','--number','1','--raw'],stdout=subprocess.PIPE)
+        data=finish_capture(restored)
+        assert restored.returncode==0,restored.returncode
+        image=Image.open(io.BytesIO(data)).convert('RGB')
+        assert image.size==retained_size,image.size
+        assert image.getpixel((20,20))==(160,80,32),image.getpixel((20,20))
+        print('PASS: fresh capture sees disabled output disappear and re-enabled output return',flush=True)
+        chooser=start('hotplug-chooser',[str(binary),'gui','--raw'],stdout=subprocess.PIPE)
+        deadline=time.monotonic()+20
+        while geometry()=='none':
+            assert chooser.poll() is None and time.monotonic()<deadline
+            key(28);time.sleep(.1)
+        time.sleep(.3)
+        configure('output.Virtual-1.disable')
+        active=layout_outputs('outputs-chooser-disabled')
+        assert len(active)==1 and active[0]['name']=='Virtual-0',active
+        expected=f"{active[0]['pos']['x']} {active[0]['pos']['y']} 1024 768"
+        wait_for(lambda:geometry()==expected)
+        key(3) # Select the second screen from the already-captured snapshot.
+        time.sleep(.5)
+        wait_for(lambda:geometry()==expected and fullscreen(),5)
+        pointer.stdin.write('key 29 1\n');pointer.stdin.flush();assert pointer.stdout.readline().strip()=='ok'
+        key(30)
+        pointer.stdin.write('key 29 0\n');pointer.stdin.flush();assert pointer.stdout.readline().strip()=='ok'
+        key(28)
+        data=finish_capture(chooser)
+        assert chooser.returncode==0,chooser.returncode
+        image=Image.open(io.BytesIO(data)).convert('RGB')
+        assert image.size==retained_size and image.getpixel((20,20))==(160,80,32)
+        print('PASS: selecting a disconnected snapshot screen stays fullscreen on the remaining output',flush=True)
+
     if '--clipboard' in sys.argv:
         daemon=start('flameshot-daemon',[str(binary)])
         wait_for(lambda:owned('org.flameshot.Flameshot'))
