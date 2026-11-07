@@ -13,6 +13,7 @@ pub struct OpenWith {
     job: Option<mpsc::Receiver<Result<bool, String>>>,
     file: Option<PathBuf>,
     launched: bool,
+    uncertain_launch: bool,
     keep_open: bool,
     query: String,
     error: String,
@@ -58,6 +59,7 @@ impl OpenWith {
             job: None,
             file: None,
             launched: false,
+            uncertain_launch: false,
             keep_open,
             query: String::new(),
             error: String::new(),
@@ -66,17 +68,36 @@ impl OpenWith {
     pub fn was_launched(&self) -> bool {
         self.launched
     }
+    fn poll_launch(&mut self) -> Option<Result<bool, String>> {
+        let job = self.job.as_ref()?;
+        let result = match job.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => return None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                // The external program may have opened the image before its
+                // worker stopped. Do not convert an unknown outcome to failure.
+                self.uncertain_launch = true;
+                Err("Application launcher worker stopped".into())
+            }
+        };
+        self.job = None;
+        Some(result)
+    }
     pub fn show(&mut self, ctx: &egui::Context) -> bool {
-        if let Some(listing) = &self.listing
-            && let Ok(apps) = listing.try_recv()
-        {
-            self.apps = apps;
-            self.listing = None;
+        if let Some(listing) = &self.listing {
+            match listing.try_recv() {
+                Ok(apps) => {
+                    self.apps = apps;
+                    self.listing = None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.listing = None;
+                    self.error = "Application listing worker stopped".into();
+                }
+            }
         }
-        if let Some(job) = &self.job
-            && let Ok(result) = job.try_recv()
-        {
-            self.job = None;
+        if let Some(result) = self.poll_launch() {
             match result {
                 Ok(false) => return false,
                 Ok(true) => {
@@ -173,7 +194,7 @@ impl OpenWith {
                     self.error.clear();
                     ctx.request_repaint();
                     let ctx = ctx.clone();
-                    let previously_launched = self.launched;
+                    let previously_launched = self.launched || self.uncertain_launch;
                     let completion_lock = self.completion_lock.clone();
                     match launch {
                         Launch::Native(app) => {
@@ -252,6 +273,7 @@ impl Drop for OpenWith {
             Some(job) => matches!(job.try_recv(), Ok(Ok(false) | Err(_))),
         };
         if !self.launched
+            && !self.uncertain_launch
             && unaccepted
             && let Some(path) = &self.file
         {
@@ -263,6 +285,44 @@ impl Drop for OpenWith {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn dialog(path: &std::path::Path, receiver: mpsc::Receiver<Result<bool, String>>) -> OpenWith {
+        OpenWith {
+            completion_lock: Default::default(),
+            image: image::RgbaImage::new(1, 1),
+            apps: Vec::new(),
+            portal: true,
+            start_portal: false,
+            listing: None,
+            job: Some(receiver),
+            file: Some(path.to_owned()),
+            launched: false,
+            uncertain_launch: false,
+            keep_open: false,
+            query: String::new(),
+            error: String::new(),
+        }
+    }
+    #[test]
+    fn stopped_launch_worker_releases_controls_without_discarding_possible_consumer_data() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("image.png");
+        std::fs::write(&path, b"image").unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let mut window = dialog(&path, receiver);
+        assert!(window.poll_launch().is_none());
+        drop(sender);
+        assert!(window.poll_launch().unwrap().is_err());
+        assert!(window.job.is_none());
+        assert!(!window.was_launched());
+        assert!(window.uncertain_launch);
+        // A later failed retry cannot revoke the first unknown consumer's file.
+        let (sender, receiver) = mpsc::channel();
+        window.job = Some(receiver);
+        sender.send(Err("retry failed".into())).unwrap();
+        assert!(window.poll_launch().unwrap().is_err());
+        drop(window);
+        assert_eq!(std::fs::read(path).unwrap(), b"image");
+    }
     #[test]
     fn late_completion_cleans_only_images_never_accepted_by_an_application() {
         let root = tempfile::tempdir().unwrap();
@@ -292,20 +352,7 @@ mod tests {
             std::fs::write(&path, b"image").unwrap();
             let (sender, receiver) = mpsc::channel();
             sender.send(Ok(accepted)).unwrap();
-            drop(OpenWith {
-                completion_lock: Default::default(),
-                image: image::RgbaImage::new(1, 1),
-                apps: Vec::new(),
-                portal: true,
-                start_portal: false,
-                listing: None,
-                job: Some(receiver),
-                file: Some(path.clone()),
-                launched: false,
-                keep_open: false,
-                query: String::new(),
-                error: String::new(),
-            });
+            drop(dialog(&path, receiver));
             assert_eq!(path.exists(), accepted);
         }
     }

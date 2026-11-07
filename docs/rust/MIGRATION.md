@@ -2183,3 +2183,19 @@ Clippy, no-default-feature compilation and the isolated D-Bus/Xvfb UI suite cove
 normal portal cancellation, saving/retry, Open With and history links. Formatting
 and diff checks passed. These checks do not complete the remaining desktop or
 packaging acceptance gates.
+
+### Open With interrupted-worker recovery
+
+A disconnected application-list worker now ends loading and displays an error.
+A disconnected launch worker releases pending controls for closing or retrying,
+but records an uncertain launch separately from confirmed success. Its temporary
+image is retained because a consumer may already have received it. Later failed
+retries also retain that image; uncertainty alone never marks the capture accepted.
+Known cancellation/failure cleanup remains unchanged.
+
+Tests verify pending/disconnected transitions, no false success, retention across a
+failed retry, buffered completion and late-result cleanup. They passed with the
+isolated D-Bus/Xvfb UI suite, all-feature all-target Clippy, no-default-feature
+compilation, formatting and diff checks. This is conservative file retention for an
+unknown outcome, not a claim that a stopped worker's external side effect can be
+reliably determined.
