@@ -182,16 +182,19 @@ impl Settings {
             .join("flameshot/flameshot.ini");
         Self::update_at(&path, values)
     }
-    pub fn update_shortcuts(values: &std::collections::BTreeMap<String, String>) -> Result<()> {
-        crate::shortcuts::validate_overrides(values).map_err(anyhow::Error::msg)?;
+    pub fn update_form(
+        values: &[(&str, String)],
+        shortcuts: &std::collections::BTreeMap<String, String>,
+    ) -> Result<()> {
+        crate::shortcuts::validate_overrides(shortcuts).map_err(anyhow::Error::msg)?;
         let path = dirs::config_dir()
             .context("Cannot locate configuration directory")?
             .join("flameshot/flameshot.ini");
-        let values: Vec<_> = values
+        let shortcuts: Vec<_> = shortcuts
             .iter()
             .map(|(key, value)| (key.as_str(), value.clone()))
             .collect();
-        Self::update_section_at(&path, "Shortcuts", &values)
+        Self::update_sections_at(&path, &[("General", values), ("Shortcuts", &shortcuts)])
     }
     fn update_at(path: &std::path::Path, values: &[(&str, String)]) -> Result<()> {
         Self::update_section_at(path, "General", values)
@@ -200,6 +203,12 @@ impl Settings {
         path: &std::path::Path,
         section: &str,
         values: &[(&str, String)],
+    ) -> Result<()> {
+        Self::update_sections_at(path, &[(section, values)])
+    }
+    fn update_sections_at(
+        path: &std::path::Path,
+        sections: &[(&str, &[(&str, String)])],
     ) -> Result<()> {
         use std::io::Write;
         let parent = path.parent().context("Invalid configuration path")?;
@@ -228,36 +237,41 @@ impl Settings {
             Err(e) => return Err(e.into()),
         };
         let mut ini = IniDocument::parse(source);
-        for (key, value) in values {
-            if section == "General" && *key == "buttons" {
-                let buttons = if value.is_empty() {
-                    Vec::new()
+        for &(section, values) in sections {
+            for (key, value) in values {
+                if section == "General" && *key == "buttons" {
+                    let buttons = if value.is_empty() {
+                        Vec::new()
+                    } else {
+                        value
+                            .split(',')
+                            .map(|v| v.trim().parse::<i32>().context("Invalid toolbar button ID"))
+                            .collect::<Result<Vec<_>>>()?
+                    };
+                    ensure!(
+                        buttons.iter().all(|id| crate::buttons::valid(*id)),
+                        "Unknown toolbar button ID"
+                    );
+                    ini.set_integer_list(section, key, &crate::buttons::normalize(buttons))?;
+                } else if section == "General" && *key == "userColors" {
+                    ini.set_string_list(
+                        section,
+                        key,
+                        &value
+                            .split(',')
+                            .map(|v| v.trim().to_owned())
+                            .collect::<Vec<_>>(),
+                    )?;
                 } else {
-                    value
-                        .split(',')
-                        .map(|v| v.trim().parse::<i32>().context("Invalid toolbar button ID"))
-                        .collect::<Result<Vec<_>>>()?
-                };
-                ensure!(
-                    buttons.iter().all(|id| crate::buttons::valid(*id)),
-                    "Unknown toolbar button ID"
-                );
-                ini.set_integer_list(section, key, &crate::buttons::normalize(buttons))?;
-            } else if section == "General" && *key == "userColors" {
-                ini.set_string_list(
-                    section,
-                    key,
-                    &value
-                        .split(',')
-                        .map(|v| v.trim().to_owned())
-                        .collect::<Vec<_>>(),
-                )?;
-            } else {
-                ini.set_string(section, key, value)?;
+                    ini.set_string(section, key, value)?;
+                }
             }
         }
         let merged = Self::parse(ini.source())?;
-        if section == "Shortcuts" {
+        if sections
+            .iter()
+            .any(|(section, values)| *section == "Shortcuts" && !values.is_empty())
+        {
             crate::shortcuts::validate_overrides(&merged.shortcuts).map_err(anyhow::Error::msg)?;
         }
         let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
@@ -483,6 +497,36 @@ pub fn default_palette(large: bool) -> Vec<Option<[u8; 4]>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn form_changes_and_shortcuts_commit_together_or_not_at_all() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("flameshot.ini");
+        let original = "[General]\nshowHelp=true\n[Shortcuts]\nTYPE_COPY=F9\n";
+        std::fs::write(&path, original).unwrap();
+        let general = [("showHelp", "false".into())];
+        let conflict = [("TYPE_SAVE", "F9".into())];
+        assert!(
+            Settings::update_sections_at(&path, &[("General", &general), ("Shortcuts", &conflict)])
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        let valid = [("TYPE_SAVE", "F10".into())];
+        Settings::update_sections_at(&path, &[("General", &general), ("Shortcuts", &valid)])
+            .unwrap();
+        let ini = IniDocument::parse(std::fs::read_to_string(path).unwrap());
+        assert_eq!(
+            ini.string("General", "showHelp").unwrap().as_deref(),
+            Some("false")
+        );
+        assert_eq!(
+            ini.string("Shortcuts", "TYPE_COPY").unwrap().as_deref(),
+            Some("F9")
+        );
+        assert_eq!(
+            ini.string("Shortcuts", "TYPE_SAVE").unwrap().as_deref(),
+            Some("F10")
+        );
+    }
     #[test]
     fn shortcut_updates_validate_the_merged_configuration() {
         let temp = tempfile::tempdir().unwrap();

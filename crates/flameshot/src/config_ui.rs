@@ -27,13 +27,18 @@ pub fn show() -> anyhow::Result<()> {
                 })
                 .collect::<Vec<_>>()
                 .join(", ");
-            Ok(Box::new(Config {
-                buttons_changed: false,
+            let mut config = Config {
+                buttons_reset: false,
+                baseline: Default::default(),
+                shortcut_baseline: Default::default(),
+                startup_baseline: false,
                 palette,
                 settings,
                 path,
                 status: String::new(),
-            }))
+            };
+            config.remember();
+            Ok(Box::new(config))
         }),
     )
     .map_err(|e| anyhow::anyhow!("Configuration window: {e}"))
@@ -42,8 +47,183 @@ struct Config {
     settings: Settings,
     path: String,
     palette: String,
-    buttons_changed: bool,
+    buttons_reset: bool,
+    baseline: std::collections::BTreeMap<&'static str, String>,
+    shortcut_baseline: std::collections::BTreeMap<String, String>,
+    startup_baseline: bool,
     status: String,
+}
+impl Config {
+    fn values(&self) -> Vec<(&'static str, String)> {
+        let mut values = vec![
+            (
+                "autoCloseIdleDaemon",
+                self.settings.auto_close_idle.to_string(),
+            ),
+            (
+                "useJpgForClipboard",
+                self.settings.jpeg_clipboard.to_string(),
+            ),
+            ("showQuitPrompt", self.settings.show_quit_prompt.to_string()),
+            (
+                "showAbortNotification",
+                self.settings.abort_notifications.to_string(),
+            ),
+            (
+                "showStartupLaunchMessage",
+                self.settings.startup_message.to_string(),
+            ),
+            #[cfg(feature = "imgur")]
+            (
+                "uploadWithoutConfirmation",
+                self.settings.upload_without_confirmation.to_string(),
+            ),
+            #[cfg(feature = "imgur")]
+            (
+                "copyURLAfterUpload",
+                self.settings.copy_url_after_upload.to_string(),
+            ),
+            #[cfg(feature = "imgur")]
+            (
+                "historyConfirmationToDelete",
+                self.settings.history_confirmation_to_delete.to_string(),
+            ),
+            (
+                "insecurePixelate",
+                self.settings.insecure_pixelate.to_string(),
+            ),
+            (
+                "showSidePanelButton",
+                self.settings.show_side_panel_button.to_string(),
+            ),
+            (
+                "showSelectionGeometry",
+                self.settings.selection_geometry.to_string(),
+            ),
+            (
+                "showSelectionGeometryHideTime",
+                self.settings.selection_geometry_timeout.to_string(),
+            ),
+            (
+                "captureActiveMonitor",
+                self.settings.capture_active_monitor.to_string(),
+            ),
+            (
+                "useX11LegacyScreenshot",
+                self.settings.use_x11_legacy_screenshot.to_string(),
+            ),
+            ("userColors", self.palette.clone()),
+            (
+                "predefinedColorPaletteLarge",
+                self.settings.large_palette.to_string(),
+            ),
+            (
+                "uiColor",
+                flameshot_core::color::encode(self.settings.ui_color),
+            ),
+            (
+                "contrastUiColor",
+                flameshot_core::color::encode(self.settings.contrast_ui_color),
+            ),
+            (
+                "copyOnDoubleClick",
+                self.settings.copy_on_double_click.to_string(),
+            ),
+            ("saveLastRegion", self.settings.use_last_region.to_string()),
+            (
+                "contrastOpacity",
+                self.settings.contrast_opacity.to_string(),
+            ),
+            ("saveAfterCopy", self.settings.save_after_copy.to_string()),
+            (
+                "copyPathAfterSave",
+                self.settings.copy_path_after_save.to_string(),
+            ),
+            ("undoLimit", self.settings.undo_limit.to_string()),
+            (
+                "allowMultipleGuiInstances",
+                self.settings.allow_multiple_gui.to_string(),
+            ),
+            (
+                "antialiasingPinZoom",
+                self.settings.antialias_pin_zoom.to_string(),
+            ),
+            ("savePathFixed", self.settings.save_path_fixed.to_string()),
+            #[cfg(feature = "update-check")]
+            ("checkForUpdates", self.settings.check_updates.to_string()),
+            ("showMagnifier", self.settings.magnifier.to_string()),
+            (
+                "squareMagnifier",
+                self.settings.square_magnifier.to_string(),
+            ),
+            (
+                "drawCircleCounterOutline",
+                self.settings.counter_outline.to_string(),
+            ),
+            ("uiLanguage", self.settings.language.clone()),
+            ("savePath", self.path.clone()),
+            ("filenamePattern", self.settings.filename_pattern.clone()),
+            ("saveAsFileExtension", self.settings.extension.clone()),
+            ("jpegQuality", self.settings.jpeg_quality.to_string()),
+            ("disabledTrayIcon", self.settings.disabled_tray.to_string()),
+            (
+                "showDesktopNotification",
+                self.settings.notifications.to_string(),
+            ),
+            ("showHelp", self.settings.show_help.to_string()),
+        ];
+        {
+            values.push((
+                "buttons",
+                self.settings
+                    .buttons
+                    .as_deref()
+                    .unwrap_or(&crate::buttons::defaults())
+                    .iter()
+                    .map(i32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ));
+        }
+        values
+    }
+    fn remember(&mut self) {
+        self.remember_file();
+        self.startup_baseline = self.settings.startup_launch;
+    }
+    fn remember_file(&mut self) {
+        self.buttons_reset = false;
+        self.baseline = self.values().into_iter().collect();
+        self.shortcut_baseline = crate::shortcuts::DEFAULTS
+            .iter()
+            .map(|(key, default)| {
+                (
+                    (*key).to_owned(),
+                    self.settings
+                        .shortcuts
+                        .get(*key)
+                        .cloned()
+                        .unwrap_or_else(|| (*default).into()),
+                )
+            })
+            .collect();
+    }
+    fn shortcut_changes(&self) -> std::collections::BTreeMap<String, String> {
+        self.settings
+            .shortcuts
+            .iter()
+            .filter(|(key, value)| self.shortcut_baseline.get(*key) != Some(*value))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect()
+    }
+    fn changes(&self) -> Vec<(&'static str, String)> {
+        self.values()
+            .into_iter()
+            .filter(|(key, value)| {
+                (*key == "buttons" && self.buttons_reset) || self.baseline.get(key) != Some(value)
+            })
+            .collect()
+    }
 }
 impl eframe::App for Config {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
@@ -242,12 +422,11 @@ impl eframe::App for Config {
                             selected.retain(|value| value != id);
                         }
                         self.settings.buttons = Some(crate::buttons::normalize(selected.clone()));
-                        self.buttons_changed = true;
                     }
                 }
                 if ui.button("Restore default toolbar").clicked() {
                     self.settings.buttons = Some(crate::buttons::defaults());
-                    self.buttons_changed = true;
+                    self.buttons_reset = true;
                 }
             });
             ui.collapsing("Shortcuts", |ui| {
@@ -267,147 +446,136 @@ impl eframe::App for Config {
                 }
             });
             if ui.button("Save settings").clicked() {
-                let mut values = vec![
-                    (
-                        "autoCloseIdleDaemon",
-                        self.settings.auto_close_idle.to_string(),
-                    ),
-                    (
-                        "useJpgForClipboard",
-                        self.settings.jpeg_clipboard.to_string(),
-                    ),
-                    ("showQuitPrompt", self.settings.show_quit_prompt.to_string()),
-                    (
-                        "showAbortNotification",
-                        self.settings.abort_notifications.to_string(),
-                    ),
-                    (
-                        "showStartupLaunchMessage",
-                        self.settings.startup_message.to_string(),
-                    ),
-                    #[cfg(feature = "imgur")]
-                    (
-                        "uploadWithoutConfirmation",
-                        self.settings.upload_without_confirmation.to_string(),
-                    ),
-                    #[cfg(feature = "imgur")]
-                    (
-                        "copyURLAfterUpload",
-                        self.settings.copy_url_after_upload.to_string(),
-                    ),
-                    #[cfg(feature = "imgur")]
-                    (
-                        "historyConfirmationToDelete",
-                        self.settings.history_confirmation_to_delete.to_string(),
-                    ),
-                    (
-                        "insecurePixelate",
-                        self.settings.insecure_pixelate.to_string(),
-                    ),
-                    (
-                        "showSidePanelButton",
-                        self.settings.show_side_panel_button.to_string(),
-                    ),
-                    (
-                        "showSelectionGeometry",
-                        self.settings.selection_geometry.to_string(),
-                    ),
-                    (
-                        "showSelectionGeometryHideTime",
-                        self.settings.selection_geometry_timeout.to_string(),
-                    ),
-                    (
-                        "captureActiveMonitor",
-                        self.settings.capture_active_monitor.to_string(),
-                    ),
-                    (
-                        "useX11LegacyScreenshot",
-                        self.settings.use_x11_legacy_screenshot.to_string(),
-                    ),
-                    ("userColors", self.palette.clone()),
-                    (
-                        "predefinedColorPaletteLarge",
-                        self.settings.large_palette.to_string(),
-                    ),
-                    (
-                        "uiColor",
-                        flameshot_core::color::encode(self.settings.ui_color),
-                    ),
-                    (
-                        "contrastUiColor",
-                        flameshot_core::color::encode(self.settings.contrast_ui_color),
-                    ),
-                    (
-                        "copyOnDoubleClick",
-                        self.settings.copy_on_double_click.to_string(),
-                    ),
-                    ("saveLastRegion", self.settings.use_last_region.to_string()),
-                    (
-                        "contrastOpacity",
-                        self.settings.contrast_opacity.to_string(),
-                    ),
-                    ("saveAfterCopy", self.settings.save_after_copy.to_string()),
-                    (
-                        "copyPathAfterSave",
-                        self.settings.copy_path_after_save.to_string(),
-                    ),
-                    ("undoLimit", self.settings.undo_limit.to_string()),
-                    (
-                        "allowMultipleGuiInstances",
-                        self.settings.allow_multiple_gui.to_string(),
-                    ),
-                    (
-                        "antialiasingPinZoom",
-                        self.settings.antialias_pin_zoom.to_string(),
-                    ),
-                    ("savePathFixed", self.settings.save_path_fixed.to_string()),
-                    #[cfg(feature = "update-check")]
-                    ("checkForUpdates", self.settings.check_updates.to_string()),
-                    ("showMagnifier", self.settings.magnifier.to_string()),
-                    (
-                        "squareMagnifier",
-                        self.settings.square_magnifier.to_string(),
-                    ),
-                    (
-                        "drawCircleCounterOutline",
-                        self.settings.counter_outline.to_string(),
-                    ),
-                    ("uiLanguage", self.settings.language.clone()),
-                    ("savePath", self.path.clone()),
-                    ("filenamePattern", self.settings.filename_pattern.clone()),
-                    ("saveAsFileExtension", self.settings.extension.clone()),
-                    ("jpegQuality", self.settings.jpeg_quality.to_string()),
-                    ("disabledTrayIcon", self.settings.disabled_tray.to_string()),
-                    (
-                        "showDesktopNotification",
-                        self.settings.notifications.to_string(),
-                    ),
-                    ("showHelp", self.settings.show_help.to_string()),
-                ];
-                if self.buttons_changed {
-                    values.push((
-                        "buttons",
-                        self.settings
-                            .buttons
-                            .as_deref()
-                            .unwrap_or(&[])
-                            .iter()
-                            .map(i32::to_string)
-                            .collect::<Vec<_>>()
-                            .join(","),
-                    ));
-                }
-                self.status = match crate::shortcuts::validate_overrides(&self.settings.shortcuts)
+                let values = self.changes();
+                let shortcuts = self.shortcut_changes();
+                let unchanged = values.is_empty()
+                    && shortcuts.is_empty()
+                    && self.settings.startup_launch == self.startup_baseline;
+                self.status = match crate::shortcuts::validate_overrides(&shortcuts)
                     .map_err(anyhow::Error::msg)
-                    .and_then(|()| Settings::update(&values))
-                    .and_then(|()| Settings::set_startup(self.settings.startup_launch))
-                    .and_then(|()| Settings::update_shortcuts(&self.settings.shortcuts))
-                {
-                    Ok(()) => "Settings saved".into(),
+                    .and_then(|()| {
+                        if values.is_empty() && shortcuts.is_empty() {
+                            Ok(())
+                        } else {
+                            Settings::update_form(&values, &shortcuts)
+                        }
+                    })
+                    .map(|()| self.remember_file())
+                    .and_then(|()| {
+                        if self.settings.startup_launch == self.startup_baseline {
+                            Ok(())
+                        } else {
+                            Settings::set_startup(self.settings.startup_launch)
+                        }
+                    }) {
+                    Ok(()) => {
+                        self.remember();
+                        if unchanged {
+                            "No changes to save".into()
+                        } else {
+                            "Settings saved".into()
+                        }
+                    }
                     Err(e) => e.to_string(),
                 };
             }
             ui.label(&self.status);
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn form() -> Config {
+        let mut form = Config {
+            settings: Settings::default(),
+            path: String::new(),
+            palette: "red, blue, picker".into(),
+            buttons_reset: false,
+            baseline: Default::default(),
+            shortcut_baseline: Default::default(),
+            startup_baseline: false,
+            status: String::new(),
+        };
+        form.remember();
+        form
+    }
+    #[test]
+    fn unchanged_fields_do_not_overwrite_newer_external_values() {
+        let mut form = form();
+        assert!(form.changes().is_empty());
+        form.settings.show_help = !form.settings.show_help;
+        let changes = form.changes();
+        assert_eq!(changes.len(), 1);
+        assert_eq!(changes[0].0, "showHelp");
+        let mut latest = flameshot_core::config::IniDocument::parse("[General]\nfilenamePattern=external\nshowDesktopNotification=false\n[Other]\nprivate=keep\n".into());
+        for (key, value) in changes {
+            latest.set_string("General", key, &value).unwrap();
+        }
+        assert_eq!(
+            latest
+                .string("General", "filenamePattern")
+                .unwrap()
+                .as_deref(),
+            Some("external")
+        );
+        assert_eq!(
+            latest
+                .string("General", "showDesktopNotification")
+                .unwrap()
+                .as_deref(),
+            Some("false")
+        );
+        assert_eq!(
+            latest.string("Other", "private").unwrap().as_deref(),
+            Some("keep")
+        );
+        form.remember();
+        assert!(form.changes().is_empty());
+    }
+    #[test]
+    fn file_commit_keeps_startup_pending_and_tracks_later_reverts() {
+        let mut form = form();
+        let original_help = form.settings.show_help;
+        let original_startup = form.startup_baseline;
+        form.settings.show_help = !original_help;
+        form.settings.startup_launch = !original_startup;
+        form.settings
+            .shortcuts
+            .insert("TYPE_COPY".into(), "F9".into());
+        form.remember_file();
+        assert!(form.changes().is_empty() && form.shortcut_changes().is_empty());
+        assert_eq!(form.startup_baseline, original_startup);
+        assert_ne!(form.settings.startup_launch, form.startup_baseline);
+        form.settings.show_help = original_help;
+        assert_eq!(form.changes()[0].0, "showHelp");
+    }
+    #[test]
+    fn toolbar_and_shortcuts_compare_effective_defaults() {
+        let mut form = form();
+        form.settings.buttons = Some(crate::buttons::defaults());
+        assert!(form.changes().is_empty());
+        form.buttons_reset = true;
+        assert_eq!(form.changes()[0].0, "buttons");
+        form.remember();
+        assert!(form.changes().is_empty());
+        form.settings
+            .shortcuts
+            .insert("TYPE_COPY".into(), "Ctrl+C".into());
+        assert!(form.shortcut_changes().is_empty());
+        form.settings
+            .shortcuts
+            .insert("TYPE_COPY".into(), "F9".into());
+        assert_eq!(form.shortcut_changes().len(), 1);
+        form.remember();
+        assert!(form.shortcut_changes().is_empty());
+        form.settings
+            .shortcuts
+            .insert("TYPE_COPY".into(), String::new());
+        assert_eq!(
+            form.shortcut_changes().get("TYPE_COPY"),
+            Some(&String::new())
+        );
     }
 }

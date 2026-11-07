@@ -1756,3 +1756,31 @@ read-only configuration checks do not create it. This coordinates cooperating Ru
 writers, not arbitrary external editors or a legacy Qt process using a different
 locking protocol. GUI form/live-reload conflict handling remains in the remaining
 configuration acceptance work.
+
+### Configuration form saves preserve newer unrelated edits
+
+The configuration form records an initial value snapshot and saves only effective
+field/shortcut changes. An unchanged save reports that there is nothing to save
+and does not rewrite the INI or autostart entry. Untouched fields therefore do not
+replace newer CLI/other-window values. Explicit Restore default toolbar remains an
+intentional update even when the original form already showed defaults.
+
+General and shortcut patches now merge and validate in one locked INI transaction:
+a merged shortcut conflict cannot leave general fields partially committed. File
+snapshots advance after that transaction, separately from autostart success, so a
+later autostart failure does not break change tracking or subsequent reverts. This
+is not a cross-file atomic transaction with the desktop autostart file.
+
+Model tests cover effective defaults, incremental edits, reset intent and pending
+autostart state. Settings tests cover all-or-nothing general/shortcut updates. The
+native X11 configuration case opens the form, updates the filename pattern through
+a separate CLI process, then actually clicks Save both unchanged and after changing
+a counter preference. It checks status-label pixels, the requested saved value and
+preservation of the newer filename. Untouched form fields are not yet refreshed live;
+same-field concurrent changes and complete error/reload presentation remain in the
+configuration acceptance audit.
+
+Validation passed on the final implementation: no-default-feature form-model tests,
+all-feature workspace tests (including combined INI transaction rejection), Clippy
+with warnings denied, formatting, and the complete isolated Xvfb suite with actual
+unchanged/edited form saves after an external CLI update.

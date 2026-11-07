@@ -387,12 +387,53 @@ print('PASS: capture lock is released after a killed editor')
         window=found.stdout.decode().splitlines()[-1]
         tool('windowfocus','--sync',window)
         time.sleep(.2)
+        original_config=test_config.read_text()
+        external=subprocess.run([str(binary),'config','--filename','%F-external'],env=env,capture_output=True,timeout=10)
+        assert external.returncode==0,external.stderr.decode()
+        latest_config=test_config.read_text()
+        tool('mousemove','--window',window,'300','300')
+        tool('click','--repeat','60','--delay','10','5')
+        time.sleep(.5)
+        import io
+        from PIL import Image
+        geometry=dict(line.split('=',1) for line in tool('getwindowgeometry','--shell',window).stdout.decode().splitlines() if '=' in line)
+        config_x,config_y=int(geometry['X']),int(geometry['Y'])
+        def config_status_pixels(name):
+            captured=subprocess.run(bus_command+[str(binary),'full','--raw'],env=env,capture_output=True,timeout=20)
+            assert captured.returncode==0,captured.stderr.decode()
+            (artifact_dir/name).write_bytes(captured.stdout)
+            return Image.open(io.BytesIO(captured.stdout)).convert('RGB').crop((config_x,config_y+405,config_x+300,config_y+420)).tobytes()
+        status_before=config_status_pixels('rust-config-save-before.png')
+        tool('mousemove','--window',window,'45','393')
+        tool('click','1')
+        deadline=time.monotonic()+5
+        while True:
+            time.sleep(.2)
+            if config_status_pixels('rust-config-save-after.png')!=status_before: break
+            assert time.monotonic()<deadline,'Save settings did not update its status label'
+        assert test_config.read_text()==latest_config,'Unchanged form overwrote newer CLI settings'
+        tool('mousemove','--window',window,'7','323')
+        tool('click','1') # Counter outline is a local edit unrelated to filename.
+        time.sleep(.2)
+        tool('mousemove','--window',window,'45','393')
+        tool('click','1')
+        import configparser
+        deadline=time.monotonic()+5
+        while True:
+            saved_form=configparser.ConfigParser(interpolation=None,strict=False)
+            saved_form.read(test_config)
+            if saved_form.get('General','drawCircleCounterOutline',fallback='').strip(chr(34))=='false': break
+            assert time.monotonic()<deadline,'Changed form field was not saved'
+            time.sleep(.1)
+        assert saved_form.get('General','filenamePattern').strip(chr(34))=='%F-external','Saving a local change overwrote a newer unrelated CLI value'
+        latest_config=test_config.read_text()
         tool('key','Escape')
         out,err=process.communicate(timeout=10)
         assert process.returncode==0,err.decode()
-        assert (Path(directory)/'flameshot/flameshot.ini').read_text()=='[General]\ncheckForUpdates=false\n'
+        assert test_config.read_text()==latest_config
+        test_config.write_text(original_config)
         process=None
-        print('PASS: configuration window opens and closes without modifying settings')
+        print('PASS: unchanged and edited configuration forms preserve newer unrelated CLI settings')
         for mode in ('cancel','raw','geometry','both','autosave','adjust','magnifier','save-retry','save-cancel','preset','last','lastconfig','lastoverride','fixed','shortcut','shortcutmeta','shortcutdefault','openwith','toolsize','undolimit','color','opacity','textedit','objectmove','constraints','counterdelete','layers','palette','uploadcancel','buttons','geometryoverlay','pixelatesafe','pixelateinsecure','quitresume','quitconfirm','quitdisable','monitors','monitoroverride','monitordelay'):
             if mode=='uploadcancel' and b'history' not in help_text: continue
             cancel = mode in ('cancel','quitconfirm','quitdisable')
