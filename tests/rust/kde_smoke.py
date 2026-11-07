@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER [--clipboard] [--multi-monitor] [--fractional] [--hotplug]
+"""Private headless KWin/portal smoke. Usage: kde_smoke.py BINARY INPUT_HELPER [--clipboard] [--multi-monitor] [--fractional] [--hotplug] [--ime]
 Requires KWin 5, KDE portal, Qt Wayland, PyQt5, Pillow and private-session tools.
 """
 import os
@@ -18,9 +18,14 @@ binary,helper=map(lambda p:Path(p).resolve(),sys.argv[1:3])
 if any(flag in sys.argv for flag in ['--fractional','--hotplug']) and '--multi-monitor' not in sys.argv:sys.argv.insert(3,'--multi-monitor')
 if '--inside' not in sys.argv:
     assert not ('--clipboard' in sys.argv and '--multi-monitor' in sys.argv),'Run clipboard and monitor fixtures separately'
+    assert not ('--ime' in sys.argv and '--multi-monitor' in sys.argv),'Run IME and monitor fixtures separately'
     with tempfile.TemporaryDirectory(prefix='flameshot-kde-') as directory:
         root=Path(directory)
         for name in ['runtime','config','data','cache','tmp','pictures']:(root/name).mkdir(mode=0o700)
+        if '--ime' in sys.argv:
+            profile=root/'config/fcitx5';profile.mkdir()
+            (profile/'profile').write_text('[Groups/0]\nName=Default\nDefault Layout=us\nDefaultIM=pinyin\n[Groups/0/Items/0]\nName=keyboard-us\nLayout=\n[Groups/0/Items/1]\nName=pinyin\nLayout=\n[GroupOrder]\n0=Default\n')
+            (root/'config/kwinrc').write_text('[Wayland]\nVirtualKeyboardEnabled=true\n')
         config=root/'config/flameshot';config.mkdir()
         (config/'flameshot.ini').write_text('[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\n')
         applications=root/'data/applications';applications.mkdir()
@@ -32,7 +37,7 @@ if '--inside' not in sys.argv:
         env=os.environ.copy()
         for key in ['DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','DBUS_SYSTEM_BUS_ADDRESS','SESSION_MANAGER']:env.pop(key,None)
         env.update(XDG_RUNTIME_DIR=str(root/'runtime'),XDG_CONFIG_HOME=str(root/'config'),XDG_DATA_HOME=str(root/'data'),XDG_CACHE_HOME=str(root/'cache'),TMPDIR=str(root/'tmp'),XDG_CURRENT_DESKTOP='KDE',XDG_SESSION_TYPE='wayland',QT_QPA_PLATFORM='wayland',LIBGL_ALWAYS_SOFTWARE='1',KWIN_COMPOSE='O2')
-        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),*[flag for flag in ['--clipboard','--multi-monitor','--fractional','--hotplug'] if flag in sys.argv],'--inside',str(root)],env=env,start_new_session=True)
+        session=subprocess.Popen(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),str(helper),*[flag for flag in ['--clipboard','--multi-monitor','--fractional','--hotplug','--ime'] if flag in sys.argv],'--inside',str(root)],env=env,start_new_session=True)
         try:
             status=session.wait(timeout=100)
         except subprocess.TimeoutExpired:
@@ -61,7 +66,7 @@ def owned(name):
     return result.returncode==0 and b'true' in result.stdout
 try:
     subprocess.run(['kbuildsycoca5','--noincremental'],env=env,capture_output=True,check=True,timeout=15)
-    compositor=start('kwin',['kwin_wayland','--virtual','--width','1024','--height','768',*(['--output-count','2'] if '--multi-monitor' in sys.argv else []),'--no-lockscreen','--no-global-shortcuts','--socket','flameshot-kde'],{'QT_QPA_PLATFORM':'offscreen','QT_LOGGING_RULES':'kwin_core.debug=true;KWIN_UTILS.debug=true'})
+    compositor=start('kwin',['kwin_wayland','--virtual','--width','1024','--height','768',*(['--output-count','2'] if '--multi-monitor' in sys.argv else []),*(['--inputmethod','/usr/bin/fcitx5 -D --disable=cloudpinyin'] if '--ime' in sys.argv else []),'--no-lockscreen','--no-global-shortcuts','--socket','flameshot-kde'],{'QT_QPA_PLATFORM':'offscreen','QT_LOGGING_RULES':'kwin_core.debug=true;KWIN_UTILS.debug=true'})
     wait_for(lambda:(root/'runtime/flameshot-kde').exists() or compositor.poll() is not None)
     assert compositor.poll() is None,'KWin exited'
     env['WAYLAND_DISPLAY']='flameshot-kde'
@@ -144,6 +149,60 @@ app.exec_()
         if '--fractional' in sys.argv and command!='full':
             assert all(image.getpixel((x,y))==color for x in [0,image.width-1] for y in [0,20,image.height-1]),'Monitor crop contains adjacent output pixels'
         print('PASS: KWin/KDE real portal',command,size,'and background pixels',flush=True)
+    if '--ime' in sys.argv:
+        wait_for(lambda:owned('org.fcitx.Fcitx5'))
+        owner=subprocess.run(['gdbus','call','--session','--dest','org.freedesktop.DBus','--object-path','/org/freedesktop/DBus','--method','org.freedesktop.DBus.GetConnectionUnixProcessID','org.fcitx.Fcitx5'],env=env,capture_output=True,text=True,check=True,timeout=5)
+        assert owner.stdout.startswith('(uint32 '),owner.stdout
+        input_pid=int(owner.stdout.split()[1].rstrip(',)'))
+        def remote(*args):
+            result=subprocess.run(['fcitx5-remote',*args],env=env,capture_output=True,timeout=5)
+            assert result.returncode==0,result.stderr
+        def input_command(command):
+            pointer.stdin.write(command+'\n');pointer.stdin.flush();assert pointer.stdout.readline().strip()=='ok'
+        def control(*codes):
+            input_command('key 29 1')
+            for code in codes:key(code)
+            input_command('key 29 0')
+        def copied_text():
+            result=subprocess.run(['wl-paste','--type','text/plain;charset=utf-8','--no-newline'],env=env,capture_output=True,timeout=5)
+            assert result.returncode==0,result.stderr
+            return result.stdout.decode('utf-8')
+        editor=start('ime-editor',[str(binary),'gui','--region','400x200+500+450','--raw'],stdout=subprocess.PIPE)
+        deadline=time.monotonic()+20
+        while True:
+            pointer.stdin.write('geometry org.flameshot.Flameshot\n');pointer.stdin.flush()
+            if pointer.stdout.readline().strip()=='0 0 1024 768':break
+            assert editor.poll() is None and time.monotonic()<deadline
+            key(28);time.sleep(.2)
+        time.sleep(.5)
+        key(20) # Text tool.
+        input_command('move 550 500');input_command('button 272 1');input_command('button 272 0')
+        time.sleep(.5)
+        remote('-s','pinyin');remote('-o');time.sleep(.5)
+        for code in [49,23,35,30,24]:key(code);time.sleep(.1) # nihao
+        time.sleep(3);key(57);time.sleep(.5)
+        remote('-c');control(30,46);time.sleep(.3)
+        assert copied_text()=='你好','Pinyin commit did not reach the native editor'
+        key(107) # End.
+        remote('-o');time.sleep(.3)
+        for code in [44,35,24,49,34]:key(code);time.sleep(.1) # zhong
+        time.sleep(.5);key(1);time.sleep(.3)
+        assert editor.poll() is None,'Cancelling preedit closed the editor'
+        remote('-c');control(30,46);time.sleep(.3)
+        assert copied_text()=='你好','Cancelling preedit changed the committed text'
+        control(28);time.sleep(.3);key(28)
+        data,_=editor.communicate(timeout=10)
+        assert editor.returncode==0,editor.returncode
+        image=Image.open(io.BytesIO(data)).convert('RGB')
+        assert image.size==(400,200),image.size
+        assert any(r>180 and g<80 and b<80 for r,g,b in image.getdata()),'No text annotation pixels'
+        if os.environ.get('FLAMESHOT_TEST_ARTIFACT_DIR'):
+            Path(os.environ['FLAMESHOT_TEST_ARTIFACT_DIR'],'kde-ime.png').write_bytes(data)
+        remote('-e')
+        wait_for(lambda:not Path(f'/proc/{input_pid}').exists())
+        assert not owned('org.fcitx.Fcitx5')
+        assert 'Input Method crashed' not in (root/'kwin.log').read_text()
+        print('PASS: KWin native Wayland Pinyin commit, composition cancellation, text copy and annotation export',flush=True)
     if '--hotplug' in sys.argv:
         def geometry():
             pointer.stdin.write('geometry org.flameshot.Flameshot\n');pointer.stdin.flush()

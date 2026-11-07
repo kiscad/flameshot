@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and preferences tested; complete interactive mocked upload/history coverage remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and KDE IME and broader scale/rotation acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -2647,3 +2647,20 @@ no change for these lifecycle cases. Tests cover connected virtual outputs being
 disabled/re-enabled, not physical connector removal/GPU behavior. Detailed evidence
 and reproduction are in KDE-VALIDATION.md. Helper build, all-feature all-target Clippy,
 formatting, Python syntax and diff checks pass; the private container was cleaned up.
+
+### Native KDE Wayland Chinese input and composition lifecycle
+
+Added --ime to the isolated KWin fixture. KWin launches Fcitx on its dedicated input
+method connection, with a private Pinyin profile and cloud input disabled. ASCII key
+events commit exact Chinese text, native clipboard reads verify UTF-8, Escape cancels
+a subsequent preedit without closing the editor or changing committed text, and the
+annotation exports with visible Chinese glyphs. The 400x200 artifact was inspected.
+No DISPLAY, Xwayland or user input-method session is involved.
+
+The fixture now waits for the private input-method PID and bus name to disappear
+before compositor cleanup; the final run has no duplicate termination signal/crash
+report and leaves no desktop processes. Native KWin capture/editor/cancel checks
+also pass with the input method enabled. Python syntax and diff checks pass. No
+production application changes were required. KDE-VALIDATION.md records versions,
+setup and limits, including untested candidate geometry/other engines/KDE 6. The
+container was stopped and removed after saving local evidence.

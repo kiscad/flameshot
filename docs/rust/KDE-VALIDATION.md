@@ -87,7 +87,7 @@ Run this mode separately from `--clipboard`. It additionally requires
 python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input --multi-monitor
 ```
 
-Fractional scaling and virtual-output lifecycle are covered in the follow-ups below; native KDE IME remains separate acceptance work.
+Fractional scaling and virtual-output lifecycle are covered in the follow-ups below; native KDE Pinyin is covered in the later IME follow-up.
 
 ## Fractional-scale crop boundaries
 
@@ -161,6 +161,38 @@ not changed. No production application code needed modification for these cases.
 Helper compilation/Clippy, formatting, Python syntax and diff checks pass. No test
 desktop processes remained, and the disposable container was stopped and removed.
 
+## Native KDE Wayland Pinyin input
+
+The `--ime` fixture passed using Fcitx 5.1.7, its 5.1.3 Pinyin addon and Noto CJK
+fonts in the private KWin 5.27 session. KWin starts Fcitx through `--inputmethod`,
+providing its dedicated Wayland input-method connection. The profile, dictionary
+state and session bus are disposable; cloud Pinyin is disabled. DISPLAY remains
+absent. This tests a compositor-configured native input method, not a Qt/XIM plugin
+or the user's existing input-method daemon.
+
+The fixture opens a text annotation, types ASCII key events for `nihao`, commits
+`你好`, and checks exact UTF-8 text via the actual clipboard. It then types `zhong`,
+cancels preedit with Escape, verifies the editor remains open and the committed
+text is unchanged, applies the annotation and exports a 400×200 image. Red text
+pixels are asserted and the rendered Chinese glyphs were visually inspected.
+
+```sh
+python3 tests/rust/kde_smoke.py target/debug/flameshot target/debug/examples/kde_input --ime
+```
+
+This mode uses one output and additionally requires `fcitx5`, `fcitx5-chinese-addons`,
+`fonts-noto-cjk` and `wl-clipboard`. It is not combined with the multi-monitor modes.
+Evidence is in `target/kde-ime.log` and `target/kde-ime-artifacts/kde-ime.png`.
+The dependency environment is cached as `flameshot-test-kde:5.27-ime`; copy current
+checkout scripts/binaries before reuse.
+
+The fixture obtains the input-method PID from the private D-Bus service and waits
+for it to exit after `fcitx5-remote -e`, before stopping KWin. This avoids terminating
+Fcitx again during addon cleanup. The final log has no signal/crash report, the
+service disappears, and no test desktop/input-method processes remain. The container
+was stopped and removed. Python syntax and diff checks pass. Other IME engines,
+candidate-popup geometry and KDE 6 are not established by this case.
+
 ## Reproduce
 
 Build the application and guarded input helper:
@@ -213,7 +245,7 @@ python3 /validation/kde_smoke.py /usr/bin/flameshot /validation/kde_input --clip
 ```
 
 No real terminal, browser, uploader or user desktop is invoked. Remaining KDE
-coverage includes native IME, additional scale/rotation combinations and negative-origin
+coverage includes other IME engines, additional scale/rotation combinations and negative-origin
 outputs, physical hardware removal and installed sandbox behavior. The plain `screen` command cannot
 infer the pointer's monitor on this Wayland backend; the existing diagnostic asks
 for `--number`. Hosted CI has not run this fixture.
