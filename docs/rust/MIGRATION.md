@@ -2391,3 +2391,21 @@ All settings tests and all-feature all-target Clippy passed. This verifies opaqu
 preservation during writes, not that the diagnostic config checker must accept
 unknown keys or that future shortcut formats are supported.
 The focused no-default-feature test, formatting and diff checks also passed.
+
+### Preserve autostart entries when configuration commit fails
+
+Startup changes now snapshot the original entry before applying the change and
+committing startupLaunch. The former boolean-only rollback could replace a custom
+desktop file with default contents, or lose a dangling symlink. Linux hard-link
+snapshots preserve the original entry and its permissions; failures restore it by
+rename. If restoration itself fails, the backup is retained and its location/error
+is reported instead of silently discarding the original. Cooperating Rust startup
+updates use a persistent lock. Backup failure aborts before changing the entry.
+
+Tests cover custom content/mode, symlinks, previously absent entries, successful
+commit and failed restoration with recoverable backup. An actual CLI test forces
+INI validation failure and verifies both the original startup entry and invalid INI
+remain intact. Platform tests, full/minimal config integration checks, all-feature
+Clippy, formatting and diff checks passed. This is rollback on reported failure,
+not crash/power-loss atomicity across two filesystem resources or coordination with
+legacy Qt/external writers.

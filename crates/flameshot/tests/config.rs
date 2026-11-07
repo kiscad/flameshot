@@ -311,3 +311,28 @@ fn waiting_writer_reads_configuration_after_acquiring_the_lock() {
     );
     assert!(source.contains("; latest change\n"));
 }
+
+#[test]
+fn failed_autostart_config_write_preserves_custom_desktop_entry() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("autostart")).unwrap();
+    std::fs::create_dir(root.path().join("flameshot")).unwrap();
+    let path = root.path().join("autostart/Flameshot.desktop");
+    let original = "[Desktop Entry]\nExec=flameshot --custom-argument\nX-Custom=keep\n";
+    std::fs::write(&path, original).unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o640)).unwrap();
+    let ini = root.path().join("flameshot/flameshot.ini");
+    let invalid = "[General]\njpegQuality=999\n";
+    std::fs::write(&ini, invalid).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+        .env("XDG_CONFIG_HOME", root.path())
+        .args(["config", "--autostart", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("jpegQuality"));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o640);
+    assert_eq!(std::fs::read_to_string(ini).unwrap(), invalid);
+}

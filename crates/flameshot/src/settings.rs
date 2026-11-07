@@ -168,14 +168,11 @@ impl Settings {
     }
     pub fn set_startup(enabled: bool) -> Result<()> {
         let directory = dirs::config_dir().context("Cannot locate startup directory")?;
-        let previous = flameshot_platform::desktop::autostart_enabled(&directory);
-        flameshot_platform::desktop::set_autostart(&directory, enabled)?;
-        if let Err(error) = Self::update(&[("startupLaunch", enabled.to_string())]) {
-            let _ = flameshot_platform::desktop::set_autostart(&directory, previous);
-            return Err(error);
-        }
-        Ok(())
+        flameshot_platform::desktop::set_autostart_with_commit(&directory, enabled, || {
+            Self::update(&[("startupLaunch", enabled.to_string())])
+        })
     }
+
     pub fn update(values: &[(&str, String)]) -> Result<()> {
         let path = dirs::config_dir()
             .context("Cannot locate configuration directory")?
