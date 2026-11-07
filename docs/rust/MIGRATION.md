@@ -2266,3 +2266,27 @@ by normal annotation cancellation. Existing text-edit tests also pass, together 
 all-feature all-target Clippy, no-default-feature compilation, formatting and diff
 checks. These event-level tests do not establish native IBus/Fcitx integration or
 candidate-window placement; those remain required desktop acceptance work.
+
+### Native Fcitx/XIM and text-field clipboard integration
+
+A real Fcitx Pinyin fixture exposed that eframe's clipboard feature was missing:
+text widgets generated CopyText commands, but no OS clipboard integration handled
+them. Depending on arboard directly had not enabled eframe's integration. The
+application now enables eframe/clipboard and removes that redundant direct dependency;
+Cargo.lock includes the resulting Wayland clipboard integration dependencies.
+Screenshot clipboard ownership continues to use the existing daemon service.
+
+ime_smoke.py runs Fcitx on a private Xvfb/D-Bus session with isolated configuration,
+data and caches, and disables Cloud Pinyin. It verifies Chinese “你好” committed via
+XIM, exact text copying, pasting over replacement text, cancellation of an uncommitted
+Pinyin sequence without changing committed text, annotation application and PNG export.
+The exported glyphs were visually inspected and checked to be contained in the crop.
+The fixture explicitly sizes the window because Xvfb has no fullscreen window manager.
+It is wired into Rust CI with the Pinyin engine dependency; hosted CI remains unrun.
+
+Validation passed: the native IME fixture, all-feature workspace tests, all-target
+Clippy, no-default-feature compilation, the isolated D-Bus/Xvfb UI suite and native
+Sway regression. Temporary event tracing was removed. This establishes the tested
+X11/Fcitx path, not all input engines, candidate positioning or native Wayland IME
+acceptance. Earlier release/source snapshots predate this dependency change and must
+be regenerated before final release.

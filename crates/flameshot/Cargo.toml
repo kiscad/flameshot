@@ -21,10 +21,9 @@ chrono = "0.4"
 dirs = "6"
 
 flameshot-core = { path = "../flameshot-core" }
-eframe = { version = "0.37.0", default-features = false, features = ["wgpu", "x11", "wayland", "default_fonts"] }
+# Text-field copy/paste requires eframe clipboard integration; screenshot ownership is managed separately.
+eframe = { version = "0.37.0", default-features = false, features = ["wgpu", "x11", "wayland", "default_fonts", "clipboard"] }
 
-# Enable Wayland clipboard support in egui text widgets. Screenshot ownership is managed separately.
-arboard = { version = "3.7", features = ["wayland-data-control"] }
 futures-util = "0.3"
 
 ksni = "0.3.7"
