@@ -8,6 +8,68 @@ use zbus::{
     Connection, Proxy,
     zvariant::{OwnedObjectPath, OwnedValue, Structure, Value},
 };
+#[derive(Debug, PartialEq, Eq)]
+struct MethodContract {
+    arguments: Vec<std::collections::BTreeMap<String, String>>,
+    annotations: std::collections::BTreeMap<String, String>,
+}
+fn interface_contract(xml: &str) -> std::collections::BTreeMap<String, MethodContract> {
+    let document = roxmltree::Document::parse_with_options(
+        xml,
+        roxmltree::ParsingOptions {
+            allow_dtd: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let interface = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("interface")
+                && node.attribute("name") == Some("org.flameshot.Flameshot")
+        })
+        .unwrap();
+    let mut methods = std::collections::BTreeMap::new();
+    for method in interface.children().filter(|node| node.is_element()) {
+        assert!(
+            method.has_tag_name("method"),
+            "Unexpected interface member: {xml}"
+        );
+        let mut contract = MethodContract {
+            arguments: Vec::new(),
+            annotations: Default::default(),
+        };
+        for child in method.children().filter(|node| node.is_element()) {
+            match child.tag_name().name() {
+                "arg" => contract.arguments.push(
+                    child
+                        .attributes()
+                        .map(|attr| (attr.name().to_owned(), attr.value().to_owned()))
+                        .collect(),
+                ),
+                "annotation" => assert!(
+                    contract
+                        .annotations
+                        .insert(
+                            child.attribute("name").unwrap().into(),
+                            child.attribute("value").unwrap().into()
+                        )
+                        .is_none(),
+                    "Duplicate annotation: {xml}"
+                ),
+                _ => panic!("Unexpected method metadata: {xml}"),
+            }
+        }
+        assert!(
+            methods
+                .insert(method.attribute("name").unwrap().to_owned(), contract)
+                .is_none(),
+            "Duplicate method: {xml}"
+        );
+    }
+    methods
+}
+
 struct ChildGuard(Child);
 impl Drop for ChildGuard {
     fn drop(&mut self) {
@@ -167,14 +229,41 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
     .await
     .unwrap();
     let xml: String = introspection.call("Introspect", &()).await.unwrap();
-    for name in [
-        "captureScreen",
-        "attachScreenshotToClipboard",
-        "attachTextToClipboard",
-        "attachPin",
-    ] {
-        assert!(xml.contains(&format!("name=\"{name}\"")), "{xml}");
-    }
+    assert_eq!(
+        interface_contract(&xml),
+        interface_contract(include_str!("fixtures/qt-dbus-interface.xml")),
+        "Public method signatures or annotations differ from the Qt reference",
+    );
+    let properties = Proxy::new(
+        &connection,
+        "org.flameshot.Flameshot",
+        "/",
+        "org.freedesktop.DBus.Properties",
+    )
+    .await
+    .unwrap();
+    let empty: HashMap<String, OwnedValue> = properties
+        .call("GetAll", &("org.flameshot.Flameshot",))
+        .await
+        .unwrap();
+    assert!(empty.is_empty());
+    let missing = properties
+        .call::<_, _, OwnedValue>("Get", &("org.flameshot.Flameshot", "missing"))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(missing, zbus::Error::MethodError(ref name,_,_) if name.as_str()=="org.freedesktop.DBus.Error.UnknownProperty")
+    );
+    let missing = properties
+        .call::<_, _, ()>(
+            "Set",
+            &("org.flameshot.Flameshot", "missing", Value::from(1_u32)),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(missing, zbus::Error::MethodError(ref name,_,_) if name.as_str()=="org.freedesktop.DBus.Error.UnknownProperty")
+    );
     let proxy = Proxy::new(
         &connection,
         "org.flameshot.Flameshot",

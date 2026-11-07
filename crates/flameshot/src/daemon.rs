@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+mod legacy_interface;
+
 use anyhow::{Context, Result};
 use flameshot_core::qt_wire;
 use futures_util::StreamExt;
@@ -202,9 +204,9 @@ pub async fn run() -> Result<()> {
         .context(Stop::ConnectionFailed)?
         .serve_at(
             "/",
-            Service {
+            legacy_interface::LegacyService(Service {
                 activity: activity.clone(),
-            },
+            }),
         )?
         .build()
         .await

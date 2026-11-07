@@ -25,7 +25,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, numeric/repetition/help rules, parse statuses and completions implemented/tested; final command/shell behavior audit remains |
-| D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
+| D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, NoReply metadata, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures, atomic updates, idle reload and locked form conflict checks tested; remaining semantic audit pending |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
@@ -3149,3 +3149,35 @@ saves, the full Xvfb desktop suite, and Sway with Pinyin, scaled grids and preci
 picking. Existing clipboard ownership and automatic-idle-exit cases still pass on
 X11 and Wayland. Tests used private sessions/displays/XDG directories; hosted CI and
 remaining migration acceptance, including the metadata item above, are still pending.
+
+### Match the legacy D-Bus method introspection metadata
+
+A Qt 6.4.2 QCoreApplication harness using the unchanged legacy adaptor header and
+moc-generated metadata confirmed that all four public methods export
+`org.freedesktop.DBus.Method.NoReply=true`. Only the slot bodies were stubbed; the
+interface declarations were the original source. The observed Flameshot interface
+is now checked in as `crates/flameshot/tests/fixtures/qt-dbus-interface.xml`, with
+header provenance and regeneration notes beside it. Qt tools were extracted and run
+as local reference fixtures, not added to Rust build/runtime requirements.
+
+The locked zbus 5.19 interface macro does not expose arbitrary method annotations.
+A forwarding Interface implementation therefore retains the generated Service's
+method/property dispatch and task policy, while adding the four legacy annotations
+to its generated XML. It does not suppress replies requested by existing Rust callers;
+actual no-reply calls remain handled by zbus's request flags.
+
+The private-bus daemon test now structurally compares the complete public method
+contract with the Qt reference: names, argument attributes/order, annotations and
+absence of unexpected/duplicate members. Standard empty Properties.GetAll and
+UnknownProperty errors are also checked. The XML parser is a test-only dependency
+already present in the workspace lockfile. This addresses the method-metadata gap
+recorded in the preceding D-Bus audit.
+
+Ordinary gdbus calls to the Qt reference's captureScreen and attachTextToClipboard
+methods returned empty replies despite their NoReply annotations, confirming that
+retaining replies for callers which request them matches the observed Qt behavior.
+Validation passed: the full Rust gate with Fish/Zsh checks, private D-Bus/native UI
+fixtures with real document-portal saves, and Sway with Pinyin, scaled grids and
+precision picking. The contract checks run in default, all-feature and minimal builds.
+All reference/native checks used private buses and isolated desktop fixtures. Hosted
+CI and the remaining migration acceptance gates are still pending.

@@ -1,0 +1,18 @@
+<interface name="org.flameshot.Flameshot">
+  <method name="captureScreen">
+    <annotation name="org.freedesktop.DBus.Method.NoReply" value="true" />
+  </method>
+  <method name="attachScreenshotToClipboard">
+    <arg name="data" type="ay" direction="in" />
+    <annotation name="org.freedesktop.DBus.Method.NoReply" value="true" />
+  </method>
+  <method name="attachTextToClipboard">
+    <arg name="text" type="s" direction="in" />
+    <arg name="notification" type="s" direction="in" />
+    <annotation name="org.freedesktop.DBus.Method.NoReply" value="true" />
+  </method>
+  <method name="attachPin">
+    <arg name="data" type="ay" direction="in" />
+    <annotation name="org.freedesktop.DBus.Method.NoReply" value="true" />
+  </method>
+</interface>
