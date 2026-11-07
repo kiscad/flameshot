@@ -194,6 +194,25 @@ impl Config {
         }
         values
     }
+    fn reload_saved(&mut self, settings: Settings) {
+        self.path = settings
+            .save_path
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        self.palette = settings
+            .palette
+            .iter()
+            .map(|color| {
+                color
+                    .map(flameshot_core::color::encode_palette)
+                    .unwrap_or_else(|| "picker".into())
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        self.settings = settings;
+        self.remember();
+    }
     fn remember(&mut self) {
         self.remember_file();
         self.startup_baseline = self.settings.startup_launch;
@@ -478,10 +497,17 @@ impl eframe::App for Config {
                     }) {
                     Ok(()) => {
                         self.remember();
-                        if unchanged {
-                            "No changes to save".into()
+                        let message = if unchanged {
+                            "No changes to save"
                         } else {
-                            "Settings saved".into()
+                            "Settings saved"
+                        };
+                        match Settings::load() {
+                            Ok(settings) => {
+                                self.reload_saved(settings);
+                                message.into()
+                            }
+                            Err(error) => format!("{message}; cannot reload settings: {error}"),
                         }
                     }
                     Err(e) => e.to_string(),
@@ -518,6 +544,27 @@ mod tests {
         };
         form.remember();
         form
+    }
+    #[test]
+    fn saved_reload_updates_external_fields_and_keeps_original_language() {
+        let mut form = form();
+        let initial = form.initial_language.clone();
+        let mut latest = Settings {
+            filename_pattern: "external-pattern".into(),
+            language: "zh_CN".into(),
+            save_path: Some("/tmp/new folder".into()),
+            startup_launch: true,
+            ..Settings::default()
+        };
+        latest.shortcuts.insert("TYPE_ACCEPT".into(), "F9".into());
+        form.reload_saved(latest);
+        assert_eq!(form.settings.filename_pattern, "external-pattern");
+        assert_eq!(form.path, "/tmp/new folder");
+        assert_eq!(form.initial_language, initial);
+        assert!(form.language_restart_needed());
+        assert!(form.startup_baseline);
+        assert!(form.changes().is_empty());
+        assert!(form.shortcut_changes().is_empty());
     }
     #[test]
     fn restart_notice_tracks_committed_language_not_unsaved_edits() {

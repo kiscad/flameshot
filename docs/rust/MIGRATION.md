@@ -2362,3 +2362,18 @@ rendered text dialog was inspected with readable, unclipped controls. Text-edit
 state tests, all-feature Clippy, no-default-feature compilation, and the full Sway
 suite with native IME also passed. This does not complete translation coverage of
 all remaining controls or all languages.
+
+### Refresh configuration after successful saves
+
+After a successful Save (including a no-change Save), the form reloads the actual
+settings and rebuilds its field/shortcut/startup baselines. Untouched fields changed
+by another process are therefore displayed correctly instead of remaining stale
+after the save merged them on disk. The original window language is retained for
+restart-notice comparisons. A failed reload reports that separately from successful
+persistence, while retaining the committed form snapshot.
+
+Model tests cover changed external fields, path/shortcut/startup baselines and the
+language notice. They and the full isolated Xvfb suite passed, along with all-feature
+all-target Clippy. This is post-save synchronization, not completion of background
+refresh or same-field concurrent-edit handling while a local draft is pending.
+No-default-feature form tests, formatting and diff checks also passed.
