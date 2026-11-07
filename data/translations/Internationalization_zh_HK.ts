@@ -1892,7 +1892,7 @@ Click to select</source>
     <message>
         <location filename="../../src/tools/pin/pinwidget.cpp" line="284"/>
         <source>Copy to clipboard</source>
-        <translation type="unfinished">複製到剪貼簿</translation>
+        <translation>複製到剪貼簿</translation>
     </message>
     <message>
         <location filename="../../src/tools/pin/pinwidget.cpp" line="291"/>
@@ -1912,12 +1912,12 @@ Click to select</source>
     <message>
         <location filename="../../src/tools/pin/pinwidget.cpp" line="308"/>
         <source>Increase Opacity</source>
-        <translation type="unfinished"></translation>
+        <translation>增加不透明度</translation>
     </message>
     <message>
         <location filename="../../src/tools/pin/pinwidget.cpp" line="315"/>
         <source>Decrease Opacity</source>
-        <translation type="unfinished"></translation>
+        <translation>降低不透明度</translation>
     </message>
     <message>
         <location filename="../../src/tools/pin/pinwidget.cpp" line="322"/>

@@ -170,7 +170,7 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
         tool('mousemove','--window',identifier,'150','200');tool('click','4')
         wait_size((330,440))
         tool('mousemove','--window',identifier,'20','20');tool('click','3');time.sleep(.3)
-        tool('key','--delay','150','Down','Down','Down','Return')
+        tool('key','--delay','150','Down','Down','Down','Down','Return')
         wait_size((300,400))
         tool('key','Escape');out,err=process.communicate(timeout=10)
         assert process.returncode==0,err.decode()

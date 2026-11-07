@@ -3209,3 +3209,35 @@ fixture with Pinyin, pin compositing/rotation, scaled grids and precision color 
 GUI tests used private displays, D-Bus sessions and XDG directories. This verifies the
 existing localized pin controls; full pin menu parity, hosted CI and other migration
 acceptance gates remain pending.
+
+### Restore pinned-image copying and opacity increment actions
+
+The pin context menu now includes Copy to clipboard and the legacy Increase/Decrease
+Opacity actions. Copy snapshots the current rotated image independently of display
+zoom/opacity. The normal daemon clipboard format preference still applies; PNG retains
+source resolution and alpha. Copy runs asynchronously, disables duplicates while pending, and
+retains the image with a retryable error dialog if copying fails. Escape dismisses that
+error without closing the image.
+
+Keyboard/menu close requests and native close events wait for a pending copy to finish.
+A failed copy keeps the image open; successful handoff allows the requested close. The
+shared clipboard daemon retains ownership after the pin process exits. Opacity menu
+steps are 0.1 with the legacy 0–1 limits. Existing slider/number-key controls remain.
+The newly used Hong Kong menu translations are completed and included in catalog checks.
+
+A private-Xvfb integration fixture sends the real pin UI's clipboard requests to a gated
+D-Bus test service. It checks rotated pixel data while the window is zoomed and half
+transparent, opacity-menu compositing, synthetic rejection and retry, delayed completion,
+Escape/native WM_DELETE_WINDOW close deferral, and clipboard data after process exit.
+The fixture is included in the existing dbus_ui_smoke runner. The Sway fixture also now
+copies a rotated half-transparent pin through the real daemon and verifies full-opacity
+pixels remain available after closing the pin. Chinese menu navigation was updated for
+the added actions. Save to file remains an explicit pin feature-parity task.
+
+Error-dialog shortcut state is isolated from image editing, and close shortcuts are
+processed once per egui frame so dismissing/retrying a dialog cannot reuse the same
+input to close the pin. Validation passed: the complete Rust gate with Fish/Zsh checks,
+the private D-Bus/native UI runner (including document-portal saves and the new gated
+pin test), Simplified/Traditional Chinese windows, and Sway with Pinyin and actual pin
+clipboard persistence. GUI tests used private displays, buses and XDG directories.
+Pin file saving, hosted CI and the remaining migration gates are still pending.

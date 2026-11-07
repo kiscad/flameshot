@@ -48,6 +48,11 @@ pub fn show(pin: Pin) -> anyhow::Result<()> {
                 zoom: 1.0,
                 opacity: 1.0,
                 texture_options,
+                copy_job: None,
+                copy_error: None,
+                close_after_copy: false,
+                shortcut_frame: None,
+                dismissed_dialog_frame: None,
             }))
         }),
     )
@@ -61,8 +66,53 @@ struct Pinned {
     zoom: f32,
     opacity: f32,
     texture_options: egui::TextureOptions,
+    copy_job: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
+    copy_error: Option<String>,
+    close_after_copy: bool,
+    shortcut_frame: Option<u64>,
+    dismissed_dialog_frame: Option<u64>,
 }
 impl Pinned {
+    fn copy(&mut self, ctx: &egui::Context) {
+        if self.copy_job.is_some() {
+            return;
+        }
+        self.copy_error = None;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        self.copy_job = Some(receiver);
+        let image = self.image.clone();
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            let result = crate::daemon::copy(&image)
+                .await
+                .map_err(|error| error.to_string());
+            let _ = sender.send(result);
+            ctx.request_repaint();
+        });
+    }
+    fn request_close(&mut self, ctx: &egui::Context) {
+        if self.copy_job.is_some() {
+            self.close_after_copy = true;
+        } else {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+    fn poll_copy(&mut self, ctx: &egui::Context) {
+        let Some(job) = &self.copy_job else {
+            return;
+        };
+        let Some(result) = crate::jobs::poll(job, "Clipboard worker stopped") else {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+            return;
+        };
+        self.copy_job = None;
+        match result {
+            Ok(()) if self.close_after_copy => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            Ok(()) => {}
+            Err(error) => self.copy_error = Some(error),
+        }
+        self.close_after_copy = false;
+    }
     fn resize(&self, ctx: &egui::Context) {
         if let Ok(size) = scaled_size(
             self.image.width(),
@@ -90,63 +140,87 @@ impl Pinned {
     }
 }
 impl eframe::App for Pinned {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, input: &mut egui::RawInput) {
+        if self.copy_job.is_some()
+            && let Some(viewport) = input.viewports.get_mut(&input.viewport_id)
+            && viewport.close_requested()
+        {
+            viewport
+                .events
+                .retain(|event| !matches!(event, egui::ViewportEvent::Close));
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.close_after_copy = true;
+        }
+    }
     fn clear_color(&self, _: &egui::Visuals) -> [f32; 4] {
         [0.0; 4]
     }
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        if ui.input(|i| i.key_pressed(egui::Key::Escape))
-            || self
-                .shortcuts
-                .actions(&ctx)
-                .iter()
-                .any(|name| name == "TYPE_CLOSE_ACTIVE_PIN_WINDOW")
-        {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        self.poll_copy(&ctx);
+        let actions = if self.shortcut_frame == Some(ctx.cumulative_frame_nr()) {
+            Vec::new()
+        } else {
+            self.shortcut_frame = Some(ctx.cumulative_frame_nr());
+            self.shortcuts.actions(&ctx)
+        };
+        if self.copy_error.is_some() {
+            self.shortcuts.reset_sequences();
         }
-        for (index, key) in [
-            egui::Key::Num0,
-            egui::Key::Num1,
-            egui::Key::Num2,
-            egui::Key::Num3,
-            egui::Key::Num4,
-            egui::Key::Num5,
-            egui::Key::Num6,
-            egui::Key::Num7,
-            egui::Key::Num8,
-            egui::Key::Num9,
-        ]
-        .into_iter()
-        .enumerate()
+        if self.copy_error.is_none()
+            && self.dismissed_dialog_frame != Some(ctx.cumulative_frame_nr())
+            && (ui.input(|i| i.key_pressed(egui::Key::Escape))
+                || actions
+                    .iter()
+                    .any(|name| name == "TYPE_CLOSE_ACTIVE_PIN_WINDOW"))
         {
-            if ui.input(|i| i.key_pressed(key)) {
-                self.opacity = if index == 0 { 1.0 } else { index as f32 / 10.0 };
+            self.request_close(&ctx);
+        }
+        if self.copy_error.is_none() {
+            for (index, key) in [
+                egui::Key::Num0,
+                egui::Key::Num1,
+                egui::Key::Num2,
+                egui::Key::Num3,
+                egui::Key::Num4,
+                egui::Key::Num5,
+                egui::Key::Num6,
+                egui::Key::Num7,
+                egui::Key::Num8,
+                egui::Key::Num9,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if ui.input(|i| i.key_pressed(key)) {
+                    self.opacity = if index == 0 { 1.0 } else { index as f32 / 10.0 };
+                }
             }
-        }
-        let scroll: f32 = ui.input(|i| {
-            i.events
-                .iter()
-                .filter_map(|event| {
-                    if let egui::Event::MouseWheel { delta, .. } = event {
-                        Some(delta.y)
+            let scroll: f32 = ui.input(|i| {
+                i.events
+                    .iter()
+                    .filter_map(|event| {
+                        if let egui::Event::MouseWheel { delta, .. } = event {
+                            Some(delta.y)
+                        } else {
+                            None
+                        }
+                    })
+                    .sum()
+            });
+            let pinch = ui.input(|i| i.zoom_delta());
+            if scroll != 0.0 || pinch != 1.0 {
+                self.zoom = (self.zoom
+                    * if pinch != 1.0 {
+                        pinch
+                    } else if scroll > 0.0 {
+                        1.1
                     } else {
-                        None
-                    }
-                })
-                .sum()
-        });
-        let pinch = ui.input(|i| i.zoom_delta());
-        if scroll != 0.0 || pinch != 1.0 {
-            self.zoom = (self.zoom
-                * if pinch != 1.0 {
-                    pinch
-                } else if scroll > 0.0 {
-                    1.1
-                } else {
-                    1.0 / 1.1
-                })
-            .clamp(0.05, 8.0);
-            self.resize(&ctx);
+                        1.0 / 1.1
+                    })
+                .clamp(0.05, 8.0);
+                self.resize(&ctx);
+            }
         }
         let available = ctx.content_rect();
         let aspect = self.image.width() as f32 / self.image.height() as f32;
@@ -159,6 +233,27 @@ impl eframe::App for Pinned {
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(1.0, 1.0)),
             egui::Color32::from_white_alpha((self.opacity * 255.0).round() as u8),
         );
+        if let Some(error) = self.copy_error.clone() {
+            let mut retry = false;
+            let mut dismiss = ctx.input(|input| input.key_pressed(egui::Key::Escape));
+            egui::Window::new(tr("ScreenshotSaver", "Error while saving to clipboard"))
+                .collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .show(&ctx, |ui| {
+                    ui.label(error);
+                    retry = ui.button(tr("PinWidget", "Copy to clipboard")).clicked();
+                    dismiss |= ui.button(tr("PinWidget", "Close")).clicked();
+                });
+            if retry || dismiss {
+                self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
+            }
+            if retry {
+                self.copy(&ctx);
+            } else if dismiss {
+                self.copy_error = None;
+            }
+            return;
+        }
         let response = ui.interact(
             available,
             egui::Id::unique("pin-drag"),
@@ -172,12 +267,23 @@ impl eframe::App for Pinned {
             self.resize(&ctx);
         }
         response.context_menu(|ui| {
-            if ui.button(tr("PinWidget", "Rotate Left")).clicked() {
-                self.rotate(false, &ctx);
+            if ui
+                .add_enabled(
+                    self.copy_job.is_none(),
+                    egui::Button::new(tr("PinWidget", "Copy to clipboard")),
+                )
+                .clicked()
+            {
+                self.copy(&ctx);
                 ui.close();
             }
+            ui.separator();
             if ui.button(tr("PinWidget", "Rotate Right")).clicked() {
                 self.rotate(true, &ctx);
+                ui.close();
+            }
+            if ui.button(tr("PinWidget", "Rotate Left")).clicked() {
+                self.rotate(false, &ctx);
                 ui.close();
             }
             if ui.button(tr("PinWidget", "Original size")).clicked() {
@@ -185,11 +291,19 @@ impl eframe::App for Pinned {
                 self.resize(&ctx);
                 ui.close();
             }
+            if ui.button(tr("PinWidget", "Increase Opacity")).clicked() {
+                self.opacity = (self.opacity + 0.1).min(1.0);
+                ui.close();
+            }
+            if ui.button(tr("PinWidget", "Decrease Opacity")).clicked() {
+                self.opacity = (self.opacity - 0.1).max(0.0);
+                ui.close();
+            }
             ui.add(
                 egui::Slider::new(&mut self.opacity, 0.0..=1.0).text(tr("PinWidget", "Opacity")),
             );
             if ui.button(tr("PinWidget", "Close")).clicked() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                self.request_close(&ctx);
             }
         });
     }

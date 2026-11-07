@@ -8,7 +8,7 @@ import sys
 
 root = str(Path(sys.argv[1]).resolve())
 build = subprocess.run(['cargo','test','--locked','-p','flameshot','--all-features',
-                        '--test','daemon','--test','portal_open','--no-run','--message-format=json'],
+                        '--test','daemon','--test','portal_open','--test','pin_clipboard','--no-run','--message-format=json'],
                        capture_output=True, text=True)
 if build.returncode:
     print(build.stdout)
@@ -19,7 +19,7 @@ for line in build.stdout.splitlines():
     message = json.loads(line)
     if message.get('executable'):
         executables[message['target']['name']] = message['executable']
-for name, script in [('daemon','tray_smoke.py'), ('portal_open','portal_open_smoke.py')]:
+for name, script in [('daemon','tray_smoke.py'), ('portal_open','portal_open_smoke.py'), ('pin_clipboard','pin_clipboard_smoke.py')]:
     command = [sys.executable,str(Path(__file__).with_name(script)),root,executables[name]]
     if name == 'portal_open' and '--documents' in sys.argv[2:]:
         command.append('--documents')

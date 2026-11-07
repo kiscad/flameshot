@@ -66,6 +66,9 @@ The D-Bus UI suite builds the matching test executables and exercises actual tra
 monitor activation/output removal and sandbox Open With success, cancellation,
 errors, keep-open behavior and temporary-file lifetime against private mock services.
 It uses a private Xvfb display and does not launch a real external application.
+The runner also exercises pin clipboard copying with a gated D-Bus service, including
+failure/retry, opacity controls and deferred close until clipboard handoff finishes.
+
 `--documents` additionally starts a private permission store and real document
 portal, and verifies new/overwrite saves through its per-application FUSE view.
 This requires `/dev/fuse`, `fusermount3`, `gdbus`, `xdg-permission-store` and

@@ -159,8 +159,11 @@ mod tests {
                 );
             }
             for source in [
+                "Copy to clipboard",
                 "Rotate Left",
                 "Rotate Right",
+                "Increase Opacity",
+                "Decrease Opacity",
                 "Original size",
                 "Opacity",
                 "Close",

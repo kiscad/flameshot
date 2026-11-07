@@ -216,9 +216,21 @@ try:
     result=call(str(root/'usr/bin/grim'),'-');rotated=Image.open(BytesIO(result.stdout)).convert('RGB');rect=pin_node()['rect']
     vertical=[rotated.getpixel((rect['x']+rect['width']//2,rect['y']+rect['height']*fraction//4)) for fraction in (1,3)]
     assert vertical==[(255,0,0),(0,255,0)],vertical
-    call(str(root/'usr/bin/wtype'),'-s','200','-k','Escape')
+    call(str(root/'usr/bin/wtype'),'-s','200','5')
+    point(f"move {rect['x']+20} {rect['y']+20}");point('right');time.sleep(.2)
+    call(str(root/'usr/bin/wtype'),'-s','200','-k','Down','-s','150','-k','Return','-s','150','-k','Escape')
     out,err=pinned.communicate(timeout=10);assert pinned.returncode==0,err.decode()
-    print('PASS: native Wayland pin opacity and rotation preserve expected composited pixels',flush=True)
+    expected_pin=image.transpose(Image.Transpose.ROTATE_270)
+    deadline=time.monotonic()+5
+    while True:
+        copied=call(str(root/'usr/bin/wl-paste'),'--type','image/png')
+        if copied.returncode==0:
+            copied_pin=Image.open(BytesIO(copied.stdout)).convert('RGBA')
+            if copied_pin.size==expected_pin.size and copied_pin.tobytes()==expected_pin.tobytes():break
+        assert time.monotonic()<deadline,'Pin clipboard did not retain full-opacity rotated pixels after close'
+        time.sleep(.1)
+    (artifact_dir/'rust-wayland-pin-clipboard.png').write_bytes(copied.stdout)
+    print('PASS: native Wayland pin opacity/rotation and full-resolution clipboard persistence after close',flush=True)
 
     # Add a second output after the single-output checks to exercise hotplug,
     # a negative logical origin and a 2x/1x mixed-scale desktop.

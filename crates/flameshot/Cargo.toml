@@ -36,3 +36,4 @@ workspace = true
 
 [dev-dependencies]
 roxmltree = "0.20"
+x11rb = "0.13"
