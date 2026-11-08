@@ -1286,6 +1286,8 @@ impl eframe::App for Editor {
                     "TYPE_ACCEPT" => self.accept(&ctx, Action::Accept),
                     "TYPE_EXIT" => self.request_quit(&ctx),
                     "TYPE_CANCEL" => {
+                        self.selected_object = None;
+                        self.selection_drag = None;
                         self.points.clear();
                         self.selection = None;
                         self.tool = Tool::Select;

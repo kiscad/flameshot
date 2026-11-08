@@ -3548,3 +3548,19 @@ save-directory write inconsistency recorded in the previous entry. Hosted CI and
 fresh release/package artifacts remain separate final validation work.
 The native pin/editor save suite also passes, including remembered directories,
 failure/retry, overwrite confirmation, path clipboard lifetime and fixed-path BMP saves.
+
+### Cancel selection also deselects the active annotation
+
+The legacy capture cancellation clears the active layer as well as the selection.
+Rust cleared the region but retained `selected_object`, so Delete after Ctrl+Backspace
+could silently remove an annotation. Cancellation now clears object selection and
+selection-drag state while preserving document history and existing drawings.
+
+A private-Xvfb regression first proves the object is selected by deleting it and
+undoing that deletion. It then reselects the object, cancels the capture region,
+presses Delete and verifies the drawing remains. Undo/redo still address the original
+drawing operation, and PNG export retains its pixels. The frozen optimized
+`96c4c60c` baseline fails precisely at the post-cancel deletion assertion; the fixed
+all-feature build passes. Application unit tests (103 passed, one environment-gated
+ignore), formatting and all-feature/all-target Clippy pass. The native regression is
+registered in the workflow and build guide; hosted CI remains unverified.
