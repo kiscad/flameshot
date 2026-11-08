@@ -3371,3 +3371,13 @@ The initial optimized compilation remained busy in LLVM without completing. An
 isolated compilation with the same optimization settings completed, after which
 the original owned build was stopped and an unchanged standard Cargo retry passed
 in 10.58 seconds. This does not establish the cause of the compilation anomaly.
+
+The `97281a0d` optimized retest still reproduced double zoom, so repeated layout
+was not the sole cause. Inspection of winit 0.30.13's X11 handler showed that legacy
+wheel buttons 4–7 generate a wheel event on both press and release. The existing
+XTest fixture sends a full click; scheduling determines whether those events are
+processed together or in separate frames. A local Rust dependency patch now ignores
+only wheel-button releases, preserving ordinary buttons and XI2 axis scrolling.
+Its original source and licenses are retained under `third-party/winit`; Cargo,
+source-archive export and Nix source filtering include this dependency. The native
+fixture's expected single-step size remains unchanged.

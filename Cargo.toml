@@ -1,6 +1,7 @@
 [workspace]
 members = ["crates/flameshot-core", "crates/flameshot-platform", "crates/flameshot"]
 resolver = "3"
+exclude = ["third-party/winit"]
 
 [workspace.package]
 version = "15.0.0"
@@ -13,3 +14,6 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = "warn"
+
+[patch.crates-io]
+winit = { path = "third-party/winit" }

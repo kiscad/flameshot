@@ -169,6 +169,10 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
         wait_size((300,400))
         tool('mousemove','--window',identifier,'150','200');tool('click','4')
         wait_size((330,440))
+        # A separate complete click must apply exactly one further step, and
+        # reverse scrolling must not be suppressed by a timing debounce.
+        tool('click','4');wait_size((363,484))
+        tool('click','5');wait_size((330,440))
         tool('mousemove','--window',identifier,'20','20');tool('click','3');time.sleep(.3)
         tool('key','--delay','150','Down','Down','Down','Down','Down','Return')
         wait_size((300,400))
