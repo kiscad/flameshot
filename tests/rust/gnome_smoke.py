@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private headless GNOME Wayland fixture. Usage: gnome_smoke.py FLAMESHOT_BINARY [--clipboard] [--multi-monitor] [--mixed-scale] [--fractional-scale]
+"""Private headless GNOME Wayland fixture. Usage: gnome_smoke.py FLAMESHOT_BINARY [--clipboard] [--multi-monitor] [--mixed-scale] [--fractional-scale] [--ime]
 Requires GNOME Shell, GNOME/GTK portals, PyGObject and their normal runtime libraries.
 Debug input/evaluation is enabled only in the disposable private compositor.
 """
@@ -14,6 +14,7 @@ import tempfile
 import time
 
 binary=Path(sys.argv[1]).resolve()
+if '--ime' in sys.argv and '--clipboard' not in sys.argv:sys.argv.append('--clipboard')
 if '--fractional-scale' in sys.argv and '--mixed-scale' not in sys.argv:sys.argv.append('--mixed-scale')
 if '--mixed-scale' in sys.argv and '--multi-monitor' not in sys.argv:sys.argv.append('--multi-monitor')
 if '--inside' not in sys.argv:
@@ -29,6 +30,7 @@ import GLib from 'gi://GLib';
 import St from 'gi://St';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as Keyboard from 'resource:///org/gnome/shell/ui/status/keyboard.js';
 export default class TestInput extends Extension {
  enable() {
   global.context.unsafe_mode = true;
@@ -46,6 +48,9 @@ export default class TestInput extends Extension {
    move: (x,y) => pointer.notify_absolute_motion(GLib.get_monotonic_time(),x,y),
    button: (button, pressed) => pointer.notify_button(GLib.get_monotonic_time(),button,pressed ? Clutter.ButtonState.PRESSED : Clutter.ButtonState.RELEASED),
    hideOverview: () => Main.overview.hide(),
+   imeSources: () => Object.values(Keyboard.getInputSourceManager().inputSources).map(source=>source.id),
+   imeSource: id => { const source=Object.values(Keyboard.getInputSourceManager().inputSources).find(source=>source.id===id); if (!source) return false; source.activate(true); return true; },
+   imeState: () => ({source:Keyboard.getInputSourceManager().currentSource?.id,preedit:Main.inputMethod._preeditStr,visible:Main.inputMethod._preeditVisible,context:!!Main.inputMethod._context,focus:!!Main.inputMethod._currentFocus}),
    paint: () => { global.flameshotTest.backgrounds = Main.layoutManager.monitors.map((monitor,index) => { const color=index===0?'32,64,96':'160,80,32'; const background=new St.Widget({style:`background-color: rgb(${color});`,x:monitor.x,y:monitor.y,width:monitor.width,height:monitor.height}); Main.layoutManager._backgroundGroup.add_child(background); return background; }); }
 
   };
@@ -70,6 +75,30 @@ export default class TestInput extends Extension {
         env=os.environ.copy()
         for key in ['DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','DBUS_SYSTEM_BUS_ADDRESS','SESSION_MANAGER','IBUS_ADDRESS','GNOME_DESKTOP_SESSION_ID','FLAMESHOT_TEST_XWAYLAND','WINIT_UNIX_BACKEND']:env.pop(key,None)
         env.update(FLAMESHOT_TEST_GNOME_ROOT=str(root),TMPDIR=str(root/'tmp'),XDG_RUNTIME_DIR=str(root/'runtime'),XDG_CONFIG_HOME=str(root/'config'),XDG_DATA_HOME=str(root/'data'),XDG_CACHE_HOME=str(root/'cache'),XDG_CURRENT_DESKTOP='GNOME',XDG_SESSION_TYPE='wayland',GNOME_SHELL_SESSION_MODE='user',GDK_BACKEND='wayland',GSETTINGS_BACKEND='keyfile',LIBGL_ALWAYS_SOFTWARE='1',NO_AT_BRIDGE='1',GTK_A11Y='none',LC_ALL='C.UTF-8')
+        if '--ime' in sys.argv:
+            with (settings/'keyfile').open('a') as settings_file:
+                settings_file.write("[org/gnome/desktop/input-sources]\nsources=[('xkb', 'us'), ('ibus', 'libpinyin')]\n[com/github/libpinyin/ibus-libpinyin/libpinyin]\nenable-cloud-input=false\n")
+            if os.environ.get('FLAMESHOT_TEST_IBUS_ROOT'):
+                import shutil,shlex,xml.etree.ElementTree as ET
+                engine_root=Path(os.environ['FLAMESHOT_TEST_IBUS_ROOT']).resolve()
+                components=root/'ibus-components';components.mkdir()
+                for component in Path('/usr/share/ibus/component').glob('*.xml'):shutil.copy(component,components)
+                wrapper=root/'pinyin-engine'
+                command=[str(engine_root/'usr/bin/proot'),
+                    '-b',f'{engine_root}/usr/share/ibus-libpinyin:/usr/share/ibus-libpinyin',
+                    '-b',f'{engine_root}/usr/lib/x86_64-linux-gnu/libpinyin/data:/usr/lib/x86_64-linux-gnu/libpinyin/data',
+                    str(engine_root/'usr/libexec/ibus-engine-libpinyin')]
+                wrapper.write_text('#!/bin/sh\nexec '+shlex.join(command)+' "$@"\n');wrapper.chmod(0o700)
+                component=ET.parse(engine_root/'usr/share/ibus/component/libpinyin.xml')
+                component.find('exec').text=shlex.join([str(wrapper),'--ibus'])
+                component.write(components/'libpinyin.xml')
+                env['IBUS_COMPONENT_PATH']=str(components)
+                env['GSETTINGS_SCHEMA_DIR']=str(engine_root/'usr/share/glib-2.0/schemas')
+                env['LD_LIBRARY_PATH']=str(engine_root/'usr/lib/x86_64-linux-gnu')+':'+env.get('LD_LIBRARY_PATH','')
+            else:
+                assert Path('/usr/share/ibus/component/libpinyin.xml').exists(),'Install ibus-libpinyin or set FLAMESHOT_TEST_IBUS_ROOT'
+            cloud=subprocess.run(['gsettings','get','com.github.libpinyin.ibus-libpinyin.libpinyin','enable-cloud-input'],env=env,capture_output=True,text=True,check=True)
+            assert cloud.stdout.strip()=='false','Cloud input must stay disabled in the fixture'
         if '--clipboard' in sys.argv:
             env.pop('LIBGL_ALWAYS_SOFTWARE',None)
             env['FLAMESHOT_TEST_XWAYLAND']='1'
@@ -80,7 +109,7 @@ export default class TestInput extends Extension {
             ibus=helpers/'ibus-daemon';ibus.write_text('#!/bin/sh\nexit 0\n');ibus.chmod(0o700)
             env['PATH']=str(helpers)+':'+env.get('PATH','')
 
-        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),*[flag for flag in ['--clipboard','--multi-monitor','--mixed-scale','--fractional-scale'] if flag in sys.argv],'--inside',str(root)],env=env,timeout=100)
+        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),*[flag for flag in ['--clipboard','--multi-monitor','--mixed-scale','--fractional-scale','--ime'] if flag in sys.argv],'--inside',str(root)],env=env,timeout=100)
         if result.returncode:
             for log in root.glob('*.log'):print(log.name,log.read_text(errors='replace')[-7000:],file=sys.stderr)
         sys.exit(result.returncode)
@@ -385,6 +414,65 @@ try:
         print('PASS: GNOME native Wayland receiver decodes JPEG and preserves Unicode clipboard text',flush=True)
 
 
+
+    if '--ime' in sys.argv:
+        deadline=time.monotonic()+10
+        while 'libpinyin' not in evaluate('global.flameshotTest.imeSources()'):
+            assert time.monotonic()<deadline,('Pinyin engine unavailable',evaluate('global.flameshotTest.imeSources()'),evaluate('global.flameshotTest.imeState()'))
+            time.sleep(.1)
+        ime_region=f'400x200+{edge(500*sx)}+{edge(450*sy)}'
+        editor=subprocess.Popen([str(binary),'gui','--raw','--region',ime_region],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
+        processes.append(editor)
+        deadline=time.monotonic()+12
+        while not evaluate("global.get_window_actors().some(a=>a.meta_window.get_title()==='Flameshot'&&a.mapped)"):
+            assert editor.poll() is None and time.monotonic()<deadline,'IME editor did not map'
+            time.sleep(.1)
+        def focus_ime_editor():
+            evaluate("global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot').meta_window.activate(global.get_current_time())")
+            time.sleep(.2)
+        def chord(value):
+            evaluate('global.flameshotTest.key(65507,true)');key(value);evaluate('global.flameshotTest.key(65507,false)')
+        focus_ime_editor()
+        if '--multi-monitor' in sys.argv:key(49);time.sleep(.3)
+        wait_editor_monitor(0)
+        assert evaluate("global.flameshotTest.imeSource('us')")
+        key(ord('t'));time.sleep(.2)
+        x=monitors[0]['x']+550;y=monitors[0]['y']+500
+        evaluate(f'global.flameshotTest.move({x},{y})');evaluate('global.flameshotTest.button(1,true)');time.sleep(.05);evaluate('global.flameshotTest.button(1,false)')
+        time.sleep(.3)
+        assert evaluate("global.flameshotTest.imeSource('libpinyin')")
+        deadline=time.monotonic()+10
+        while evaluate('global.flameshotTest.imeState().source')!='libpinyin':
+            assert time.monotonic()<deadline,evaluate('global.flameshotTest.imeState()');time.sleep(.1)
+        time.sleep(.5)
+        for character in 'nihao':key(ord(character));time.sleep(.1)
+        time.sleep(.5)
+        state=evaluate('global.flameshotTest.imeState()');print('GNOME Pinyin composition:',state,flush=True)
+        assert state['preedit'] and state['visible'],state
+        key(32);time.sleep(.5)
+        assert evaluate("global.flameshotTest.imeSource('us')");time.sleep(.3)
+        chord(ord('a'));chord(ord('c'));time.sleep(.2)
+        read_native_clipboard(text='你好',mime=None)
+        focus_ime_editor();key(65367)
+        assert evaluate("global.flameshotTest.imeSource('libpinyin')");time.sleep(.3)
+        for character in 'zhong':key(ord(character));time.sleep(.1)
+        time.sleep(.3);assert evaluate('global.flameshotTest.imeState().preedit')
+        key(65307);time.sleep(.3);assert editor.poll() is None,'IME cancellation closed editor'
+        assert not evaluate('global.flameshotTest.imeState().visible'),'IME preedit survived cancellation'
+        assert evaluate("global.flameshotTest.imeSource('us')");time.sleep(.3)
+        chord(ord('a'));chord(ord('c'));time.sleep(.2)
+        read_native_clipboard(text='你好',mime=None)
+        focus_ime_editor()
+        print('GNOME IME before apply:',evaluate('global.flameshotTest.imeState()'),flush=True)
+        call('org.gnome.Shell.Screenshot','/org/gnome/Shell/Screenshot','org.gnome.Shell.Screenshot.Screenshot','(bbs)',(False,False,str(artifacts/'rust-gnome-ime-before-apply.png')))
+        chord(65293);time.sleep(.4)
+        call('org.gnome.Shell.Screenshot','/org/gnome/Shell/Screenshot','org.gnome.Shell.Screenshot.Screenshot','(bbs)',(False,False,str(artifacts/'rust-gnome-ime-after-apply.png')))
+        key(65293)
+        out,err=editor.communicate(timeout=10);assert editor.returncode==0,err.decode()
+        image=Image.open(io.BytesIO(out)).convert('RGB');assert image.size==(400,200)
+        assert any(r>180 and g<80 and b<80 for r,g,b in image.getdata()),'Missing Chinese text pixels'
+        (artifacts/'rust-gnome-ime.png').write_bytes(out)
+        print('PASS: GNOME IBus Pinyin composition, commit, cancellation, native text receipt and annotation export',flush=True)
 
     call('org.freedesktop.impl.portal.PermissionStore','/org/freedesktop/impl/portal/PermissionStore','org.freedesktop.impl.portal.PermissionStore.Delete','(ss)',('screenshot','screenshot'))
     denied=subprocess.Popen([str(binary),'full','--raw'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)

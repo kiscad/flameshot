@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update, upload and history confirmation/cancellation/failure/retry/deletion pass against loopback; external service availability is not an acceptance dependency |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI, installed X11 and wlroots Wayland suites verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME integer/fractional mixed scale and normalized left-of-primary layout pass (see GNOME-VALIDATION.md); GNOME IME and remaining environment coverage are pending |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME integer/fractional mixed scale and normalized left-of-primary layout pass (see GNOME-VALIDATION.md); GNOME IBus Pinyin also passes at normal/fractional scale; final desktop acceptance audit remains |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -3926,3 +3926,20 @@ clipboard receipt and editor clipboard lifetime through the Xwayland bridge. The
 original two-monitor baseline passes as well. GNOME-VALIDATION.md records versions,
 exact dimensions, commands and evidence. These checks close the GNOME layout items;
 Chinese IME and the remaining package/sandbox acceptance work are still pending.
+
+### GNOME native IBus composition acceptance
+
+The GNOME fixture now selects real IBus libpinyin, observes visible Chinese preedit,
+commits with Space, verifies exact committed text through a native GTK4 Wayland
+clipboard receiver, cancels a subsequent composition without changing that text,
+and exports the Chinese annotation. Single-output and fractional mixed-scale cases
+pass, along with the unchanged dual-monitor baseline. The test reads back cloud
+input as disabled and cleans up its private engine/process groups.
+
+The engine and dictionary packages were extracted locally because they are not
+installed on this workstation. A child-only PRoot resource mapping resolves their
+compiled-in data paths; application/IBus/compositor behavior is not mocked. The
+initial timeout was a fixture click landing in the font-family field, corrected by
+placing the text region below the toolbar. GNOME-VALIDATION.md records versions,
+setup commands, screenshots and logs. GNOME IME acceptance is now covered; final
+cross-desktop audit and remaining package/sandbox work are still outstanding.

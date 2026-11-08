@@ -117,7 +117,11 @@ on both monitors and exports against independent GNOME screenshot dimensions.
 GNOME rejects negative global monitor coordinates; the fixture checks rejection
 leaves the layout unchanged, then tests the normalized left-of-primary layout.
 Fractional mode with `--clipboard` also passed native Wayland PNG/JPEG/text receipt.
-GNOME IME remains a separate check; this fixture is not part of hosted CI yet.
+Add `--ime` for real IBus libpinyin composition, commit, cancellation, text copying
+and annotation export; it implies `--clipboard` and can combine with fractional
+scaling. It requires the `ibus-libpinyin` engine and disables cloud input. The
+fixture is not part of hosted CI yet. See GNOME-VALIDATION.md for a test-local engine
+setup that does not install packages on the host.
 
 Desktop tests create private display/bus sessions and isolated XDG directories.
 They disable automatic update checking and never perform real Imgur uploads.

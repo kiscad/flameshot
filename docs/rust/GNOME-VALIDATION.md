@@ -32,8 +32,7 @@ global origins. Negative global origins are exercised separately on wlroots/KWin
 
 Fractional mode with `--clipboard` also passes PNG persistence after capture exit,
 editor Ctrl+C after window/process exit, JPEG decode and Unicode text delivery into
-a native GTK4 Wayland receiver via GNOME's Xwayland clipboard bridge. This does not
-establish an input-method test: GNOME Chinese IME remains pending. The basic
+a native GTK4 Wayland receiver via GNOME's Xwayland clipboard bridge. The separate real IBus input-method cases below also pass. The basic
 no-Xwayland fixture suppresses the known failing IBus startup in that environment.
 
 Commands:
@@ -49,3 +48,48 @@ Local evidence: `target/gnome-layout-baseline.log`,
 `target/gnome-mixed-scale-artifacts/` and `target/gnome-fractional-artifacts/`.
 The final mixed/fractional runs include explicit primary and secondary fullscreen
 placement assertions. Their compositor/process groups were cleaned up by the fixture.
+
+## Real IBus Pinyin
+
+`--ime` passed on the single-output layout and together with `--fractional-scale`.
+It selects the real libpinyin engine, types `nihao` with the compositor's virtual
+keyboard, observes visible GNOME preedit `你好`, and commits through Space. It then
+copies committed text to a native GTK4 Wayland receiver, composes `zhong`, cancels
+with Escape and verifies that the preedit is hidden and committed text unchanged.
+Finally it applies the text annotation and exports a 400x200 image containing the
+Chinese glyphs. The ordinary two-monitor fixture also passes after these additions.
+Cloud input is explicitly configured and read back as disabled.
+
+The first test click hit the toolbar's font-family field rather than the canvas.
+Screenshots identified that fixture error; the corrected region/click lies below
+the toolbar, and successful annotation export verifies the intended text tool.
+No application input handling was changed.
+
+This workstation lacks an installed Pinyin engine. Ubuntu packages
+`ibus-libpinyin 1.15.7-1build2`, `libpinyin15/libpinyin-data 2.8.1-1build3` and
+`proot 5.1.0-1.3` were extracted into a test directory. PRoot maps only the engine's
+hard-coded dictionary/resource paths for that child process; the compositor,
+application and IBus protocol are native. Schemas, component XML, engine caches and
+configuration remain test-local, and the private session uses the installed IBus
+1.5.29 daemon. No host package or input-source preference was changed.
+
+Example preparation on the tested Ubuntu x86_64 environment (normal engine runtime
+libraries must already be available):
+
+```sh
+mkdir -p target/ibus-test-tools/downloads target/ibus-test-tools/root
+(cd target/ibus-test-tools/downloads && apt-get download ibus-libpinyin libpinyin15 libpinyin-data proot)
+for package in target/ibus-test-tools/downloads/*.deb; do
+    dpkg-deb -x "$package" target/ibus-test-tools/root
+done
+glib-compile-schemas target/ibus-test-tools/root/usr/share/glib-2.0/schemas
+FLAMESHOT_TEST_IBUS_ROOT="$PWD/target/ibus-test-tools/root" \
+    python3 tests/rust/gnome_smoke.py target/debug/flameshot --ime --fractional-scale
+```
+
+With the engine installed normally, omit `FLAMESHOT_TEST_IBUS_ROOT`. The test's
+portable-root mode is x86_64-specific and is not an application runtime dependency.
+Evidence: `target/gnome-ime.log`, `target/gnome-fractional-ime.log`,
+`target/gnome-ime-baseline.log`, `target/gnome-ime-artifacts/` and
+`target/gnome-fractional-ime-artifacts/`. No private engine process remained after
+fixture cleanup.
