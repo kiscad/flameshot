@@ -31,7 +31,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines/preferences and upload/history/update widget flows tested; native network-window integration audit remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
-| CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates pass; hosted workflow unverified and final release rebuild pending |
+| CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
@@ -3411,3 +3411,17 @@ were compared byte-for-byte after extraction. With a new empty Cargo home,
 `cargo build --frozen --offline -p flameshot --all-features -j 8` succeeds
 in 61 seconds. This verifies source-archive compilation, not installed sandbox
 runtime behavior or a fresh optimized build from the archive.
+
+### Debian refresh after the wheel dependency patch
+
+The package includes the patched winit license and provenance, and Debian cleanup
+preserves original patched-dependency files as well as Cargo vendor checksums.
+Staging verifies these installed resource bytes and file modes for normal and
+spaced prefixes. Source `18f5492a` builds a Debian package through the full recipe,
+including Rust tests. In a disposable Ubuntu Base container, installation,
+purge/reinstall, INI preservation, package checksums and distro feature policy pass.
+The actual installed executable passes the full X11, Chinese-window and pin-save
+suites. The container had no network or mounts and has been removed. Current hashes,
+commands, cached-dependency limits and historical upgrade evidence are recorded in
+DEBIAN-INSTALL-VALIDATION.md. This closes the stale Ubuntu package snapshot gap;
+other distro/sandbox and desktop acceptance items remain separate.

@@ -157,7 +157,8 @@ registry dependencies included:
 scripts/package-rust-source.sh target/flameshot_15.0.0.orig.tar.gz
 ```
 
-This exports repository files, vendors dependencies and normalizes archive metadata.
+This exports repository files, including patched Rust dependencies under `third-party`,
+vendors registry dependencies and normalizes archive metadata.
 Dependency preparation may download crates; the resulting archive configures Cargo
 for offline builds. Install the build dependencies listed in
 `packaging/debian/control`, including Rust/Cargo 1.99 or newer, then build from the
@@ -169,8 +170,8 @@ dpkg-buildpackage -b -us -uc
 ```
 
 The Debian recipe runs Cargo tests and installs through `stage-rust.sh`. It includes
-Imgur support and disables the application's update checker. Vendored files are
-excluded from debhelper cleanup so their Cargo checksums remain valid. `CARGO_TARGET_DIR`
+Imgur support and disables the application's update checker. Vendored files and patched dependency sources are
+excluded from debhelper cleanup so their Cargo checksums and original files remain intact. `CARGO_TARGET_DIR`
 may point to an external build cache.
 
 To run desktop tests against an unpacked package executable, set

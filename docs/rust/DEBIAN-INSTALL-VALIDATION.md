@@ -1,5 +1,43 @@
 # Debian package installation on Ubuntu Base
 
+## Refreshed package with patched X11 wheel input
+
+Validated source: `r2493.18f5492a`. Package:
+`target/debian-wheel-9te5bn27/flameshot_15.0.0-1_amd64.deb`.
+
+- Package SHA-256: `f8efbf44917805cbead5780a22dc8c85b3c1407f000dd95ca239f32d5e1f59b1`.
+- Installed executable SHA-256: `31e3647bd227a30c48fe15367915327271bfd59aee1428840a82d8c4aa01550f`.
+
+The fresh source archive built through `dpkg-buildpackage -b -us -uc -d`, including
+the recipe's Rust workspace tests. The same extracted debhelper tools and external
+Rust toolchain described below were used; this was not a containerized compiler
+build. The release compilation completed in 109 seconds. Cleanup preserved the
+patched dependency's original manifest and source. The package now installs the
+winit license and patch provenance alongside the application license.
+
+A new disposable container used the cached `flameshot-test-installed:review` image,
+with `--init --network none` and no mounts. Its previous application package was
+purged before installing the new package. Runtime dependencies were already
+cached; the new and previous package dependency lists are identical. Purging and
+reinstalling the new package succeeded, retained the user INI byte-for-byte and
+passed `dpkg -V`. The installed license, patch notice and D-Bus XML match the
+source resources. Imgur/history is present, update checking is absent, and the
+executable has no missing dynamic libraries or Qt linkage.
+
+The installed executable passes the Chinese-window and pin-save suites, including
+consecutive wheel clicks, reverse scrolling, rotated output pixels, save retry,
+overwrite confirmation and clipboard ownership after close. The full installed
+X11 suite also passes: full/screen capture, selection/edit/export, cancellation,
+save retry, monitor rejection and daemon/clipboard lifetime. Artifacts were copied
+to `target/debian-wheel-artifacts`; the test container was stopped and removed.
+
+Local evidence: `target/debian-wheel-build-validation.json`,
+`target/debian-wheel-install-validation.json` and `target/debian-wheel-*.log`.
+This refresh does not rerun the historical Qt-to-Rust upgrade below or establish
+other distributions, architectures, Wayland package installation or sandbox builds.
+
+## Earlier installation baseline
+
 Validated source snapshot: `r2446.4bc3a3a3`.
 Package: `target/deb-install-review-14082kir/flameshot_15.0.0-1_amd64.deb`.
 Package SHA-256:
