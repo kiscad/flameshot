@@ -22,8 +22,8 @@ override_dh_auto_install:
 override_dh_auto_clean:
 	rm -rf target
 
-# Debhelper must not rewrite or delete files covered by Cargo vendor checksums.
+# Preserve vendored checksums and the original files of patched dependencies.
 override_dh_update_autotools_config override_dh_autoreconf override_dh_autoreconf_clean:
 
 override_dh_clean:
-	dh_clean --exclude=vendor/
+	dh_clean --exclude=vendor/ --exclude=third-party/
