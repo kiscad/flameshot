@@ -12,6 +12,7 @@ mod theme;
 mod ui_test;
 mod wheel;
 // SPDX-License-Identifier: GPL-3.0-or-later
+mod cli_help;
 mod config_check;
 mod config_recovery;
 mod config_ui;
@@ -37,7 +38,7 @@ mod upload_history;
 #[cfg(feature = "imgur")]
 mod upload_ui;
 use anyhow::{Context, Result};
-use clap::{CommandFactory, Parser, Subcommand, builder::TypedValueParser};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, builder::TypedValueParser};
 use flameshot_platform::{portal, screens, x11};
 use std::{
     io::{self, Write},
@@ -190,6 +191,20 @@ enum Command {
     },
 }
 
+fn cli_schema() -> clap::Command {
+    let mut command = Cli::command();
+    command.build();
+    cli_help::localize(command)
+}
+fn parse_schema<I, T>(arguments: I) -> Result<Cli, clap::Error>
+where
+    I: IntoIterator<Item = T>,
+    T: Into<std::ffi::OsString> + Clone,
+{
+    let matches = cli_schema().try_get_matches_from(arguments)?;
+    Cli::from_arg_matches(&matches)
+}
+
 fn parse_cli_from<I, T>(arguments: I) -> Result<Cli, clap::Error>
 where
     I: IntoIterator<Item = T>,
@@ -199,16 +214,16 @@ where
     let mut args: Vec<std::ffi::OsString> = arguments.into_iter().map(Into::into).collect();
     // The documented Rust help subcommand is an extension to the legacy CLI.
     if args.get(1).is_some_and(|arg| arg == "help") {
-        return Cli::try_parse_from(args);
+        return parse_schema(args);
     }
-    let mut schema = Cli::command();
+    let mut schema = cli_schema();
     schema.build();
     let mut node = &schema;
     let mut help_position = true;
     let mut index = 1;
     let shape_error = |args: &[std::ffi::OsString], index, message: String| {
         // A malformed earlier value wins over a later syntax/help error.
-        Cli::try_parse_from(&args[..index])
+        parse_schema(&args[..index])
             .err()
             .unwrap_or_else(|| clap::Error::raw(ErrorKind::InvalidValue, message))
     };
@@ -264,8 +279,8 @@ where
                 if !help_position || inline.is_some() || index + 1 != args.len() {
                     return Err(shape_error(&args, index, "Help must appear immediately after the command and have no following arguments".into()));
                 }
-                Cli::try_parse_from(&args[..index])?;
-                return Cli::try_parse_from(args);
+                parse_schema(&args[..index])?;
+                return parse_schema(args);
             }
             clap::ArgAction::Version => {
                 if index != 1 || inline.is_some() || args.len() != 2 {
@@ -275,7 +290,7 @@ where
                         "Invalid arguments after or before the version option".into(),
                     ));
                 }
-                return Cli::try_parse_from(args);
+                return parse_schema(args);
             }
             action if action.takes_values() => {
                 if inline.is_none_or(str::is_empty) {
@@ -306,7 +321,7 @@ where
         help_position = false;
         index += 1;
     }
-    Cli::try_parse_from(args)
+    parse_schema(args)
 }
 
 #[tokio::main]
@@ -856,7 +871,7 @@ mod cli_tests {
             )));
         }
         assert_eq!(expected.len(), 6);
-        let mut schema = Cli::command();
+        let mut schema = cli_schema();
         schema.build();
         for (name, expected) in expected {
             let command = if name == "root" {

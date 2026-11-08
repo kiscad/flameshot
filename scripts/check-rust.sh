@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 set -eu
 check_completions() {
-    if [ -n "${FLAMESHOT_COMPLETION_TOOL_ROOT:-}" ]; then
-        python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot" "$FLAMESHOT_COMPLETION_TOOL_ROOT"
-    else
-        python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot"
-    fi
+    for check_locale in en zh_CN; do
+        if [ -n "${FLAMESHOT_COMPLETION_TOOL_ROOT:-}" ]; then
+            FLAMESHOT_TEST_UI_LANGUAGE="$check_locale" python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot" "$FLAMESHOT_COMPLETION_TOOL_ROOT"
+        else
+            FLAMESHOT_TEST_UI_LANGUAGE="$check_locale" python3 tests/rust/completions.py "${CARGO_TARGET_DIR:-target}/debug/flameshot"
+        fi
+    done
 }
 cargo fmt --all -- --check
 python3 tests/rust/translation_lookups.py

@@ -372,3 +372,7 @@ local `tr` wrappers and diagnostic template declarations against active TS sourc
 `check-rust.sh`. It catches wrong contexts and absent source entries; it does not
 infer dynamic labels/raw strings or require unfinished human translations to be
 complete. Existing source-text fallback remains supported.
+
+Completion fixtures use an isolated configuration and default to English. Set
+`FLAMESHOT_TEST_UI_LANGUAGE=zh_CN` to exercise localized help discovery. The Rust
+check script runs both English and Chinese completion checks for all/minimal builds.

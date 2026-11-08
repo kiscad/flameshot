@@ -3941,4 +3941,19 @@ Może być konieczne opuszczenie znaku &apos;#&apos; jak np.: &apos;\#FFF&apos;<
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>RustCli</name>
+    <message>
+        <source>Show command help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display version information</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

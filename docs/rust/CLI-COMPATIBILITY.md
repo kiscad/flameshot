@@ -4,7 +4,8 @@ The baseline is `f4f2e4e8`. The original command/option scopes are preserved in
 `crates/flameshot/tests/fixtures/legacy-cli-options.tsv`, with source hashes and
 provenance in the adjacent Markdown file. A test compares all six scopes (root and
 five commands), primary short names and flag/value shapes with the built Clap schema.
-Translated help prose is tracked separately from this syntax contract.
+Help descriptions and section labels use the translation catalogs; this fixture
+continues to validate syntax independently of language.
 
 | Surface | Contract and evidence |
 | --- | --- |
@@ -41,7 +42,7 @@ current execution evidence. GUI cancellation and raw-over-geometry precedence ar
 also asserted by the native desktop suite. Raw stdout remains PNG-only, including
 when invalid configuration produces fallback diagnostics on stderr.
 
-Shell completion validation covers:
+Shell completion validation runs with isolated English and Chinese preferences and covers:
 
 - Bash live command contexts, all long-option scopes, values and filenames.
 - Fish live contexts, booleans, version aliases and optional commands.

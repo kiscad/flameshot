@@ -3932,4 +3932,19 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
         <translation>截圖已取消。</translation>
     </message>
 </context>
+<context>
+    <name>RustCli</name>
+    <message>
+        <source>Show command help</source>
+        <translation>顯示指令說明</translation>
+    </message>
+    <message>
+        <source>Show help</source>
+        <translation>顯示說明</translation>
+    </message>
+    <message>
+        <source>Display version information</source>
+        <translation>顯示版本資訊</translation>
+    </message>
+</context>
 </TS>

@@ -3928,4 +3928,19 @@ Puede ser que necesites preceder el símbolo &quot;#&quot; con &quot;\&quot;, co
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>RustCli</name>
+    <message>
+        <source>Show command help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show help</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Display version information</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

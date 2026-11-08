@@ -3730,3 +3730,27 @@ are already using. Native locale and recovery tests pass. The complete local Rus
 gate passed after the wrapping/catalog fixes, followed by focused diagnostic tests,
 Clippy and rebuilt native locale validation for the final presentation adjustments.
 Help prose and remaining dynamic resource lookups remain separate audit work.
+
+### Localized CLI help preserves the parser contract
+
+A presentation layer now decorates the built Clap command tree with existing Qt
+catalog descriptions for the original commands and options, localized section labels,
+and the background/tray explanation. Optional history/update descriptions reuse their
+existing catalogs; three RustCli helper messages have entries in all 49 catalogs,
+Chinese translations and unfinished/source fallback elsewhere. The screen-number
+hint retains its X11 qualification. Command/argument identifiers, value parsers,
+actions, primary aliases and technical value syntax are unchanged.
+
+All parser entry paths, including the help extension and prefix validation, use the
+same decorated schema. The legacy option-scope fixture still matches it exactly.
+Headless integration verifies simplified/traditional Chinese help with LC_ALL=C and
+an unrelated invalid preference, preserving config bytes and avoiding desktop/bus
+access. Help headings/descriptions are translated while option tokens remain stable;
+library-generated value annotations retain their standard format.
+
+Completion tests now own their configuration instead of depending on developer
+preferences. The Rust gate runs English and Chinese help discovery through Bash,
+Fish and actual Zsh completion, with both all-feature and minimal builds. The complete
+local gate passes, including parse/value/repetition tests, CLI/config integrations,
+private-bus checks and Clippy. This completes the help-prose work identified in the
+resource audit; remaining dynamic lookup and desktop/backend acceptance are separate.

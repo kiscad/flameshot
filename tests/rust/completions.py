@@ -13,8 +13,14 @@ project = Path(__file__).resolve().parents[2]
 binary = Path(sys.argv[1]).resolve()
 scripts = project / 'data/shell-completion'
 env = dict(os.environ, PATH=str(binary.parent)+os.pathsep+os.environ['PATH'])
-help_text = subprocess.check_output([binary, '--help'], text=True, env=env)
 with tempfile.TemporaryDirectory(prefix='flameshot completion ') as directory:
+    configuration = Path(directory)/'config'/'flameshot'
+    configuration.mkdir(parents=True)
+    locale = os.environ.get('FLAMESHOT_TEST_UI_LANGUAGE', 'en')
+    assert not any(character in locale for character in '\r\n'), 'Invalid test locale'
+    (configuration/'flameshot.ini').write_text(f'[General]\nuiLanguage={locale}\n', encoding='utf-8')
+    env['XDG_CONFIG_HOME'] = str(configuration.parent)
+    help_text = subprocess.check_output([binary, '--help'], text=True, env=env)
     Path(directory, 'image file.png').touch()
     def bash(words):
         code = 'source "$1"; shift; COMP_WORDS=("$@"); COMP_CWORD=$((${#COMP_WORDS[@]}-1)); _flameshot; printf "%s\\0" "${COMPREPLY[@]}"'

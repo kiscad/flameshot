@@ -2,6 +2,61 @@
 use std::process::Command;
 
 #[test]
+fn localized_help_preserves_tokens_and_does_not_validate_or_rewrite_preferences() {
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir(root.path().join("flameshot")).unwrap();
+    let config = root.path().join("flameshot/flameshot.ini");
+    for locale in ["zh_CN", "zh_TW"] {
+        let source = format!("[General]\nuiLanguage={locale}\ndrawThickness=broken\n");
+        std::fs::write(&config, &source).unwrap();
+        let translator = flameshot_core::i18n::Translator::new(locale);
+        for args in [
+            vec!["--help"],
+            vec!["gui", "--help"],
+            vec!["help", "gui"],
+            vec!["config", "--help"],
+        ] {
+            let output = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+                .env("XDG_CONFIG_HOME", root.path())
+                .env("LC_ALL", "C")
+                .env("DBUS_SESSION_BUS_ADDRESS", "not-a-valid-dbus-address")
+                .env_remove("DISPLAY")
+                .env_remove("WAYLAND_DISPLAY")
+                .args(&args)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success() && output.stderr.is_empty(),
+                "{args:?}: {output:?}"
+            );
+            let help = String::from_utf8(output.stdout).unwrap();
+            assert!(
+                help.contains(translator.translate("QObject", "Usage")),
+                "{help}"
+            );
+            assert!(
+                help.contains(translator.translate("QObject", "Options")),
+                "{help}"
+            );
+            assert!(help.contains("--help"));
+            if args.contains(&"gui") {
+                let label =
+                    translator.translate("QObject", "Existing directory or new file to save to");
+                assert_ne!(label, "Existing directory or new file to save to");
+                assert!(help.contains(label) && help.contains("--path"), "{help}");
+            }
+            assert_eq!(std::fs::read_to_string(&config).unwrap(), source);
+        }
+        assert!(
+            !root
+                .path()
+                .join("flameshot/flameshot.ini.rust-lock")
+                .exists()
+        );
+    }
+}
+
+#[test]
 fn optional_commands_and_help_extension_are_headless_and_match_build_features() {
     let root = tempfile::tempdir().unwrap();
     for (command, available) in [
