@@ -37,6 +37,12 @@ impl Recovery {
         }))
     }
     pub(crate) fn show(&mut self, ui: &mut egui::Ui) -> bool {
+        egui::ScrollArea::vertical()
+            .id_salt("configuration-repair-view")
+            .show(ui, |ui| self.show_content(ui))
+            .inner
+    }
+    fn show_content(&mut self, ui: &mut egui::Ui) -> bool {
         let tr = |text| crate::i18n::tr("RustConfig", text);
         if ui.input(|input| input.key_pressed(egui::Key::Escape)) {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -48,20 +54,61 @@ impl Recovery {
             "The configuration contains an error. Open configuration to resolve.",
         ));
         ui.label(self.path.display().to_string());
+        let frame = ui.ctx().cumulative_frame_nr();
+        let problems = crate::config_check::diagnose(&self.draft);
+        let mut repairs = Vec::new();
         egui::ScrollArea::vertical()
             .id_salt("configuration-repair-errors")
-            .max_height(90.0)
+            .max_height(120.0)
             .show(ui, |ui| {
-                for error in crate::config_check::check(&self.draft) {
-                    ui.label(error);
+                for (index, problem) in problems.iter().enumerate() {
+                    ui.push_id(index, |ui| {
+                        ui.horizontal(|ui| {
+                            if let Some(repair) = &problem.repair {
+                                let label = if repair.reset { "Reset" } else { "Remove" };
+                                if ui
+                                    .button(crate::i18n::tr("ConfigResolver", label))
+                                    .clicked()
+                                    && self.handled_frame != Some(frame)
+                                {
+                                    repairs.push(repair.clone());
+                                }
+                            }
+                            ui.label(&problem.message);
+                        });
+                    });
                 }
             });
+        if problems.iter().any(|problem| problem.repair.is_some())
+            && ui
+                .button(crate::i18n::tr("ConfigResolver", "Resolve all"))
+                .clicked()
+            && self.handled_frame != Some(frame)
+        {
+            repairs = problems
+                .into_iter()
+                .filter_map(|problem| problem.repair)
+                .collect();
+        }
+        if !repairs.is_empty() {
+            self.handled_frame = Some(frame);
+            let mut ini = flameshot_core::config::IniDocument::parse(self.draft.clone());
+            for repair in repairs {
+                if let Err(error) = ini.remove(&repair.section, &repair.key) {
+                    self.status = error.to_string();
+                    return false;
+                }
+            }
+            self.draft = ini.source().to_owned();
+            self.status.clear();
+        }
         egui::ScrollArea::both()
             .id_salt("configuration-repair-source")
             .max_height(220.0)
             .show(ui, |ui| {
                 let response = ui.add(
                     egui::TextEdit::multiline(&mut self.draft)
+                        .id(egui::Id::unique("configuration-repair-text"))
                         .code_editor()
                         .desired_width(f32::INFINITY)
                         .desired_rows(10),
@@ -72,7 +119,6 @@ impl Recovery {
                 }
             });
         let mut done = false;
-        let frame = ui.ctx().cumulative_frame_nr();
         let save_key = ui.input(|input| input.modifiers.command && input.key_pressed(egui::Key::S));
         let reload_key = ui.input(|input| input.key_pressed(egui::Key::F5));
         ui.horizontal(|ui| {
@@ -113,6 +159,111 @@ impl Recovery {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn typing_keeps_focus_when_repair_buttons_disappear_and_return() {
+        let root = tempfile::tempdir().unwrap();
+        let mut recovery = Recovery {
+            path: root.path().join("unused.ini"),
+            baseline: String::new(),
+            draft: "[General]\nshowHelp=bad\n".into(),
+            status: String::new(),
+            handled_frame: None,
+            focus_editor: true,
+        };
+        let ctx = egui::Context::default();
+        let mut render = |ui: &mut egui::Ui| {
+            recovery.show(ui);
+        };
+        crate::ui_test::ui_frame(&ctx, vec![], &mut render);
+        crate::ui_test::ui_frame(
+            &ctx,
+            vec![
+                egui::Event::Key {
+                    key: egui::Key::A,
+                    physical_key: Some(egui::Key::A),
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers {
+                        ctrl: true,
+                        command: true,
+                        ..Default::default()
+                    },
+                },
+                egui::Event::Text("; ".into()),
+            ],
+            &mut render,
+        );
+        crate::ui_test::ui_frame(
+            &ctx,
+            vec![egui::Event::Text("keep\n[General]\nshowHelp=bad\n".into())],
+            &mut render,
+        );
+        crate::ui_test::ui_frame(&ctx, vec![egui::Event::Text("; tail".into())], &mut render);
+        assert_eq!(recovery.draft, "; keep\n[General]\nshowHelp=bad\n; tail");
+    }
+    #[test]
+    fn resolve_all_keeps_manual_errors_and_does_not_publish_an_invalid_draft() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("flameshot.ini");
+        let original = "[General]\nshowHelp=bad\nunknown=x\n[Shortcuts]\nTYPE_COPY=Ctrl+NoSuchKey\n[External]\nunknown=keep\nmalformed line\n";
+        std::fs::write(&path, original).unwrap();
+        let mut recovery = Recovery {
+            path: path.clone(),
+            baseline: original.into(),
+            draft: original.into(),
+            status: String::new(),
+            handled_frame: None,
+            focus_editor: true,
+        };
+        let ctx = egui::Context::default();
+        for label in ["Resolve all", "Save"] {
+            crate::ui_test::click_label(&ctx, label, |ui| {
+                assert!(!recovery.show(ui));
+            });
+        }
+        assert_eq!(
+            recovery.draft,
+            "[General]\n[Shortcuts]\n[External]\nunknown=keep\nmalformed line\n"
+        );
+        assert!(recovery.status.contains("Malformed"));
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    }
+    #[test]
+    fn reset_and_remove_only_change_the_draft_until_save() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("flameshot.ini");
+        let original = "; keep\r\n[General]\r\nshowHelp=old\r\nshowHelp=bad\r\nunknown=value\r\n[External]\r\nunknown=keep\r\n";
+        std::fs::write(&path, original).unwrap();
+        let mut recovery = Recovery {
+            path: path.clone(),
+            baseline: original.into(),
+            draft: original.into(),
+            status: String::new(),
+            handled_frame: None,
+            focus_editor: true,
+        };
+        let ctx = egui::Context::default();
+        let click = |label, recovery: &mut Recovery| {
+            crate::ui_test::click_label(&ctx, label, |ui| {
+                recovery.show(ui);
+                if ui.ctx().current_pass_index() == 0 {
+                    ui.ctx()
+                        .request_discard("exercise draft repair actions across layout passes");
+                }
+            });
+        };
+        click("Reset", &mut recovery);
+        assert!(!recovery.draft.contains("showHelp="));
+        assert!(recovery.draft.contains("unknown=value"));
+        click("Remove", &mut recovery);
+        assert_eq!(
+            recovery.draft,
+            "; keep\r\n[General]\r\n[External]\r\nunknown=keep\r\n"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        click("Save", &mut recovery);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), recovery.draft);
+    }
     #[test]
     fn repair_buttons_validate_reload_and_save_once_across_layout_passes() {
         let root = tempfile::tempdir().unwrap();

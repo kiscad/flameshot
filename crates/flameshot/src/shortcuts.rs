@@ -324,7 +324,6 @@ pub fn validate_overrides(overrides: &BTreeMap<String, String>) -> Result<(), St
     }
     Ok(())
 }
-#[cfg(test)]
 pub fn validate(sequence: &str) -> Result<(), String> {
     parse(sequence).map(|_| ())
 }

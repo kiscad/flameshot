@@ -11,7 +11,42 @@ fn contains(words: &str, value: &str) -> bool {
     words.split_whitespace().any(|word| word == value)
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct Repair {
+    pub section: String,
+    pub key: String,
+    pub reset: bool,
+}
+#[derive(Debug)]
+pub(crate) struct Problem {
+    pub message: String,
+    pub repair: Option<Repair>,
+}
+impl Problem {
+    fn manual(message: String) -> Self {
+        Self {
+            message,
+            repair: None,
+        }
+    }
+    fn setting(message: String, section: &str, key: &str, reset: bool) -> Self {
+        Self {
+            message,
+            repair: (!key.is_empty()).then(|| Repair {
+                section: section.into(),
+                key: key.into(),
+                reset,
+            }),
+        }
+    }
+}
 pub fn check(source: &str) -> Vec<String> {
+    diagnose(source)
+        .into_iter()
+        .map(|problem| problem.message)
+        .collect()
+}
+pub(crate) fn diagnose(source: &str) -> Vec<Problem> {
     let ini = IniDocument::parse(source.into());
     let mut keys = BTreeMap::new();
     let mut section = "General";
@@ -26,7 +61,10 @@ pub fn check(source: &str) -> Vec<String> {
         } else if let Some((key, _)) = line.split_once('=') {
             keys.insert((section, key.trim()), ());
         } else {
-            errors.push(format!("Malformed configuration at line {}", index + 1));
+            errors.push(Problem::manual(format!(
+                "Malformed configuration at line {}",
+                index + 1
+            )));
         }
     }
     let mut shortcuts = BTreeMap::new();
@@ -36,13 +74,32 @@ pub fn check(source: &str) -> Vec<String> {
                 .iter()
                 .any(|(name, _)| *name == key)
             {
-                errors.push(format!("Unrecognized shortcut name: '{key}'"));
+                errors.push(Problem::setting(
+                    format!("Unrecognized shortcut name: '{key}'"),
+                    section,
+                    key,
+                    false,
+                ));
             } else {
                 match ini.string(section, key) {
                     Ok(Some(value)) => {
-                        shortcuts.insert(key.to_owned(), value);
+                        if let Err(error) = crate::shortcuts::validate(&value) {
+                            errors.push(Problem::setting(
+                                format!("Bad value in 'Shortcuts/{key}': {error}"),
+                                section,
+                                key,
+                                true,
+                            ));
+                        } else {
+                            shortcuts.insert(key.to_owned(), value);
+                        }
                     }
-                    Err(error) => errors.push(format!("Bad value in 'Shortcuts/{key}': {error}")),
+                    Err(error) => errors.push(Problem::setting(
+                        format!("Bad value in 'Shortcuts/{key}': {error}"),
+                        section,
+                        key,
+                        true,
+                    )),
                     _ => {}
                 }
             }
@@ -81,7 +138,12 @@ pub fn check(source: &str) -> Vec<String> {
             }
         };
         let Some(expected) = expected else {
-            errors.push(format!("Unrecognized setting: '{key}'"));
+            errors.push(Problem::setting(
+                format!("Unrecognized setting: '{key}'"),
+                section,
+                key,
+                false,
+            ));
             continue;
         };
         let valid = if key == "buttons" {
@@ -144,11 +206,16 @@ pub fn check(source: &str) -> Vec<String> {
                 })
         };
         if !valid {
-            errors.push(format!("Bad value in '{key}'. Expected: {expected}"));
+            errors.push(Problem::setting(
+                format!("Bad value in '{key}'. Expected: {expected}"),
+                section,
+                key,
+                true,
+            ));
         }
     }
     if let Err(error) = crate::shortcuts::validate_overrides(&shortcuts) {
-        errors.push(error);
+        errors.push(Problem::manual(error));
     }
     errors
 }
@@ -164,6 +231,35 @@ fn valid_color(value: &str, palette: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn repair_actions_identify_only_invalid_or_unrecognized_keys() {
+        let source = "[General]\nshowHelp=bad\nunknown=x\n[Shortcuts]\nTYPE_COPY=Ctrl+NoSuchKey\nUNKNOWN=F1\nTYPE_SAVE=F9\nTYPE_EXIT=F9\n[External]\nunknown=keep\nmalformed line\n";
+        let problems = diagnose(source);
+        let actions: Vec<_> = problems
+            .iter()
+            .filter_map(|p| p.repair.as_ref())
+            .map(|r| (r.section.as_str(), r.key.as_str(), r.reset))
+            .collect();
+        assert_eq!(
+            actions,
+            vec![
+                ("General", "showHelp", true),
+                ("General", "unknown", false),
+                ("Shortcuts", "TYPE_COPY", true),
+                ("Shortcuts", "UNKNOWN", false)
+            ]
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.repair.is_none() && p.message.contains("conflicts"))
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|p| p.repair.is_none() && p.message.contains("Malformed"))
+        );
+    }
     #[test]
     fn validates_the_legacy_schema_and_collects_all_errors() {
         assert!(check("[General]\narrowStyle=1\nreverseArrow=true\nuserColors=red, \"#abcdef\", picker\nuiColor=#11223344\nundoLimit=0\n[OtherApplication]\nprivate=value\n").is_empty());

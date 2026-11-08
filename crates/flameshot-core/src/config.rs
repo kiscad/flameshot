@@ -41,6 +41,34 @@ impl IniDocument {
         }
         found
     }
+    /// Remove every occurrence, so an older duplicate cannot become effective.
+    /// All unrelated bytes, comments and line endings remain unchanged.
+    pub fn remove(&mut self, section: &str, key: &str) -> Result<(), ConfigError> {
+        if section.is_empty()
+            || key.is_empty()
+            || section.contains(['[', ']', '\n', '\r'])
+            || key.contains(['=', '\n', '\r'])
+        {
+            return Err(ConfigError::InvalidKey);
+        }
+        let mut current = "General";
+        let mut output = String::new();
+        for line in self.source.split_inclusive('\n') {
+            let trimmed = line.trim();
+            if let Some(name) = trimmed.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+                current = name;
+            } else if current == section
+                && !trimmed.starts_with([';', '#'])
+                && let Some((name, _)) = trimmed.split_once('=')
+                && name.trim() == key
+            {
+                continue;
+            }
+            output.push_str(line);
+        }
+        self.source = output;
+        Ok(())
+    }
     pub fn string(&self, section: &str, key: &str) -> Result<Option<String>, ConfigError> {
         self.raw(section, key).map(decode_string).transpose()
     }
@@ -287,6 +315,19 @@ fn decode_integer_list(raw: &str) -> Result<Vec<i32>, ConfigError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn remove_eliminates_shadowed_keys_without_rewriting_other_bytes() {
+        let mut ini = IniDocument::parse("bad=old\r\n; keep\r\n[General]\r\nbad=new\r\n[External]\r\nbad=@Variant(keep)\r\n[General]\r\n bad = latest".into());
+        ini.remove("General", "bad").unwrap();
+        assert_eq!(
+            ini.source(),
+            "; keep\r\n[General]\r\n[External]\r\nbad=@Variant(keep)\r\n[General]\r\n"
+        );
+        assert_eq!(ini.raw("General", "bad"), None);
+        let original = ini.source().to_owned();
+        assert!(ini.remove("General", "bad\nkey").is_err());
+        assert_eq!(ini.source(), original);
+    }
     #[test]
     fn new_keys_reuse_existing_sections_without_rewriting_other_bytes() {
         let source = "; 注释\r\n[General]\r\nopaque=@Variant(\\0stuff)\r\n\r\n[Shortcuts]\r\nTYPE_COPY=Ctrl+C\r\n";

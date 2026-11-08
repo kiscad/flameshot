@@ -3454,3 +3454,31 @@ Runtime-wide default fallback/error presentation, the legacy resolver's convenie
 per-key reset/remove actions, and remaining setting semantics still require work.
 Current recovery deliberately saves only an explicit validated draft and does not
 silently reset or discard the original configuration.
+
+### Per-setting configuration repair actions
+
+Diagnostics now retain the offending section/key and distinguish invalid values
+from unknown settings. The repair view offers the existing translated Reset,
+Remove and Resolve all actions. Reset restores inherited defaults by removing the
+invalid override; Remove deletes an unknown key. These actions edit only the draft;
+Save publishes the validated result through the existing conflict-protected writer.
+Malformed lines and shortcut conflicts remain visible for manual correction. Invalid
+shortcut syntax has a per-key reset action and a diagnostic naming that shortcut.
+
+INI removal deletes every occurrence across repeated sections, including implicit
+General keys, so shadowed invalid values cannot reappear. Comments, CRLF endings
+and unrelated opaque data remain byte-for-byte unchanged. Core tests cover duplicate
+removal and rejected invalid key names; widget tests cover individual/batch actions,
+manual errors, no writes before Save and repeated layout passes.
+
+Native validation caught loss of editor focus when dynamic repair buttons vanished
+during typing. The text editor now has a stable explicit ID. A widget regression
+verifies uninterrupted input as diagnostics disappear and return, and the full native
+configuration-recovery fixture passes after the fix. The whole local Rust gate
+passed before that UI refinement; focused recovery tests and all-feature/all-target
+Clippy cover the final refinement. One isolated core-test link initially crashed
+inside rust-lld; the unchanged command succeeded on retry. This is recorded as a
+toolchain anomaly, not a source-test failure or a diagnosed compiler root cause.
+
+Runtime-wide configuration fallback and error presentation remain outstanding;
+these repair actions do not claim to complete that separate compatibility behavior.
