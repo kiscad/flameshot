@@ -39,6 +39,16 @@ try:
         test_config.parent.mkdir()
         test_config.write_text('[General]\ncheckForUpdates=false\n')
         def tool(*args):
+            if args[0] == 'key':
+                import re
+                keys = list(args[1:])
+                delay = 12
+                if keys[:1] == ['--delay']:
+                    delay = int(keys[1]); keys = keys[2:]
+                if keys and all(re.fullmatch(r'(?:Super_L\+)?F(?:[1-9]|1[0-2])', key) for key in keys):
+                    from x11_keys import press
+                    press(env['DISPLAY'], keys, delay)
+                    return subprocess.CompletedProcess(args, 0, b'', b'')
             return subprocess.run([str(root / 'usr/bin/xdotool'), *args], env=env, capture_output=True, timeout=10)
         def png(data):
             assert data[:8] == b'\x89PNG\r\n\x1a\n', data[:200]

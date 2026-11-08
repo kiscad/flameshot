@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Branding assets and 49 catalogs preserved; finite lookups, locale/source fallback, placeholders and Chinese native windows validated; see RESOURCE-VALIDATION.md |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update, upload and history confirmation/cancellation/failure/retry/deletion pass against loopback; external service availability is not an acceptance dependency |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall and CLI verified (see RPM-INSTALL-VALIDATION.md); Fedora GUI, other distro installs and sandbox/provider builds pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI and installed X11 suite verified (see RPM-INSTALL-VALIDATION.md); Fedora Wayland, other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -3867,3 +3867,14 @@ Imgur/no-update command policy, ELF dependencies without Qt, license/patch notic
 D-Bus metadata and unchanged synthetic INI. The container was cleaned up. Artifact
 and image hashes are recorded in RPM-INSTALL-VALIDATION.md. Fedora GUI/portal and
 old-package upgrade behavior remain separate acceptance work.
+
+### Installed Fedora X11 and function-key fixture correction
+
+The installed RPM passed the full Xvfb desktop suite in Fedora 44, and post-run
+RPM integrity verification remained clean. The initial custom-F8 timeout was a
+fixture issue: xev proved xdotool sent Alt+F8 on this XKB map, with the same behavior
+for F9–F12. A physical XTEST helper now sends only the requested function key and
+explicit Super modifier; native event inspection confirms the exact modifier state.
+Application shortcut handling is unchanged. Fedora Wayland/portal and old-package
+upgrade acceptance are not implied by the X11 result. RPM-INSTALL-VALIDATION.md
+records artifact hashes, diagnostics and the installed runtime evidence.

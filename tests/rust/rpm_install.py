@@ -81,6 +81,7 @@ try:
                 '/opt/review/helpers', '/opt/review/artifacts')
             for source, target in [
                 ('tests/rust/desktop_smoke.py', '/opt/review/suite/tests/rust/desktop_smoke.py'),
+                ('tests/rust/x11_keys.py', '/opt/review/suite/tests/rust/x11_keys.py'),
                 ('crates/flameshot-core/tests/fixtures/qt6-clipboard.bin',
                  '/opt/review/suite/crates/flameshot-core/tests/fixtures/qt6-clipboard.bin'),
                 ('target/debug/examples/x11_clipboard_probe', '/opt/review/helpers/x11_clipboard_probe'),

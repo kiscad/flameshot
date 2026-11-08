@@ -17,10 +17,9 @@ The fixture checks two install/remove cycles, RPM integrity, command features,
 ELF dependencies, license/patch notices, D-Bus interface and unchanged synthetic
 user configuration. It removes only its own generated container.
 
-The fixture does not exercise GUI rendering, portals, clipboard, or an upgrade
-from an older Fedora Flameshot package. Those require separate runtime/upgrade
-validation; the host's native desktop tests cannot establish installed Fedora GUI
-behavior.
+The default fixture does not exercise GUI rendering. The optional X11 mode is
+covered below. Fedora Wayland/portals and an upgrade from an older Fedora Flameshot
+package remain separate runtime/upgrade validation.
 
 Both install/remove cycles passed. The container was removed after validation.
 
@@ -32,19 +31,32 @@ Both install/remove cycles passed. The container was removed after validation.
 Detailed local evidence: `target/rpm-refresh-build.log`,
 `target/rpm-install-validation/install.log` and `report.json`.
 
-## Installed X11 validation in progress
+## Installed X11 validation
 
-The optional `--desktop` fixture installs Xvfb and Fedora's Mesa Vulkan driver,
-then runs the existing capture/editor/clipboard suite against `/usr/bin/flameshot`.
-The first run passed clipboard ownership, pins, launcher/owner-death and
-configuration cases, but an editor exit timed out before the suite completed.
-The original fixture did not identify the specific mode at that point. This is
-an unresolved failure, not a passing installed desktop result.
+The complete private Xvfb suite passed against the installed `/usr/bin/flameshot`
+from the same RPM above, using Fedora Mesa Vulkan rendering. This covers capture,
+selection/export, editing tools, shortcut overrides, save dialogs, configuration,
+clipboard/INCR, pins, launcher/owner-death cleanup and monitor selection. RPM
+integrity verification remained empty after the run. No host display, clipboard or
+directory was mounted; the diagnostic container was removed afterwards.
 
-The fixture now prints each editor mode and captures the display on exit timeout;
-container artifacts are copied even when the desktop test fails. A diagnostic
-rerun stopped during dependency reinstallation after DNF exceeded 600 seconds,
-before exercising the editor. Subsequent runs retain downloaded packages within
-the container, bound slow mirror transfers, and use separate artifact directories
-for each invocation so failure logs do not overwrite earlier evidence. Python
-syntax checks pass; installed GUI acceptance remains pending.
+The initial run timed out at the custom F8 accept shortcut. A native `xev` probe
+showed that Fedora's xdotool/XKB combination sent Alt+F8 for `xdotool key F8`
+(keycode 74, state 0x8); F9–F12 had the same extra modifier. The application correctly
+rejected the mismatched chord. A second native probe confirmed physical XTEST input
+sends state 0x0 for plain F8–F12 and only state 0x40 for Super+F8. The test now uses
+that input path for F1–F12, including requested modifiers, on its own Xvfb display.
+No application shortcut behavior or keyboard map was changed.
+
+The Fedora suite then passed in full. The corresponding Ubuntu/Xvfb fixture also passed in full with the same helper,
+checking the older keyboard environment. Input
+probes and the installed run are recorded in `target/fedora-keyprobe.log`,
+`target/fedora-keyprobe-physical.log` and `target/fedora-desktop-physical.log`;
+artifact hashes and screenshots are under
+`target/rpm-install-validation/fedora-x11-physical/`.
+
+The reusable `--desktop` install wrapper copies this helper with its fixtures,
+retains timeout screenshots and keeps each invocation's logs separately. An earlier
+diagnostic attempt timed out downloading dependencies; that result is not counted
+as GUI coverage. Subsequent invocations keep package downloads within the disposable
+container to avoid duplicate downloads during remove/reinstall.

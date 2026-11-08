@@ -224,7 +224,8 @@ python3 tests/rust/rpm_install.py path/to/flameshot.rpm fedora:44 SOURCE_REVISIO
 
 The optional mode installs X11 test tools and Fedora's Mesa Vulkan software driver,
 copies only fixtures and the clipboard probe, and uses container-local displays,
-configuration and clipboard. Docker's init process reaps orphaned descendants during
+configuration and clipboard. Function keys use direct XTEST input to avoid
+xdotool adding implicit Alt modifiers on newer XKB maps. Docker's init process reaps orphaned descendants during
 owner-death tests. It retains screenshots in the artifact directory and verifies
 RPM integrity again after the desktop run.
 
