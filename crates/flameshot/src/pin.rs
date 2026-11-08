@@ -427,16 +427,12 @@ impl eframe::App for Pinned {
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
                 .show(&ctx, |ui| {
                     ui.label(error);
-                    retry = ui
-                        .button(tr(
-                            "PinWidget",
-                            if self.save_error {
-                                "Save to file"
-                            } else {
-                                "Copy to clipboard"
-                            },
-                        ))
-                        .clicked();
+                    let retry_label = if self.save_error {
+                        tr("PinWidget", "Save to file")
+                    } else {
+                        tr("PinWidget", "Copy to clipboard")
+                    };
+                    retry = ui.button(retry_label).clicked();
                     dismiss |= ui.button(tr("PinWidget", "Close")).clicked();
                 });
             if retry || dismiss {

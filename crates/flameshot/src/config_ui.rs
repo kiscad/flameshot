@@ -473,10 +473,10 @@ impl eframe::App for Config {
             ui.text_edit_singleline(&mut self.palette);
             ui.horizontal(|ui| {
                 for (label, large) in [
-                    ("Small default palette", false),
-                    ("Large default palette", true),
+                    (tr("Small default palette"), false),
+                    (tr("Large default palette"), true),
                 ] {
-                    if ui.button(tr(label)).clicked() {
+                    if ui.button(label).clicked() {
                         self.settings.large_palette = large;
                         self.palette = crate::settings::default_palette(large)
                             .iter()
@@ -561,22 +561,22 @@ impl eframe::App for Config {
                 &mut self.settings.show_side_panel_button,
                 tr("Show objects panel button"),
             );
-            const GEOMETRY: [&str; 6] = [
-                "None",
-                "Top left",
-                "Top right",
-                "Bottom left",
-                "Bottom right",
-                "Center",
+            let geometry = [
+                tr("None"),
+                tr("Top left"),
+                tr("Top right"),
+                tr("Bottom left"),
+                tr("Bottom right"),
+                tr("Center"),
             ];
             egui::ComboBox::from_label(tr("Selection geometry"))
-                .selected_text(tr(GEOMETRY[self.settings.selection_geometry as usize]))
+                .selected_text(geometry[self.settings.selection_geometry as usize])
                 .show_ui(ui, |ui| {
-                    for (index, label) in GEOMETRY.iter().enumerate() {
+                    for (index, label) in geometry.iter().enumerate() {
                         ui.selectable_value(
                             &mut self.settings.selection_geometry,
                             index as u8,
-                            tr(label),
+                            *label,
                         );
                     }
                 });
@@ -599,7 +599,10 @@ impl eframe::App for Config {
                         continue;
                     }
                     let mut enabled = selected.contains(id);
-                    if ui.checkbox(&mut enabled, tr(label)).changed() {
+                    if ui
+                        .checkbox(&mut enabled, crate::buttons::translated_name(label))
+                        .changed()
+                    {
                         if enabled {
                             selected.push(*id);
                         } else {

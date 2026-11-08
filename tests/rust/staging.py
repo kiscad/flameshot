@@ -43,6 +43,11 @@ with tempfile.TemporaryDirectory(prefix='flameshot-stage-') as directory:
         for source, installed_name in [('third-party/winit/LICENSE','winit-LICENSE'),
                                        ('third-party/README.md','winit-patch.txt')]:
             assert (payload/'share/licenses/flameshot'/installed_name).read_bytes()==Path(source).read_bytes()
+        for source, relative in [
+            ('data/img/app/org.flameshot.Flameshot.svg','share/icons/hicolor/scalable/apps/org.flameshot.Flameshot.svg'),
+            ('data/img/app/org.flameshot.Flameshot.png','share/icons/hicolor/128x128/apps/org.flameshot.Flameshot.png'),
+        ]:
+            assert (payload/relative).read_bytes()==Path(source).read_bytes(),relative
         assert not list(payload.rglob('*.qm'))
         for path in (payload/'share').rglob('*'):
             if path.is_file():assert stat.S_IMODE(path.stat().st_mode)==0o644,path

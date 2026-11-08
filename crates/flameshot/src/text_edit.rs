@@ -12,11 +12,11 @@ pub(crate) fn format_controls(ui: &mut egui::Ui, format: &mut TextStyle) {
     });
     ui.horizontal_wrapped(|ui| {
         for (alignment, label) in [
-            (TextAlignment::Left, "Left Align"),
-            (TextAlignment::Center, "Center Align"),
-            (TextAlignment::Right, "Right Align"),
+            (TextAlignment::Left, tr("TextConfig", "Left Align")),
+            (TextAlignment::Center, tr("TextConfig", "Center Align")),
+            (TextAlignment::Right, tr("TextConfig", "Right Align")),
         ] {
-            ui.selectable_value(&mut format.alignment, alignment, tr("TextConfig", label));
+            ui.selectable_value(&mut format.alignment, alignment, label);
         }
     });
 }

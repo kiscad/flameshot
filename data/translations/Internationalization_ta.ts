@@ -156,7 +156,7 @@
     <message>
         <location filename="../../src/widgets/capturelauncher.cpp" line="46"/>
         <source>Monitor %1: %2 (%3x%4)</source>
-        <translation>மானிட்டர்% 1:% 2 (%3x%4)</translation>
+        <translation>மானிட்டர் %1: %2 (%3x%4)</translation>
     </message>
     <message>
         <location filename="../../src/widgets/capturelauncher.cpp" line="71"/>
@@ -2858,7 +2858,7 @@ You சி-வைகாசி need பெறுநர் escape the &apos;#&apos
     <message>
         <location filename="../../src/widgets/trayicon.cpp" line="266"/>
         <source>Monitor %1: %2 (%3x%4)</source>
-        <translation>மானிட்டர்% 1:% 2 (%3x%4)</translation>
+        <translation>மானிட்டர் %1: %2 (%3x%4)</translation>
     </message>
     <message>
         <source>New version %1 is available</source>

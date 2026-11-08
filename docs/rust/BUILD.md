@@ -368,7 +368,9 @@ cargo build --locked -p flameshot --all-features
 ## Translation lookup validation
 
 `python3 tests/rust/translation_lookups.py` checks ordinary quoted translation calls,
-local `tr` wrappers and diagnostic template declarations against active TS source/context pairs. It runs as part of
+local `tr` wrappers, diagnostic declarations, D-Bus menu labels and the button catalog
+against active TS source/context pairs. Finished used templates are also checked for
+matching parameter markers. It runs as part of
 `check-rust.sh`. It catches wrong contexts and absent source entries; it does not
 infer dynamic labels/raw strings or require unfinished human translations to be
 complete. Existing source-text fallback remains supported.

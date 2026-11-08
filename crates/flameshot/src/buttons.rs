@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Stable legacy tool IDs in CaptureToolButton priority order.
+pub const CATALOG_CONTEXT: &str = "RustConfig";
+pub fn translated_name(source: &str) -> &str {
+    crate::i18n::tr(CATALOG_CONTEXT, source)
+}
 pub const CATALOG: &[(i32, &str)] = &[
     (0, "Pencil"),
     (1, "Line"),

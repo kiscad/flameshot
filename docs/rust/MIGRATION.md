@@ -27,7 +27,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | CLI | Existing commands/options, stdout PNG, exit codes | Baseline option scopes, parse/value rules, stream/status behavior, feature gating and live Bash/Fish/Zsh completions tested; see CLI-COMPATIBILITY.md |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Qt reference metadata/wire fixtures, all four public methods, reply/no-reply dispatch, malformed payloads and singleton ownership tested; see DBUS-COMPATIBILITY.md |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | INI/QVariant round trips, unknown-data preservation, runtime fallback, repair UI, atomic writes, idle reload, conflict handling and save-directory semantics tested |
-| Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
+| Resources | Existing icons and 49 translation catalogs; locale fallback | Branding assets and 49 catalogs preserved; finite lookups, locale/source fallback, placeholders and Chinese native windows validated; see RESOURCE-VALIDATION.md |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines/preferences and upload/history/update widget flows tested; native network-window integration audit remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
@@ -3754,3 +3754,20 @@ Fish and actual Zsh completion, with both all-feature and minimal builds. The co
 local gate passes, including parse/value/repetition tests, CLI/config integrations,
 private-bus checks and Clippy. This completes the help-prose work identified in the
 resource audit; remaining dynamic lookup and desktop/backend acceptance are separate.
+
+### Dynamic label and resource audit
+
+Finite toolbars, annotation labels, alignment/geometry choices, palette actions and
+retry/repair branches now expose explicit translation calls. Tool IDs, priority order
+and behavior are unchanged. The configured button catalog retains pure validation
+metadata and declares its translation context separately. The source checker also
+covers that catalog and D-Bus menu labels, for 392 checked call sites/labels.
+
+A baseline comparison verifies all 49 catalog filenames and active source keys are
+retained, and both application branding icons are unchanged. Installed icon bytes are
+now checked during staging. Finished used templates are checked for parameter markers;
+two existing Tamil monitor-label markers were repaired. Full local checks and native
+X11/text/config/locale tests pass, with final locale and layer-rendering reruns after
+the branch refactoring. RESOURCE-VALIDATION.md records the evidence and boundaries.
+The catalog/icon/lookup acceptance item is closed; desktop/font environments and
+release/package refreshes remain separate gates.

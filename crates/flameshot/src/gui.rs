@@ -102,6 +102,24 @@ enum Tool {
     Pixelate,
 }
 impl Tool {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Select => tr("CaptureWidget", "Select screenshot area"),
+            Self::Text => tr("TextTool", "Text"),
+            Self::Pencil => tr("PencilTool", "Pencil"),
+            Self::Marker => tr("MarkerTool", "Marker"),
+            Self::Counter => tr("CircleCountTool", "Circle Counter"),
+            Self::Move => tr("RustEditor", "Move object"),
+            Self::MoveSelection => tr("RustEditor", "Move selection"),
+            Self::Line => tr("LineTool", "Line"),
+            Self::Arrow => tr("ArrowTool", "Arrow"),
+            Self::Rectangle => tr("SelectionTool", "Rectangular Selection"),
+            Self::FilledRectangle => tr("RectangleTool", "Rectangle"),
+            Self::Ellipse => tr("CircleTool", "Circle"),
+            Self::Invert => tr("InvertTool", "Invert"),
+            Self::Pixelate => tr("PixelateTool", "Pixelate"),
+        }
+    }
     fn legacy_id(self) -> Option<i32> {
         match self {
             Self::Pencil => Some(0),
@@ -1421,36 +1439,21 @@ impl eframe::App for Editor {
                                 self.document.annotations().iter().enumerate()
                             {
                                 let label = match annotation {
-                                    Annotation::Text { .. } => "Text",
-                                    Annotation::Counter { .. } => "Counter",
-                                    Annotation::Pencil { .. } => "Pencil",
-                                    Annotation::Line { .. } => "Line",
-                                    Annotation::Marker { .. } => "Marker",
-                                    Annotation::Arrow { .. } => "Arrow",
-                                    Annotation::Rectangle { .. } => "Rectangle",
-                                    Annotation::Ellipse { .. } => "Ellipse",
-                                    Annotation::Invert(_) => "Invert",
-                                    Annotation::Pixelate { .. } => "Pixelate",
+                                    Annotation::Text { .. } => tr("RustConfig", "Text"),
+                                    Annotation::Counter { .. } => tr("RustEditor", "Counter"),
+                                    Annotation::Pencil { .. } => tr("RustConfig", "Pencil"),
+                                    Annotation::Line { .. } => tr("RustConfig", "Line"),
+                                    Annotation::Marker { .. } => tr("RustConfig", "Marker"),
+                                    Annotation::Arrow { .. } => tr("RustConfig", "Arrow"),
+                                    Annotation::Rectangle { .. } => tr("RustEditor", "Rectangle"),
+                                    Annotation::Ellipse { .. } => tr("RustConfig", "Ellipse"),
+                                    Annotation::Invert(_) => tr("RustConfig", "Invert"),
+                                    Annotation::Pixelate { .. } => tr("RustConfig", "Pixelate"),
                                 };
                                 if ui
                                     .selectable_label(
                                         self.selected_object == Some(index),
-                                        format!(
-                                            "{}: {}",
-                                            index + 1,
-                                            tr(
-                                                if matches!(
-                                                    annotation,
-                                                    Annotation::Counter { .. }
-                                                        | Annotation::Rectangle { .. }
-                                                ) {
-                                                    "RustEditor"
-                                                } else {
-                                                    "RustConfig"
-                                                },
-                                                label
-                                            )
-                                        ),
+                                        format!("{}: {}", index + 1, label),
                                     )
                                     .clicked()
                                 {
@@ -1476,39 +1479,45 @@ impl eframe::App for Editor {
                     if self.show_help && self.selection.is_none() {ui.label(tr("RustEditor", "Drag to select • Enter: accept • Ctrl+C: copy • Ctrl+S: save • Esc: cancel"));}
                     ui.set_max_width((ctx.content_rect().width() - 40.0).clamp(200.0, 900.0));
                     ui.horizontal_wrapped(|ui| {
-                        let mut tools=vec![
-                            (Tool::Select, "Select"),
-                            (Tool::Text, "Text"),
-                            (Tool::Pencil, "Pencil"),
-                            (Tool::Marker, "Marker"),
-                            (Tool::Counter, "Circle Counter"),
-                            (Tool::Move, "Move object"),
-                            (Tool::MoveSelection, "Move selection"),
-                            (Tool::Line, "Line"),
-                            (Tool::Arrow, "Arrow"),
-                            (Tool::Rectangle, "Outline rectangle"),
-                            (Tool::FilledRectangle, "Rectangle"),
-                            (Tool::Ellipse, "Ellipse"),
-                            (Tool::Invert, "Invert"),
-                            (Tool::Pixelate, "Pixelate"),
+                        let mut tools = vec![
+                            Tool::Select,
+                            Tool::Text,
+                            Tool::Pencil,
+                            Tool::Marker,
+                            Tool::Counter,
+                            Tool::Move,
+                            Tool::MoveSelection,
+                            Tool::Line,
+                            Tool::Arrow,
+                            Tool::Rectangle,
+                            Tool::FilledRectangle,
+                            Tool::Ellipse,
+                            Tool::Invert,
+                            Tool::Pixelate,
                         ];
-                        if let Some(buttons)=&self.buttons {
-                            tools.retain(|(tool,_)|tool.legacy_id().is_none_or(|id|buttons.contains(&id)));
+                        if let Some(buttons) = &self.buttons {
+                            tools.retain(|tool| tool.legacy_id().is_none_or(|id| buttons.contains(&id)));
                         }
-                            tools.sort_by_key(|(tool,_)|tool.legacy_id().map(|id|crate::buttons::priority(id)+1).unwrap_or(0));
-                        for (tool,label) in tools {
-                            let (context,source)=match tool {
- Tool::Select=>("CaptureWidget","Select screenshot area"),Tool::Text=>("TextTool",label),Tool::Pencil=>("PencilTool",label),Tool::Marker=>("MarkerTool",label),Tool::Counter=>("CircleCountTool",label),Tool::Move=>("RustEditor",label),Tool::MoveSelection=>("RustEditor",label),Tool::Line=>("LineTool",label),Tool::Arrow=>("ArrowTool",label),Tool::Rectangle=>("SelectionTool","Rectangular Selection"),Tool::FilledRectangle=>("RectangleTool",label),Tool::Ellipse=>("CircleTool","Circle"),Tool::Invert=>("InvertTool",label),Tool::Pixelate=>("PixelateTool",label)};
- ui.selectable_value(&mut self.tool, tool, tr(context,source));
+                        tools.sort_by_key(|tool| tool.legacy_id().map(|id| crate::buttons::priority(id) + 1).unwrap_or(0));
+                        for tool in tools {
+                            ui.selectable_value(&mut self.tool, tool, tool.label());
                         }
                         if ui.color_edit_button_srgba(&mut self.color).changed() { self.persist_color(); }
                         self.tool_size_control(ui);
-                        for (id,context,label) in [
-                            (9,"UndoTool","Undo"),(16,"RedoTool","Redo"),(10,"CopyTool","Copy"),(11,"SaveTool","Save"),
-                            (13,"RustConfig","Upload"),(23,"AcceptTool","Accept"),(14,"RustConfig","Open with"),
-                            (12,"ColorGrabWidget","Cancel"),(17,"PinTool","Pin Tool"),(20,"CaptureWidget","+"),(21,"CaptureWidget","−"),
+                        for (id, label) in [
+                            (9, tr("UndoTool", "Undo")),
+                            (16, tr("RedoTool", "Redo")),
+                            (10, tr("CopyTool", "Copy")),
+                            (11, tr("SaveTool", "Save")),
+                            (13, tr("RustConfig", "Upload")),
+                            (23, tr("AcceptTool", "Accept")),
+                            (14, tr("RustConfig", "Open with")),
+                            (12, tr("ColorGrabWidget", "Cancel")),
+                            (17, tr("PinTool", "Pin Tool")),
+                            (20, "+"),
+                            (21, "−"),
                         ] {
-                            if self.button_enabled(id) && crate::buttons::available(id) && ui.button(tr(context,label)).clicked() {
+                            if self.button_enabled(id) && crate::buttons::available(id) && ui.button(label).clicked() {
                                 match id {
                                     9 => self.undo_edit(),
                                     16 => self.redo_edit(),

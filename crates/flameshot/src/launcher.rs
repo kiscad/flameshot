@@ -247,10 +247,11 @@ impl eframe::App for Launcher {
                         } else {
                             format!(
                                 "{value}{}",
-                                tr(
-                                    "CaptureLauncher",
-                                    if value == 1 { " second" } else { " seconds" }
-                                )
+                                if value == 1 {
+                                    tr("CaptureLauncher", " second")
+                                } else {
+                                    tr("CaptureLauncher", " seconds")
+                                }
                             )
                         }
                     }),

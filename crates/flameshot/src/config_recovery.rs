@@ -64,12 +64,12 @@ impl Recovery {
                     ui.push_id(index, |ui| {
                         ui.horizontal(|ui| {
                             if let Some(repair) = &problem.repair {
-                                let label = if repair.reset { "Reset" } else { "Remove" };
-                                if ui
-                                    .button(crate::i18n::tr("ConfigResolver", label))
-                                    .clicked()
-                                    && self.handled_frame != Some(frame)
-                                {
+                                let label = if repair.reset {
+                                    crate::i18n::tr("ConfigResolver", "Reset")
+                                } else {
+                                    crate::i18n::tr("ConfigResolver", "Remove")
+                                };
+                                if ui.button(label).clicked() && self.handled_frame != Some(frame) {
                                     repairs.push(repair.clone());
                                 }
                             }
