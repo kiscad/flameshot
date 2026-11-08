@@ -3564,3 +3564,26 @@ drawing operation, and PNG export retains its pixels. The frozen optimized
 all-feature build passes. Application unit tests (103 passed, one environment-gated
 ignore), formatting and all-feature/all-target Clippy pass. The native regression is
 registered in the workflow and build guide; hosted CI remains unverified.
+
+### Keyboard selection boundaries match the Qt reference
+
+Keyboard movement previously reused mouse-drag clamping, retaining the selection's
+size when a key moved it beyond an image edge. The legacy keyboard path instead
+intersects the adjusted rectangle with the image. Rust now keeps these behaviors
+separate and matches the keyboard path's inclusive-endpoint normalization and
+minimum-rectangle handling. This includes the legacy 1×1 origin rectangle when the
+proposed rectangle has no intersection. Mouse dragging retains its existing clamp.
+Wide intermediate arithmetic prevents overflow for extreme public API deltas.
+
+A Qt 6.4.2 reference program generated 156 cases from the unchanged baseline
+selection-widget operations. The checked-in TSV and provenance/reproduction document
+cover all directions, all image edges, full-image selection and one/two/three-pixel
+sizes. Rust consumes only the data; normal builds/tests have no Qt dependency. All
+reference cases and extreme-delta bounds tests pass.
+
+The private-Xvfb fixture verifies printed geometry after real arrow/resize shortcuts
+at all four edges and minimum sizes. The frozen `96c4c60c` executable fails the first
+edge case (retaining width 10 instead of clipping to 9); the updated all-feature
+executable passes all eight native cases. The complete local Rust gate passes after
+the change. The fixture is registered in the workflow/build guide; hosted CI and
+broader compositor placement acceptance remain separate.

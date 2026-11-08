@@ -84,35 +84,68 @@ pub fn keyboard(
     symmetric: bool,
     size: [u32; 2],
 ) -> Option<PixelRect> {
-    if !resize {
-        return drag(region, Drag::Move, dx, dy, size);
+    if region.width == 0 || region.height == 0 || size.contains(&0) {
+        return None;
     }
-    let dy = if symmetric { -dy } else { dy };
-    let mut result = region;
-    if symmetric {
-        result = drag(
-            result,
-            Drag::Resize(Edges {
-                left: true,
-                top: true,
-                ..Default::default()
-            }),
-            -dx,
-            -dy,
-            size,
-        )?;
+    // Qt keyboard adjustments intersect the proposed rectangle with the image;
+    // mouse dragging instead clamps its position while retaining its dimensions.
+    // Use wide arithmetic so public callers cannot overflow with extreme deltas.
+    let symmetric = resize && symmetric;
+    let dx = i128::from(dx);
+    let dy = if symmetric {
+        -i128::from(dy)
+    } else {
+        i128::from(dy)
+    };
+    let mut left = i128::from(region.x)
+        + if !resize {
+            dx
+        } else if symmetric {
+            -dx
+        } else {
+            0
+        };
+    let mut top = i128::from(region.y)
+        + if !resize {
+            dy
+        } else if symmetric {
+            -dy
+        } else {
+            0
+        };
+    let mut right = i128::from(region.x) + i128::from(region.width) - 1 + dx;
+    let mut bottom = i128::from(region.y) + i128::from(region.height) - 1 + dy;
+    let minimum = Some(PixelRect {
+        x: 0,
+        y: 0,
+        width: 1,
+        height: 1,
+    });
+    if right == left - 1 && bottom == top - 1 {
+        return minimum;
     }
-    drag(
-        result,
-        Drag::Resize(Edges {
-            right: true,
-            bottom: true,
-            ..Default::default()
-        }),
-        dx,
-        dy,
-        size,
-    )
+    // QRect's inclusive endpoints normalize inverted dimensions before intersection.
+    if right < left - 1 {
+        (left, right) = (right + 1, left - 1);
+    }
+    if bottom < top - 1 {
+        (top, bottom) = (bottom + 1, top - 1);
+    }
+    let max_x = i128::from(size[0]) - 1;
+    let max_y = i128::from(size[1]) - 1;
+    if left > max_x || right < 0 || top > max_y || bottom < 0 {
+        return minimum;
+    }
+    left = left.max(0);
+    top = top.max(0);
+    right = right.min(max_x);
+    bottom = bottom.min(max_y);
+    Some(PixelRect {
+        x: left as u32,
+        y: top as u32,
+        width: (right - left + 1).max(1) as u32,
+        height: (bottom - top + 1).max(1) as u32,
+    })
 }
 #[cfg(test)]
 mod tests {
@@ -124,6 +157,53 @@ mod tests {
             width: 40,
             height: 50,
         }
+    }
+    #[test]
+    fn keyboard_matches_qt_reference_at_edges_and_minimum_sizes() {
+        let fixture = include_str!("../tests/fixtures/qt6-selection-keyboard.tsv");
+        let mut count = 0;
+        for line in fixture.lines() {
+            let values: Vec<i64> = line
+                .split_whitespace()
+                .map(|value| value.parse().unwrap())
+                .collect();
+            assert_eq!(values.len(), 14);
+            let rect = |start| PixelRect {
+                x: values[start] as u32,
+                y: values[start + 1] as u32,
+                width: values[start + 2] as u32,
+                height: values[start + 3] as u32,
+            };
+            assert_eq!(
+                keyboard(
+                    rect(0),
+                    values[4],
+                    values[5],
+                    values[6] != 0,
+                    values[7] != 0,
+                    [values[8] as u32, values[9] as u32]
+                ),
+                Some(rect(10)),
+                "{line}"
+            );
+            count += 1;
+        }
+        assert_eq!(count, 156);
+    }
+    #[test]
+    fn keyboard_extreme_deltas_remain_nonempty_and_in_bounds() {
+        for dx in [i64::MIN, -1, 0, 1, i64::MAX] {
+            for dy in [i64::MIN, -1, 0, 1, i64::MAX] {
+                for (resize, symmetric) in
+                    [(false, false), (false, true), (true, false), (true, true)]
+                {
+                    let value = keyboard(region(), dx, dy, resize, symmetric, [100, 100]).unwrap();
+                    assert!(value.width > 0 && value.height > 0);
+                    assert!(value.x + value.width <= 100 && value.y + value.height <= 100);
+                }
+            }
+        }
+        assert!(keyboard(region(), 1, 0, false, false, [0, 100]).is_none());
     }
     #[test]
     fn moving_clamps_without_changing_dimensions() {

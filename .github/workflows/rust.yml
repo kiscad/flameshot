@@ -69,6 +69,8 @@ jobs:
         run: python3 tests/rust/text_format_smoke.py / target/debug/flameshot
       - name: Selected arrow style editing
         run: python3 tests/rust/arrow_style_smoke.py / target/debug/flameshot
+      - name: Keyboard selection boundaries
+        run: python3 tests/rust/keyboard_geometry_smoke.py / target/debug/flameshot
       - name: Selection cancellation preserves annotations
         run: python3 tests/rust/cancel_selection_smoke.py / target/debug/flameshot
       - name: Live global rendering preferences
