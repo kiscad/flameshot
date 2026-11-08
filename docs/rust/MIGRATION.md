@@ -3924,8 +3924,8 @@ the normalized left-of-primary layout instead of claiming negative global suppor
 Both mixed modes pass; fractional mode also passes native Wayland PNG/JPEG/Unicode
 clipboard receipt and editor clipboard lifetime through the Xwayland bridge. The
 original two-monitor baseline passes as well. GNOME-VALIDATION.md records versions,
-exact dimensions, commands and evidence. These checks close the GNOME layout items;
-Chinese IME and the remaining package/sandbox acceptance work are still pending.
+exact dimensions, commands and evidence. These checks close the GNOME layout items; the separate IBus composition acceptance
+below also passes. Remaining package/sandbox acceptance work is still pending.
 
 ### GNOME native IBus composition acceptance
 
