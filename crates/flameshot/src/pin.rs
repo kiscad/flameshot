@@ -12,6 +12,38 @@ fn scaled_size(width: u32, height: u32, scale: f64, zoom: f32) -> anyhow::Result
     let factor = zoom.clamp(0.05, 8.0).min(16384.0 / width.max(height));
     Ok(egui::vec2(width * factor, height * factor))
 }
+// Raw wheel and pinch events remain present when egui repeats a layout pass.
+fn zoom_from_input(zoom: f32, frame: &mut Option<u64>, ctx: &egui::Context) -> Option<f32> {
+    let current = ctx.cumulative_frame_nr();
+    if *frame == Some(current) {
+        return None;
+    }
+    *frame = Some(current);
+    let (scroll, pinch) = ctx.input(|input| {
+        let scroll: f32 = input
+            .events
+            .iter()
+            .filter_map(|event| {
+                if let egui::Event::MouseWheel { delta, .. } = event {
+                    Some(delta.y)
+                } else {
+                    None
+                }
+            })
+            .sum();
+        (scroll, input.zoom_delta())
+    });
+    let factor = if pinch != 1.0 {
+        pinch
+    } else if scroll > 0.0 {
+        1.1
+    } else if scroll < 0.0 {
+        1.0 / 1.1
+    } else {
+        return None;
+    };
+    Some((zoom * factor).clamp(0.05, 8.0))
+}
 pub fn show(pin: Pin) -> anyhow::Result<()> {
     let settings = crate::settings::Settings::load()?;
     let shortcuts = crate::shortcuts::Shortcuts::for_pin(&settings.shortcuts);
@@ -52,6 +84,7 @@ pub fn show(pin: Pin) -> anyhow::Result<()> {
                 copy_error: None,
                 close_after_copy: false,
                 shortcut_frame: None,
+                zoom_frame: None,
                 dismissed_dialog_frame: None,
                 save_dialog: None,
                 close_after_save: false,
@@ -79,6 +112,7 @@ struct Pinned {
     copy_error: Option<String>,
     close_after_copy: bool,
     shortcut_frame: Option<u64>,
+    zoom_frame: Option<u64>,
     dismissed_dialog_frame: Option<u64>,
     save_dialog: Option<PinSave>,
     close_after_save: bool,
@@ -274,6 +308,9 @@ impl eframe::App for Pinned {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.poll_copy(&ctx);
+        if self.save_dialog.is_some() || self.copy_error.is_some() {
+            self.zoom_frame = Some(ctx.cumulative_frame_nr());
+        }
         if let Some(mut save) = self.save_dialog.take() {
             let mut completed = None;
             ctx.show_viewport_immediate(
@@ -365,29 +402,8 @@ impl eframe::App for Pinned {
                     self.opacity = if index == 0 { 1.0 } else { index as f32 / 10.0 };
                 }
             }
-            let scroll: f32 = ui.input(|i| {
-                i.events
-                    .iter()
-                    .filter_map(|event| {
-                        if let egui::Event::MouseWheel { delta, .. } = event {
-                            Some(delta.y)
-                        } else {
-                            None
-                        }
-                    })
-                    .sum()
-            });
-            let pinch = ui.input(|i| i.zoom_delta());
-            if scroll != 0.0 || pinch != 1.0 {
-                self.zoom = (self.zoom
-                    * if pinch != 1.0 {
-                        pinch
-                    } else if scroll > 0.0 {
-                        1.1
-                    } else {
-                        1.0 / 1.1
-                    })
-                .clamp(0.05, 8.0);
+            if let Some(zoom) = zoom_from_input(self.zoom, &mut self.zoom_frame, &ctx) {
+                self.zoom = zoom;
                 self.resize(&ctx);
             }
         }
@@ -512,6 +528,44 @@ impl eframe::App for Pinned {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn zoom_events_apply_once_per_frame_and_accept_next_frame() {
+        let ctx = egui::Context::default();
+        let mut zoom = 1.0;
+        let mut frame = None;
+        let wheel = |y| egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            phase: egui::TouchPhase::Move,
+            source: egui::MouseWheelSource::Unknown,
+            delta: egui::vec2(0.0, y),
+            modifiers: egui::Modifiers::NONE,
+        };
+        for (event, expected) in [
+            (wheel(1.0), 1.1),
+            (wheel(1.0), 1.21),
+            (wheel(-1.0), 1.1),
+            (egui::Event::Zoom(2.0), 2.2),
+            (egui::Event::Zoom(10.0), 8.0),
+            (egui::Event::Zoom(0.001), 0.05),
+        ] {
+            let mut passes = 0;
+            let mut changes = 0;
+            crate::ui_test::ui_frame(&ctx, vec![event], &mut |ui| {
+                passes += 1;
+                if let Some(value) = zoom_from_input(zoom, &mut frame, ui.ctx()) {
+                    zoom = value;
+                    changes += 1;
+                }
+                if ui.ctx().current_pass_index() == 0 {
+                    ui.ctx()
+                        .request_discard("exercise pin zoom across layout passes");
+                }
+            });
+            assert_eq!(passes, 2);
+            assert_eq!(changes, 1);
+            assert!((zoom - expected).abs() < 0.00001, "{zoom} != {expected}");
+        }
+    }
     #[test]
     fn zoom_preserves_aspect_ratio_and_device_scale() {
         let size = scaled_size(600, 300, 1.5, 2.0).unwrap();

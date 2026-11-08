@@ -3356,3 +3356,18 @@ The private-bus contract test and staging checks passed, including normal and sp
 installation prefixes, permissions, desktop/AppStream resources and activation quoting.
 This corrects the published interface resource; a refreshed optimized-build validation
 follows separately and does not replace remaining install/sandbox acceptance.
+
+### Pin zoom input across repeated layout passes
+
+The optimized `1ecfd4cc` review build passed X11, Sway/IME and pin-save smoke
+checks, but the Chinese-window fixture exposed a duplicate zoom: one wheel click
+changed a rotated 300×400 pin to 363×484 instead of 330×440. Pin zoom now consumes
+wheel/pinch input once per egui frame, including frames occupied by a modal dialog.
+A subsequent frame can still apply a new input. The widget regression forces two
+layout passes and verifies wheel directions, successive frames, pinch and limits;
+both pin unit tests pass. Native/release revalidation is recorded separately.
+
+The initial optimized compilation remained busy in LLVM without completing. An
+isolated compilation with the same optimization settings completed, after which
+the original owned build was stopped and an unchanged standard Cargo retry passed
+in 10.58 seconds. This does not establish the cause of the compilation anomaly.
