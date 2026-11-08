@@ -287,13 +287,8 @@ impl eframe::App for Pinned {
                         return;
                     }
                     let result = if ui.input(|input| input.viewport().close_requested()) {
-                        if save.dialog.pending() {
-                            ui.ctx()
-                                .send_viewport_cmd(egui::ViewportCommand::CancelClose);
-                            crate::save_dialog::SaveOutcome::Pending
-                        } else {
-                            crate::save_dialog::SaveOutcome::Cancelled
-                        }
+                        save.dialog.cancel();
+                        crate::save_dialog::SaveOutcome::Cancelled
                     } else {
                         save.dialog.show(ui, |path, extension| {
                             save.settings = crate::settings::Settings::load()?;

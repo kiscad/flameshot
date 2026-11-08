@@ -11,7 +11,7 @@ use std::{
 use zbus::{
     Connection,
     message::Header,
-    zvariant::{OwnedFd, OwnedObjectPath, OwnedValue},
+    zvariant::{OwnedFd, OwnedObjectPath, OwnedValue, Value},
 };
 
 struct Portal {
@@ -27,6 +27,57 @@ struct Request(Arc<AtomicU32>);
 impl Request {
     fn close(&self) {
         self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+struct StartingSaveRequest {
+    closed: Arc<AtomicU32>,
+    ready: Arc<std::sync::atomic::AtomicBool>,
+    attempted: Arc<tokio::sync::Semaphore>,
+}
+#[zbus::interface(name = "org.freedesktop.portal.Request")]
+impl StartingSaveRequest {
+    fn close(&self) -> zbus::fdo::Result<()> {
+        if !self.ready.load(Ordering::SeqCst) {
+            self.attempted.add_permits(1);
+            return Err(zbus::fdo::Error::UnknownObject(
+                "Request is still starting".into(),
+            ));
+        }
+        self.closed.fetch_add(1, Ordering::SeqCst);
+        Ok(())
+    }
+}
+struct LateSaveRequest {
+    closed: Arc<AtomicU32>,
+    uris: Arc<Mutex<Vec<String>>>,
+    path: OwnedObjectPath,
+    filter: (String, Vec<(u32, String)>),
+}
+#[zbus::interface(name = "org.freedesktop.portal.Request")]
+impl LateSaveRequest {
+    async fn close(
+        &self,
+        #[zbus(connection)] connection: &Connection,
+        #[zbus(header)] header: Header<'_>,
+    ) {
+        self.closed.fetch_add(1, Ordering::SeqCst);
+        let uris = self.uris.lock().unwrap().clone();
+        connection
+            .emit_signal(
+                header.sender().map(|sender| sender.as_str()),
+                self.path.clone(),
+                "org.freedesktop.portal.Request",
+                "Response",
+                &(
+                    0_u32,
+                    HashMap::from([
+                        ("uris", Value::from(uris)),
+                        ("current_filter", Value::from(self.filter.clone())),
+                    ]),
+                ),
+            )
+            .await
+            .unwrap();
     }
 }
 #[zbus::interface(name = "org.freedesktop.portal.OpenURI")]
@@ -262,7 +313,15 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
         }
     }
     exercise_web_protocol(&client, &status, &closed, &urls).await;
-    exercise_save_protocol(&client, root.path(), &chooser_status, &chosen_uris, &closed).await;
+    exercise_save_protocol(
+        &client,
+        root.path(),
+        &chooser_status,
+        &chosen_uris,
+        &closed,
+        &chooser_calls,
+    )
+    .await;
     if let Ok(tools) = std::env::var("FLAMESHOT_TEST_PRIVATE_DISPLAY_TOOLS") {
         exercise_open_with(root.path(), &tools, &status, &images).await;
         #[cfg(feature = "imgur")]
@@ -273,6 +332,7 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
             &chooser_status,
             &chosen_uris,
             &chooser_calls,
+            &closed,
         )
         .await;
         exercise_pin_save_ui(
@@ -281,6 +341,7 @@ async fn directory_portal_fd_lifecycle_and_sandbox_cli_dispatch() {
             &chooser_status,
             &chosen_uris,
             &chooser_calls,
+            &closed,
         )
         .await;
     }
@@ -472,13 +533,54 @@ impl Chooser {
             format!("/org/freedesktop/portal/desktop/request/{sender}/{token}{suffix}")
                 .try_into()
                 .unwrap();
-        connection
-            .object_server()
-            .at(path.clone(), Request(self.closed.clone()))
-            .await
-            .unwrap();
+        if matches!(status, 10 | 11) {
+            let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let attempted = Arc::new(tokio::sync::Semaphore::new(0));
+            connection
+                .object_server()
+                .at(
+                    path.clone(),
+                    StartingSaveRequest {
+                        closed: self.closed.clone(),
+                        ready: ready.clone(),
+                        attempted: attempted.clone(),
+                    },
+                )
+                .await
+                .unwrap();
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            attempted.acquire().await.unwrap().forget();
+            ready.store(true, Ordering::SeqCst);
+            if status == 11 {
+                return Err(zbus::fdo::Error::Failed(
+                    "Chooser initialization failed".into(),
+                ));
+            }
+            return Ok(path);
+        }
+        if status == 12 {
+            connection
+                .object_server()
+                .at(
+                    path.clone(),
+                    LateSaveRequest {
+                        closed: self.closed.clone(),
+                        uris: self.uris.clone(),
+                        path: path.clone(),
+                        filter: jpeg.clone(),
+                    },
+                )
+                .await
+                .unwrap();
+        } else {
+            connection
+                .object_server()
+                .at(path.clone(), Request(self.closed.clone()))
+                .await
+                .unwrap();
+        }
         self.calls.fetch_add(1, Ordering::SeqCst);
-        if status != 3 && status != 4 {
+        if !matches!(status, 3 | 4 | 12) {
             let results = HashMap::from([
                 (
                     "uris",
@@ -506,6 +608,7 @@ async fn exercise_save_protocol(
     status: &AtomicU32,
     uris: &Mutex<Vec<String>>,
     closed: &AtomicU32,
+    calls: &AtomicU32,
 ) {
     use flameshot_platform::file_chooser::save_file;
     let suggested = root.join("suggested.png");
@@ -567,6 +670,60 @@ async fn exercise_save_protocol(
         );
     }
     assert_eq!(closed.load(Ordering::SeqCst), before + 2);
+    use flameshot_platform::file_chooser::save_file_cancellable;
+    *uris.lock().unwrap() = vec![format!(
+        "file://{}",
+        root.join("late-selection.png").display()
+    )];
+    let before_calls = calls.load(Ordering::SeqCst);
+    assert!(
+        save_file_cancellable(
+            connection,
+            "",
+            "Save",
+            &suggested,
+            &["png", "jpg"],
+            timeout,
+            async {}
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        before_calls,
+        "Already-cancelled chooser was dispatched"
+    );
+    for mode in [3, 10, 11, 12] {
+        status.store(mode, Ordering::SeqCst);
+        let before_calls = calls.load(Ordering::SeqCst);
+        let before_close = closed.load(Ordering::SeqCst);
+        let cancel = async {
+            while calls.load(Ordering::SeqCst) == before_calls {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        };
+        assert!(
+            save_file_cancellable(
+                connection,
+                "",
+                "Save",
+                &suggested,
+                &["png", "jpg"],
+                timeout,
+                cancel
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+        assert_eq!(
+            closed.load(Ordering::SeqCst),
+            before_close + 1,
+            "Chooser cleanup failed for mode {mode}"
+        );
+    }
 }
 async fn exercise_save_ui(
     root: &std::path::Path,
@@ -574,6 +731,7 @@ async fn exercise_save_ui(
     status: &AtomicU32,
     uris: &Mutex<Vec<String>>,
     calls: &AtomicU32,
+    closed: &AtomicU32,
 ) {
     let xdotool = std::path::Path::new(tools).join("usr/bin/xdotool");
     let tool = |args: &[&str]| {
@@ -582,12 +740,22 @@ async fn exercise_save_ui(
             .output()
             .unwrap()
     };
-    let mut cases = vec![0, 1, 2, 6];
+    let mut cases = vec![0, 1, 2, 6, 12];
     if std::env::var_os("FLAMESHOT_TEST_DOCUMENT_PORTAL").is_some() {
         cases.extend([7, 8]);
     }
     for code in cases {
-        status.store(if code >= 6 { 0 } else { code }, Ordering::SeqCst);
+        let before_close = closed.load(Ordering::SeqCst);
+        status.store(
+            if code == 12 {
+                12
+            } else if code >= 6 {
+                0
+            } else {
+                code
+            },
+            Ordering::SeqCst,
+        );
         let destination = root.join(format!("save-{code}")); // No suffix: honor returned JPG filter without renaming.
         if code != 8 {
             std::fs::write(&destination, b"old file").unwrap();
@@ -597,7 +765,7 @@ async fn exercise_save_ui(
         } else {
             destination.clone()
         };
-        let chosen = if code >= 7 {
+        let chosen = if matches!(code, 7 | 8) {
             use std::os::unix::ffi::OsStringExt;
             let connection = Connection::session().await.unwrap();
             let documents = zbus::Proxy::new(
@@ -695,7 +863,7 @@ async fn exercise_save_ui(
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         tokio::time::sleep(Duration::from_millis(400)).await;
-        if matches!(code, 1 | 2 | 6) {
+        if matches!(code, 1 | 2 | 6 | 12) {
             assert!(
                 child.0.try_wait().unwrap().is_none(),
                 "Save cancellation/error discarded editor"
@@ -706,9 +874,19 @@ async fn exercise_save_ui(
                 *uris.lock().unwrap() = vec![format!("file://{}", destination.display())];
                 assert!(tool(&["key", "Return"]).status.success());
             } else {
-                if code == 2 {
+                if matches!(code, 2 | 12) {
                     assert!(tool(&["key", "Escape"]).status.success());
                     tokio::time::sleep(Duration::from_millis(200)).await;
+                    if code == 12 {
+                        tokio::time::timeout(Duration::from_secs(3), async {
+                            while closed.load(Ordering::SeqCst) == before_close {
+                                tokio::time::sleep(Duration::from_millis(20)).await;
+                            }
+                        })
+                        .await
+                        .unwrap();
+                        assert_eq!(closed.load(Ordering::SeqCst), before_close + 1);
+                    }
                 }
                 assert!(tool(&["key", "Return"]).status.success());
             }
@@ -752,6 +930,7 @@ async fn exercise_pin_save_ui(
     status: &AtomicU32,
     uris: &Mutex<Vec<String>>,
     calls: &AtomicU32,
+    closed: &AtomicU32,
 ) {
     use std::io::Write;
     let xdotool = std::path::Path::new(tools).join("usr/bin/xdotool");
@@ -777,7 +956,8 @@ async fn exercise_pin_save_ui(
                 .to_owned()
         })
     };
-    for code in [0, 1, 2, 6] {
+    for code in [0, 1, 2, 6, 12] {
+        let before_close = closed.load(Ordering::SeqCst);
         status.store(if code == 6 { 0 } else { code }, Ordering::SeqCst);
         let destination = root.join(format!("pin-save-{code}"));
         std::fs::write(&destination, b"old pin file").unwrap();
@@ -841,13 +1021,48 @@ async fn exercise_pin_save_ui(
         .await
         .unwrap();
         tokio::time::sleep(Duration::from_millis(300)).await;
-        if code == 2 || code == 6 {
+        if matches!(code, 2 | 6 | 12) {
             assert_eq!(std::fs::read(&destination).unwrap(), b"old pin file");
             let dialog = find("^Save Screenshot$").expect("Pin error/retry dialog missing");
             tool(&["windowfocus", "--sync", &dialog]);
             if code == 6 {
                 *uris.lock().unwrap() = vec![format!("file://{}", destination.display())];
                 tool(&["key", "Return"]);
+            } else if code == 12 {
+                use x11rb::{
+                    connection::Connection as _,
+                    protocol::xproto::{ClientMessageEvent, ConnectionExt as _, EventMask},
+                };
+                let (connection, _) = x11rb::connect(None).unwrap();
+                let protocols = connection
+                    .intern_atom(false, b"WM_PROTOCOLS")
+                    .unwrap()
+                    .reply()
+                    .unwrap()
+                    .atom;
+                let delete = connection
+                    .intern_atom(false, b"WM_DELETE_WINDOW")
+                    .unwrap()
+                    .reply()
+                    .unwrap()
+                    .atom;
+                let window = dialog.parse::<u32>().unwrap();
+                connection
+                    .send_event(
+                        false,
+                        window,
+                        EventMask::NO_EVENT,
+                        ClientMessageEvent::new(
+                            32,
+                            window,
+                            protocols,
+                            [delete, x11rb::CURRENT_TIME, 0, 0, 0],
+                        ),
+                    )
+                    .unwrap()
+                    .check()
+                    .unwrap();
+                connection.flush().unwrap();
             } else {
                 tool(&["key", "Escape"]);
             }
@@ -863,6 +1078,17 @@ async fn exercise_pin_save_ui(
             child.0.try_wait().unwrap().is_none(),
             "Save result closed the pin"
         );
+        if code == 12 {
+            tokio::time::timeout(Duration::from_secs(3), async {
+                while closed.load(Ordering::SeqCst) == before_close {
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(closed.load(Ordering::SeqCst), before_close + 1);
+        }
+
         if code == 0 || code == 6 {
             let data = std::fs::read(&destination).unwrap();
             assert_eq!(

@@ -5,7 +5,7 @@ use std::{
     collections::HashMap,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::Duration,
 };
 use zbus::{
@@ -32,6 +32,33 @@ pub async fn save_file(
     extensions: &[&str],
     timeout: Duration,
 ) -> Result<Option<SaveSelection>> {
+    save_file_cancellable(
+        connection,
+        parent,
+        title,
+        suggested,
+        extensions,
+        timeout,
+        std::future::pending(),
+    )
+    .await
+}
+
+/// Cancel without accepting a late selection. If SaveFile is still replying,
+/// Close is attempted immediately and the eventual handle is cleaned up too.
+/// The original timeout bounds cleanup. Signal cancellation rather than dropping
+/// this future; UI callers can leave it running in a worker after dismissing UI.
+pub async fn save_file_cancellable(
+    connection: &Connection,
+    parent: &str,
+    title: &str,
+    suggested: &Path,
+    extensions: &[&str],
+    timeout: Duration,
+    cancel: impl std::future::Future<Output = ()>,
+) -> Result<Option<SaveSelection>> {
+    tokio::pin!(cancel);
+    let mut cancelled = false;
     ensure!(!extensions.is_empty(), "No supported save formats");
     let suggested = std::path::absolute(suggested)?;
     let name = suggested
@@ -99,15 +126,42 @@ pub async fn save_file(
             ),
             ("modal", Value::from(true)),
         ]);
-        let returned: OwnedObjectPath = portal.call("SaveFile", &(parent, title, options)).await?;
+        let started = AtomicBool::new(false);
+        let call = async {
+            started.store(true, Ordering::Relaxed);
+            portal
+                .call::<_, _, OwnedObjectPath>("SaveFile", &(parent, title, options))
+                .await
+        };
+        tokio::pin!(call);
+        let returned = tokio::select! {
+            biased;
+            _ = &mut cancel => {
+                cancelled = true;
+                if !started.load(Ordering::Relaxed) { return Ok(None); }
+                let closed = close(connection, &path).await;
+                match call.await {
+                    Ok(returned) if !closed || returned.as_str() != path => { close(connection, returned.as_str()).await; }
+                    Err(_) if !closed => { close(connection, &path).await; }
+                    _ => {}
+                }
+                return Ok(None);
+            }
+            returned = &mut call => returned?,
+        };
         if returned.as_str() != path {
             close(connection, returned.as_str()).await;
             bail!("FileChooser ignored request handle token");
         }
-        let message = responses
-            .next()
-            .await
-            .context("FileChooser response stream ended")?;
+        let message = tokio::select! {
+            biased;
+            _ = &mut cancel => {
+                cancelled = true;
+                close(connection, &path).await;
+                return Ok(None);
+            }
+            message = responses.next() => message.context("FileChooser response stream ended")?,
+        };
         let (status, mut results): (u32, HashMap<String, OwnedValue>) =
             message.body().deserialize()?;
         match status {
@@ -150,16 +204,23 @@ pub async fn save_file(
         Ok(result) => result,
         Err(_) => {
             close(connection, &path).await;
-            bail!("FileChooser timed out")
+            if cancelled {
+                Ok(None)
+            } else {
+                bail!("FileChooser timed out")
+            }
         }
     }
 }
-async fn close(connection: &Connection, path: &str) {
-    let _ = tokio::time::timeout(Duration::from_secs(1), async {
-        Proxy::new(connection, SERVICE, path, REQUEST)
-            .await?
-            .call::<_, _, ()>("Close", &())
-            .await
-    })
-    .await;
+async fn close(connection: &Connection, path: &str) -> bool {
+    matches!(
+        tokio::time::timeout(Duration::from_secs(1), async {
+            Proxy::new(connection, SERVICE, path, REQUEST)
+                .await?
+                .call::<_, _, ()>("Close", &())
+                .await
+        })
+        .await,
+        Ok(Ok(()))
+    )
 }

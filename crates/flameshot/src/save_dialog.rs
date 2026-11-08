@@ -32,6 +32,8 @@ pub(crate) struct SaveDialog {
     portal: bool,
     portal_start: bool,
     portal_task: Option<std::sync::mpsc::Receiver<PortalSaveResult>>,
+    portal_cancel: Option<tokio::sync::oneshot::Sender<()>>,
+    cancelled: bool,
     focus: bool,
     listed_folder: Option<std::path::PathBuf>,
     pending_folder: Option<std::path::PathBuf>,
@@ -113,6 +115,8 @@ impl SaveDialog {
             portal: crate::app_ui::restricted_bus_names(),
             portal_start: crate::app_ui::restricted_bus_names(),
             portal_task: None,
+            portal_cancel: None,
+            cancelled: false,
             focus: true,
             listed_folder: None,
             pending_folder: None,
@@ -127,8 +131,12 @@ impl SaveDialog {
             dismissed_replace_frame: None,
         }
     }
-    pub fn pending(&self) -> bool {
-        self.portal_task.is_some()
+    pub fn cancel(&mut self) {
+        self.cancelled = true;
+        if let Some(cancel) = self.portal_cancel.take() {
+            let _ = cancel.send(());
+        }
+        self.portal_task = None;
     }
     pub fn show(
         &mut self,
@@ -136,6 +144,9 @@ impl SaveDialog {
         mut write_file: impl FnMut(&Path, Option<&str>) -> Result<PathBuf>,
     ) -> SaveOutcome {
         let ctx = ui.ctx().clone();
+        if self.cancelled {
+            return SaveOutcome::Cancelled;
+        }
         if self.dismissed_replace_frame == Some(ctx.cumulative_frame_nr()) {
             return SaveOutcome::Pending;
         }
@@ -182,25 +193,9 @@ impl SaveDialog {
             return SaveOutcome::Pending;
         }
         if self.portal {
-            if let Some(task) = &self.portal_task
-                && let Some(result) = crate::jobs::poll(task, "File chooser worker stopped")
-            {
-                self.portal_task = None;
-                match result {
-                    Ok(None) => return SaveOutcome::Cancelled,
-                    Ok(Some(selection)) => {
-                        self.path = selection.path.to_string_lossy().into_owned();
-                        match write_file(&selection.path, Some(&selection.extension)) {
-                            Ok(saved) => return SaveOutcome::Saved(saved),
-                            Err(error) => self.error = error.to_string(),
-                        }
-                    }
-                    Err(error) => self.error = error,
-                }
-            }
             let mut retry = self.portal_start;
             self.portal_start = false;
-            let mut cancel = false;
+            let mut cancel = ctx.input(|input| input.key_pressed(egui::Key::Escape));
             egui::Window::new(tr("SaveTool", "Save"))
                 .collapsible(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
@@ -214,16 +209,35 @@ impl SaveDialog {
                         }
                         retry |= ui.button(tr("SaveTool", "Save")).clicked()
                             || ctx.input(|i| i.key_pressed(egui::Key::Enter));
-                        cancel = ui.button(tr("ColorGrabWidget", "Cancel")).clicked()
-                            || ctx.input(|i| i.key_pressed(egui::Key::Escape));
                     }
+                    cancel |= ui.button(tr("ColorGrabWidget", "Cancel")).clicked();
                 });
             if cancel {
+                self.cancel();
                 return SaveOutcome::Cancelled;
+            }
+            if let Some(task) = &self.portal_task
+                && let Some(result) = crate::jobs::poll(task, "File chooser worker stopped")
+            {
+                self.portal_task = None;
+                self.portal_cancel = None;
+                match result {
+                    Ok(None) => return SaveOutcome::Cancelled,
+                    Ok(Some(selection)) => {
+                        self.path = selection.path.to_string_lossy().into_owned();
+                        match write_file(&selection.path, Some(&selection.extension)) {
+                            Ok(saved) => return SaveOutcome::Saved(saved),
+                            Err(error) => self.error = error.to_string(),
+                        }
+                    }
+                    Err(error) => self.error = error,
+                }
             }
             if retry && self.portal_task.is_none() {
                 let (sender, receiver) = std::sync::mpsc::channel();
                 self.portal_task = Some(receiver);
+                let (cancel, cancelled) = tokio::sync::oneshot::channel();
+                self.portal_cancel = Some(cancel);
                 self.error.clear();
                 let path = std::path::PathBuf::from(&self.path);
                 ctx.request_repaint();
@@ -231,13 +245,16 @@ impl SaveDialog {
                 tokio::spawn(async move {
                     let result = async {
                         let connection = crate::daemon::session_connection().await?;
-                        flameshot_platform::file_chooser::save_file(
+                        flameshot_platform::file_chooser::save_file_cancellable(
                             &connection,
                             "",
                             tr("SaveTool", "Save"),
                             &path,
                             crate::output::EXTENSIONS,
                             std::time::Duration::from_secs(120),
+                            async move {
+                                let _ = cancelled.await;
+                            },
                         )
                         .await
                     }
@@ -373,6 +390,85 @@ impl SaveDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cancelling_a_queued_portal_result_never_calls_the_writer() {
+        let ctx = egui::Context::default();
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("selected.png");
+        let mut dialog = SaveDialog::new(path.clone(), String::new());
+        dialog.portal = true;
+        dialog.portal_start = false;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        sender
+            .send(Ok(Some(flameshot_platform::file_chooser::SaveSelection {
+                path,
+                extension: "png".into(),
+            })))
+            .unwrap();
+        dialog.portal_task = Some(receiver);
+        let (cancel, mut cancelled) = tokio::sync::oneshot::channel();
+        dialog.portal_cancel = Some(cancel);
+        let mut closed = false;
+        crate::ui_test::ui_frame(
+            &ctx,
+            vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            &mut |ui| {
+                let outcome = dialog.show(ui, |_, _| {
+                    panic!("Cancelled portal result reached the writer")
+                });
+                closed |= matches!(outcome, SaveOutcome::Cancelled);
+            },
+        );
+        assert!(closed);
+        assert_eq!(cancelled.try_recv(), Ok(()));
+        assert!(dialog.portal_task.is_none());
+    }
+    #[test]
+    fn cancel_click_beats_a_result_arriving_on_the_release_frame() {
+        let ctx = egui::Context::default();
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("selected.png");
+        let mut dialog = SaveDialog::new(path.clone(), String::new());
+        dialog.portal = true;
+        dialog.portal_start = false;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        dialog.portal_task = Some(receiver);
+        let mut late_result = Some(flameshot_platform::file_chooser::SaveSelection {
+            path,
+            extension: "png".into(),
+        });
+        let mut cancelled = false;
+        crate::ui_test::click_label(&ctx, tr("ColorGrabWidget", "Cancel"), |ui| {
+            if ui.input(|input| input.pointer.primary_released())
+                && let Some(result) = late_result.take()
+            {
+                sender.send(Ok(Some(result))).unwrap();
+            }
+            let outcome = dialog.show(ui, |_, _| {
+                panic!("Cancel click lost to a queued save result")
+            });
+            cancelled |= matches!(outcome, SaveOutcome::Cancelled);
+        });
+        assert!(late_result.is_none());
+        assert!(cancelled);
+    }
+    #[test]
+    fn dropping_a_dialog_signals_cancellation_to_its_worker() {
+        let mut dialog = SaveDialog::new(PathBuf::from("unused.png"), String::new());
+        let (cancel, mut cancelled) = tokio::sync::oneshot::channel();
+        dialog.portal_cancel = Some(cancel);
+        drop(dialog);
+        assert!(matches!(
+            cancelled.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed)
+        ));
+    }
     #[test]
     fn format_popup_keys_do_not_save_and_suffixless_renames_keep_selected_format() {
         use crate::ui_test::{click_label, ui_frame};

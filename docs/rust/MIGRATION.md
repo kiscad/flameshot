@@ -3311,3 +3311,35 @@ startup and capture-notification tests, plus focused notification tests under bo
 minimal and all-feature builds. The blocked-handler cases use synthetic local services
 and images; no desktop notification or external update request is sent to the user's
 session. Hosted CI and the remaining migration acceptance gates are still pending.
+
+### Cancel pending save portals without publishing late results
+
+The shared save dialog now offers Cancel/Escape while the portal request is pending,
+and closing a pin's save viewport cancels that request instead of waiting for selection.
+Cancellation is signalled to the worker; dropping the dialog also signals cancellation.
+The UI handles cancellation before consuming a queued result, so a late successful
+selection cannot reach the file writer after the user cancels.
+
+The platform chooser retains its original API and adds a cancellable variant. It avoids
+dispatching an already-cancelled operation, sends Request.Close when cancelling an active
+request, and cleans up the eventual handle if the SaveFile method was still starting.
+When an initial Close cannot find a ready request, the method reply is drained and the
+returned handle is closed. The original timeout bounds that background cleanup; the UI
+can return to the image immediately rather than waiting for it.
+
+Protocol fixtures cover cancellation before dispatch, pending selection, a request whose
+first Close fails while it is starting, and a successful Response emitted during Close.
+Widget tests prove cancellation wins over an already queued selection and dialog drop
+signals its worker. Native private-Xvfb tests cancel the screenshot save dialog with Esc
+and the pin save viewport with WM_DELETE_WINDOW, verify Request.Close, retain the parent
+image/editor, and confirm the original destination file stays unchanged despite a late
+acceptance response.
+
+The starting-request fixtures cover both a late successful method reply and a late
+initialization error. Mouse cancellation also has a widget test that queues a successful
+selection on the button-release frame. Validation passed: the complete Rust gate with
+Fish/Zsh checks, private portal/native UI tests including real document-portal saves,
+and the normal pin-save regression (retry, overwrite, formats and directory preferences).
+All GUI checks used private displays, D-Bus sessions and XDG directories. These tests
+establish the specified request/cancellation behavior; hosted CI, installed sandbox
+validation and the other migration acceptance gates remain pending.
