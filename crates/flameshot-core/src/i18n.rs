@@ -145,6 +145,18 @@ mod tests {
     fn chinese_editor_and_pin_labels_are_translated_and_keep_shortcut_hints() {
         for locale in ["zh_CN", "zh_TW", "zh_HK"] {
             let tr = Translator::new(locale);
+            for (context, source) in [
+                ("ShortcutsWidget", "Close Active Pinned Window"),
+                ("QObject", "Capture saved as "),
+                ("QObject", "Save Error"),
+                ("QObject", "Error while saving to clipboard"),
+            ] {
+                assert_ne!(
+                    tr.translate(context, source),
+                    source,
+                    "{locale}: {context}/{source}"
+                );
+            }
             for source in [
                 "Save Screenshot",
                 "Move object",

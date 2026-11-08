@@ -2759,6 +2759,10 @@ Sinun on ehkä vältettävä &quot;#&quot; merkkiä kuten &quot;\#FFF&quot;</tra
         <source>Screenshot history</source>
         <translation>Kaappausten historia</translation>
     </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SidePanelWidget</name>

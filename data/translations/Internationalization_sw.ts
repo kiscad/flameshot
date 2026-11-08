@@ -2676,6 +2676,10 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
         <source>You may start Flameshot as administrator ONCE and try again!</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SidePanelWidget</name>

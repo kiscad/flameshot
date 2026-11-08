@@ -2775,6 +2775,10 @@ Bạn có thể cần phải thoát khỏi dấu &apos;#&apos; như trong &apos;
         <source>Screenshot history</source>
         <translation>Lịch sử chụp màn hình</translation>
     </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SidePanelWidget</name>

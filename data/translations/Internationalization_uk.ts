@@ -2972,6 +2972,10 @@ You can find me in the system tray.</source>
         <source>Screenshot history</source>
         <translation>Історія знімків</translation>
     </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SidePanelWidget</name>

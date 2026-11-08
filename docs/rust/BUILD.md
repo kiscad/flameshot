@@ -364,3 +364,11 @@ cargo build --locked -p flameshot --no-default-features
 python3 tests/rust/config_fallback_smoke.py / target/debug/flameshot
 cargo build --locked -p flameshot --all-features
 ```
+
+## Translation lookup validation
+
+`python3 tests/rust/translation_lookups.py` checks ordinary quoted translation calls
+and local `tr` wrappers against active TS source/context pairs. It runs as part of
+`check-rust.sh`. It catches wrong contexts and absent source entries; it does not
+infer dynamic labels/raw strings or require unfinished human translations to be
+complete. Existing source-text fallback remains supported.

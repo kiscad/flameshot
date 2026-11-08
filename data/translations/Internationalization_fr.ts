@@ -2795,6 +2795,10 @@ Vous devrez probablement remplacer le signe &apos;#&apos; par &apos;\#FFF&apos;<
         <source>Screenshot history</source>
         <translation>Historique des captures d&apos;écran</translation>
     </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SidePanelWidget</name>

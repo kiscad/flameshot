@@ -2856,6 +2856,10 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
         <source>Screenshot history</source>
         <translation>屏幕截图历史</translation>
     </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation>关闭当前置顶窗口</translation>
+    </message>
 </context>
 <context>
     <name>SidePanelWidget</name>

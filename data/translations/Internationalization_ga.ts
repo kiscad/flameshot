@@ -2784,6 +2784,10 @@ B&apos;fhéidir go mbeidh ort éalú ón gcomhartha &apos;#&apos; mar atá i &ap
         <source>Screenshot history</source>
         <translation>Stair an scáileáin</translation>
     </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SidePanelWidget</name>

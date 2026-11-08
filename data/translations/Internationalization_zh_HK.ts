@@ -2001,7 +2001,7 @@ Click to select</source>
     <message>
         <location filename="../../src/utils/screenshotsaver.cpp" line="190"/>
         <source>Error while saving to clipboard</source>
-        <translation>Error while saving to clipboard</translation>
+        <translation>複製到剪貼簿時發生錯誤</translation>
     </message>
     <message>
         <location filename="../../src/utils/screenshotsaver.cpp" line="69"/>
@@ -2793,6 +2793,10 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
         <location filename="../../src/config/shortcutswidget.cpp" line="215"/>
         <source>Screenshot history</source>
         <translation type="unfinished">Screenshot history</translation>
+    </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation>關閉目前置頂視窗</translation>
     </message>
 </context>
 <context>

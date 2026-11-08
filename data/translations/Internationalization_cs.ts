@@ -2834,6 +2834,10 @@ Možná budete muset napsat před &apos;#&apos; opačné (obrácené) lomítko, 
         <source>Screenshot history</source>
         <translation type="unfinished">Historie snímků obrazovky</translation>
     </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SidePanelWidget</name>

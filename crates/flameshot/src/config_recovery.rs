@@ -132,7 +132,7 @@ impl Recovery {
                 }
             }
             if (ui
-                .button(tr("Reload saved settings"))
+                .button(tr("Discard edits and reload"))
                 .on_hover_text("F5")
                 .clicked()
                 || reload_key)
@@ -299,7 +299,7 @@ mod tests {
         recovery.draft = invalid.replace("bad", "7");
         click("Save", &mut recovery);
         assert!(recovery.status.contains("changed outside"));
-        click("Reload saved settings", &mut recovery);
+        click("Discard edits and reload", &mut recovery);
         assert_eq!(recovery.draft, external);
         assert!(!completed.get());
         recovery.draft = external.replace("bad", "7");

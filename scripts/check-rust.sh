@@ -9,6 +9,7 @@ check_completions() {
     fi
 }
 cargo fmt --all -- --check
+python3 tests/rust/translation_lookups.py
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
 FLAMESHOT_TEST_PRIVATE_BUS=1 dbus-run-session -- cargo test --locked -p flameshot-platform --test portal -- --ignored

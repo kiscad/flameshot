@@ -2680,6 +2680,10 @@ You சி-வைகாசி need பெறுநர் escape the &apos;#&apos
         <source>You may start Flameshot as administrator ONCE and try again!</source>
         <translation>நீங்கள் ஃப்ளேம்சாட்டை ஒருமுறை நிர்வாகியாகத் தொடங்கி, மீண்டும் முயற்சிக்கவும்!</translation>
     </message>
+    <message>
+        <source>Close Active Pinned Window</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SidePanelWidget</name>

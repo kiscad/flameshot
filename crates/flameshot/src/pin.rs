@@ -225,11 +225,7 @@ impl Pinned {
         let ctx = ctx.clone();
         tokio::spawn(async move {
             if notify && let Ok(connection) = crate::daemon::session_connection().await {
-                let body = format!(
-                    "{}{}",
-                    tr("ScreenshotSaver", "Capture saved as "),
-                    path.display()
-                );
+                let body = format!("{}{}", tr("QObject", "Capture saved as "), path.display());
                 let _ =
                     flameshot_platform::desktop::notify_no_reply(&connection, "Flameshot", &body)
                         .await;
@@ -421,30 +417,28 @@ impl eframe::App for Pinned {
         if let Some(error) = self.copy_error.clone() {
             let mut retry = false;
             let mut dismiss = ctx.input(|input| input.key_pressed(egui::Key::Escape));
-            egui::Window::new(tr(
-                "ScreenshotSaver",
-                if self.save_error {
-                    "Save Error"
-                } else {
-                    "Error while saving to clipboard"
-                },
-            ))
-            .collapsible(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .show(&ctx, |ui| {
-                ui.label(error);
-                retry = ui
-                    .button(tr(
-                        "PinWidget",
-                        if self.save_error {
-                            "Save to file"
-                        } else {
-                            "Copy to clipboard"
-                        },
-                    ))
-                    .clicked();
-                dismiss |= ui.button(tr("PinWidget", "Close")).clicked();
-            });
+            let title = if self.save_error {
+                tr("QObject", "Save Error")
+            } else {
+                tr("QObject", "Error while saving to clipboard")
+            };
+            egui::Window::new(title)
+                .collapsible(false)
+                .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+                .show(&ctx, |ui| {
+                    ui.label(error);
+                    retry = ui
+                        .button(tr(
+                            "PinWidget",
+                            if self.save_error {
+                                "Save to file"
+                            } else {
+                                "Copy to clipboard"
+                            },
+                        ))
+                        .clicked();
+                    dismiss |= ui.button(tr("PinWidget", "Close")).clicked();
+                });
             if retry || dismiss {
                 self.dismissed_dialog_frame = Some(ctx.cumulative_frame_nr());
             }

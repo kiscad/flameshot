@@ -3655,3 +3655,26 @@ The complete local Rust gate passes, including live Bash/Fish/Zsh completion.
 This corrects locale initialization and restart-state handling. The remaining resource
 audit includes formatted diagnostic/notification/help lookups; no claim of complete
 UI translation coverage or refreshed release packages is made here.
+
+### Translation contexts and missing pin labels
+
+The lookup audit found that pin save notifications used ScreenshotSaver for a source
+message actually cataloged under QObject. Both pin error-window titles had the same
+wrong context inside a dynamic branch. They now use the existing QObject translations,
+with explicit calls for each title so the checker can cover them. The Hong Kong
+clipboard-error entry, previously identical to English, is now translated.
+
+Close Active Pinned Window was absent from every catalog despite its existing lookup.
+All 49 catalogs now contain its source entry, with simplified/traditional Chinese
+translations and unfinished/source fallback elsewhere. Configuration recovery reuses
+the already translated Discard edits and reload label instead of an uncataloged label.
+
+The new translation_lookups.py check validates 263 ordinary quoted calls/local wrappers
+against active catalog keys and is included in the Rust gate. It initially detected
+three missing pairs; manual dynamic-branch review found the two additional pin titles.
+Chinese catalog regressions cover the affected pin labels, notification prefix and
+error titles. The complete local gate passed; focused catalog/pin tests and Clippy
+covered the final title corrections, and the rebuilt simplified/traditional Chinese
+native suite passes. Native configuration recovery and pin/editor save checks also
+pass. Dynamic diagnostic/help/notification lookups remain in the resource audit;
+this checker is not a claim that every generated UI string is covered.
