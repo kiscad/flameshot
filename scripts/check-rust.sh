@@ -14,6 +14,7 @@ cargo fmt --all -- --check
 python3 tests/rust/translation_lookups.py
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo test --locked --workspace
+FLAMESHOT_TEST_PRIVATE_BUS=1 cargo test --locked -p flameshot --test daemon_exit -- --ignored
 FLAMESHOT_TEST_PRIVATE_BUS=1 dbus-run-session -- cargo test --locked -p flameshot-platform --test portal -- --ignored
 FLAMESHOT_TEST_PRIVATE_BUS=1 dbus-run-session -- cargo test --locked -p flameshot --test portal_open -- --ignored
 FLAMESHOT_TEST_PRIVATE_BUS=1 dbus-run-session -- cargo test --locked -p flameshot --test full -- --ignored
@@ -25,6 +26,7 @@ cargo test --locked --workspace --all-features
 FLAMESHOT_TEST_PRIVATE_BUS=1 cargo test --locked -p flameshot --test daemon_exit --all-features -- --ignored
 check_completions
 cargo test --locked --workspace --no-default-features
+FLAMESHOT_TEST_PRIVATE_BUS=1 cargo test --locked -p flameshot --test daemon_exit --no-default-features -- --ignored
 FLAMESHOT_TEST_PRIVATE_BUS=1 dbus-run-session -- cargo test --locked -p flameshot --test daemon --no-default-features -- --ignored
 
 check_completions

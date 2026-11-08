@@ -23,7 +23,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text formatting, rendered picking, live movement, selected properties, numeric size entry and drawing grid implemented/tested; remaining parity audit pending |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
-| Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
+| Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and tray actions tested; duplicate ownership and exit-status matrix covers native/Flatpak/Snap markers; see DAEMON-COMPATIBILITY.md; installed confinement remains a packaging gate |
 | CLI | Existing commands/options, stdout PNG, exit codes | Baseline option scopes, parse/value rules, stream/status behavior, feature gating and live Bash/Fish/Zsh completions tested; see CLI-COMPATIBILITY.md |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Qt reference metadata/wire fixtures, all four public methods, reply/no-reply dispatch, malformed payloads and singleton ownership tested; see DBUS-COMPATIBILITY.md |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | INI/QVariant round trips, unknown-data preservation, runtime fallback, repair UI, atomic writes, idle reload, conflict handling and save-directory semantics tested |
@@ -3835,3 +3835,19 @@ is no public Imgur request, link opening or clipboard operation.
 All three native network fixtures and the complete local Rust gate pass. This completes the native network-window
 acceptance item alongside existing widget coverage for local-cleanup failure/retry;
 it does not claim live external service availability or close platform/package gates.
+
+### Independent daemon lifecycle audit
+
+The private-bus exit test now runs SIGINT, SIGTERM and bus loss in ordinary,
+Flatpak-marker and Snap-marker modes. Every case starts a duplicate daemon and
+checks successful duplicate exit, continued original-process lifetime and unchanged
+unique service owner. Signal exits must release the name. Tests remove inherited
+display/sandbox markers and disable tray, notifications and network update checks.
+The complete matrix now runs in default, all-feature and minimal Rust gates.
+
+The complete local gate and native X11 suite pass. X11 evidence includes independent
+clipboard-service survival after capture exit, large/in-flight clipboard ownership,
+pin retention/idle exit, owned pin shutdown and launcher/capture descendant cleanup
+after abrupt owner death. DAEMON-COMPATIBILITY.md maps these cases to implementation
+and baseline behavior. This closes the independent process-lifecycle audit; actual
+installed sandbox confinement remains in the packaging acceptance gate.
