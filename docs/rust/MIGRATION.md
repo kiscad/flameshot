@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Branding assets and 49 catalogs preserved; finite lookups, locale/source fallback, placeholders and Chinese native windows validated; see RESOURCE-VALIDATION.md |
 | Desktop | Notifications, autostart, launcher, configuration windows | Native tray/launcher/configuration UI, notification wire behavior, autostart/resources and portal/document integration audited; installed sandbox confinement remains in Packaging |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update, upload and history confirmation/cancellation/failure/retry/deletion pass against loopback; external service availability is not an acceptance dependency |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI, installed X11 and wlroots Wayland suites verified; Fedora and Nix evaluation/install evidence recorded; complete Nix binary build is pending an uncached nixpkgs bootstrap source; other distro installs and sandbox/provider builds pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI, installed X11 and wlroots Wayland suites verified; Fedora and Nix evaluation/install evidence recorded; complete Nix binary build is pending an uncached nixpkgs bootstrap source; Flatpak/Snap manifests parse and packaging metadata is audited (see SANDBOX-MANIFEST-VALIDATION.md); full sandbox/provider builds and other distro installs pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME integer/fractional mixed scale and normalized left-of-primary layout pass (see GNOME-VALIDATION.md); GNOME IBus Pinyin also passes at normal/fractional scale; named desktop matrix audited in DESKTOP-ACCEPTANCE.md with explicit version/hardware boundaries |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -3979,3 +3979,13 @@ AppStream, staging, version/help and no-Qt linkage checks pass. A fresh vendored
 source archive is recorded. RELEASE-VALIDATION.md and the manifest supersede the
 older optimized snapshot for release evidence. Hosted CI, installed sandbox
 confinement and complete Nix binary realization remain separate gates.
+
+### Flatpak and Snap manifest audit
+
+The current source archive parses successfully with Flatpak Builder's manifest
+printer. Runtime/SDK, local vendored source, cleanup-only compiler module and all
+finish permissions are asserted. Snap YAML structure passes a separate parser,
+including strict confinement, architectures, command, GPU extension, D-Bus slot and
+plugs. These are stronger current-source manifest checks, but local namespace/provider
+limitations still prevent claiming SDK compilation or installed strict confinement.
+Hosted sandbox workflows remain required.
