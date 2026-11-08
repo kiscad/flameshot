@@ -3969,3 +3969,13 @@ timed out. This is recorded as an external cache/mirror limitation, not a source
 failure; the disposable container was removed. NIX-VALIDATION.md records commands,
 revision, logs and hosted-workflow boundaries. A complete binary build still awaits
 normal Nix cache/source availability.
+
+### Current optimized release artifact refresh
+
+After the cross-desktop audit, the all-feature optimized executable and staged
+payload were rebuilt at revision `91fb057a`. The executable/staged SHA-256 is
+`31c7d4dddd7576ee6ef6f49299396355bc1875a30bcec2cb0efd38861ecf24c3`; desktop-file,
+AppStream, staging, version/help and no-Qt linkage checks pass. A fresh vendored
+source archive is recorded. RELEASE-VALIDATION.md and the manifest supersede the
+older optimized snapshot for release evidence. Hosted CI, installed sandbox
+confinement and complete Nix binary realization remain separate gates.

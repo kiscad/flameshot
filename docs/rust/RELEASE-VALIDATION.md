@@ -35,3 +35,19 @@ The complete isolated Xvfb suite also passed using this staged executable, inclu
 clipboard/pin lifetime, owned launcher descendants, configuration concurrency,
 selection/editing tools, save retry/cancellation and multi-monitor cases. The binary
 hash was verified unchanged after all desktop and completion checks.
+
+## Current optimized artifact refresh
+
+The post-audit all-feature optimized build at revision `91fb057a`
+reports `flameshot 15.0.0`. Its executable and staged copy both have SHA-256
+`31c7d4dddd7576ee6ef6f49299396355bc1875a30bcec2cb0efd38861ecf24c3`.
+`desktop-file-validate`, offline `appstreamcli validate`, the staging fixture and
+version/help checks pass. ELF linkage and strings contain no Qt 5/6 library names.
+The vendored source archive has SHA-256
+`bdd735cffcb2a87ec134c01ed38c22830a7a8041458e9bf8cb774c942105e52a`.
+Evidence is in `target/current-release-manifest.json`,
+`target/current-release-stage/` and `target/current-rust-source.tar.gz`.
+
+This refresh supersedes the older optimized snapshot for source/staging evidence;
+it does not turn unrun hosted CI, installed Flatpak/Snap confinement or the pending
+Nix binary build into completed gates.
