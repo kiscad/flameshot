@@ -19,5 +19,5 @@ executables = [message['executable'] for line in build.stdout.splitlines()
                and message.get('profile',{}).get('test')
                and message.get('target',{}).get('name') == 'flameshot']
 assert len(executables) == 1, executables
-for fixture in ['updates_smoke.py','upload_smoke.py']:
+for fixture in ['updates_smoke.py','upload_smoke.py','history_smoke.py']:
     subprocess.run([sys.executable,str(Path(__file__).with_name(fixture)),root,executables[0]],check=True)

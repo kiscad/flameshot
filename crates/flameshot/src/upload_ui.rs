@@ -259,6 +259,8 @@ pub fn history() -> anyhow::Result<()> {
                 confirmation_required,
                 #[cfg(test)]
                 test_delete: None,
+                #[cfg(test)]
+                test_controls: Default::default(),
                 textures: Default::default(),
                 links: Default::default(),
                 clipboard: LinkClipboard::default(),
@@ -285,6 +287,8 @@ struct History {
     confirmation_required: bool,
     #[cfg(test)]
     test_delete: Option<Imgur>,
+    #[cfg(test)]
+    test_controls: std::collections::HashMap<&'static str, egui::Rect>,
     textures: std::collections::HashMap<std::path::PathBuf, Option<egui::TextureHandle>>,
     clipboard: LinkClipboard,
     entries: Vec<crate::upload_history::Entry>,
@@ -445,19 +449,20 @@ impl History {
                     if ui.button(tr("ImgUploaderBase", "Copy URL")).clicked() {
                         self.clipboard.copy(ui.ctx(), &entry.link);
                     }
-                    if entry.deletehash.is_some()
-                        && ui
-                            .add_enabled(
-                                self.job.is_none(),
-                                egui::Button::new(if self.remote_deleted.contains(&entry.path) {
-                                    tr("UploadHistory", "Retry local cleanup")
-                                } else {
-                                    tr("ImgUploaderBase", "Delete image")
-                                }),
-                            )
-                            .clicked()
-                    {
-                        requested_delete = Some(index);
+                    if entry.deletehash.is_some() {
+                        let delete = ui.add_enabled(
+                            self.job.is_none(),
+                            egui::Button::new(if self.remote_deleted.contains(&entry.path) {
+                                tr("UploadHistory", "Retry local cleanup")
+                            } else {
+                                tr("ImgUploaderBase", "Delete image")
+                            }),
+                        );
+                        #[cfg(test)]
+                        self.test_controls.insert("delete", delete.rect);
+                        if delete.clicked() {
+                            requested_delete = Some(index);
+                        }
                     }
                 });
             }
@@ -474,13 +479,16 @@ impl History {
             ));
             if self.job.is_none() {
                 ui.horizontal(|ui| {
-                    if ui
-                        .button(tr("UploadLineItem", "Confirm to delete"))
-                        .clicked()
-                    {
+                    let confirm = ui.button(tr("UploadLineItem", "Confirm to delete"));
+                    #[cfg(test)]
+                    self.test_controls.insert("confirm", confirm.rect);
+                    if confirm.clicked() {
                         self.start_delete(ui.ctx(), index);
                     }
-                    if ui.button(tr("ColorGrabWidget", "Cancel")).clicked() {
+                    let cancel = ui.button(tr("ColorGrabWidget", "Cancel"));
+                    #[cfg(test)]
+                    self.test_controls.insert("cancel", cancel.rect);
+                    if cancel.clicked() {
                         self.confirm = None;
                     }
                 });
@@ -652,6 +660,137 @@ mod tests {
         assert_eq!(thumbnail.dimensions(), (133, 100));
         assert!(thumbnail.pixels().all(|pixel| pixel.0 == [32, 64, 96, 255]));
     }
+    #[test]
+    #[ignore = "requires the private native history-window fixture"]
+    #[cfg(target_os = "linux")]
+    fn native_history_window_cancels_retries_and_deletes() {
+        use winit::platform::x11::EventLoopBuilderExtX11;
+        assert_eq!(
+            std::env::var("FLAMESHOT_TEST_NATIVE_HISTORY").as_deref(),
+            Ok("1")
+        );
+        assert_eq!(
+            std::env::var("FLAMESHOT_TEST_PRIVATE_BUS").as_deref(),
+            Ok("1")
+        );
+        let state =
+            std::path::PathBuf::from(std::env::var_os("FLAMESHOT_TEST_NATIVE_STATE").unwrap());
+        let root = tempfile::tempdir().unwrap();
+        let uploaded = flameshot_platform::imgur::UploadedImage {
+            id: "abc123".into(),
+            link: "https://i.imgur.com/abc123.png".into(),
+            deletehash: "secret123".into(),
+        };
+        crate::upload_history::save(root.path(), &uploaded, &image::RgbaImage::new(64, 48), 25)
+            .unwrap();
+        let entries = crate::upload_history::list(root.path()).unwrap();
+        let path = entries[0].path.clone();
+        let original = std::fs::read(&path).unwrap();
+        let unrelated = root.path().join("unrelated.txt");
+        std::fs::write(&unrelated, b"keep").unwrap();
+        let (first, failed) = mock_server(false);
+        let (second, deleted) = mock_server(true);
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _runtime = runtime.enter();
+        struct Native {
+            history: History,
+            retry: Option<Imgur>,
+            path: std::path::PathBuf,
+            original: Vec<u8>,
+            state: std::path::PathBuf,
+            phase: &'static str,
+            complete: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        }
+        impl eframe::App for Native {
+            fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+                self.history.show(ui);
+                match self.phase {
+                    "ready" if self.history.confirm.is_some() => self.phase = "confirm1",
+                    "confirm1" if self.history.confirm.is_none() => self.phase = "cancelled",
+                    "cancelled" if self.history.confirm.is_some() => self.phase = "confirm2",
+                    "confirm2"
+                        if self.history.job.is_none() && !self.history.message.is_empty() =>
+                    {
+                        assert_eq!(self.history.entries.len(), 1);
+                        assert!(self.history.remote_deleted.is_empty());
+                        assert_eq!(std::fs::read(&self.path).unwrap(), self.original);
+                        self.history.test_delete = self.retry.take();
+                        self.phase = "failed";
+                    }
+                    "failed" if self.history.entries.is_empty() => {
+                        assert!(!self.path.exists());
+                        assert!(self.history.confirm.is_none());
+                        assert!(self.history.message.is_empty());
+                        self.phase = "deleted";
+                        self.complete
+                            .store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    _ => {}
+                }
+                if matches!(self.phase, "ready" | "confirm1" | "cancelled") {
+                    assert!(self.history.test_delete.is_some());
+                    assert!(self.history.job.is_none());
+                    assert_eq!(std::fs::read(&self.path).unwrap(), self.original);
+                }
+                let mut status = format!("{}\n", self.phase);
+                for key in ["delete", "confirm", "cancel"] {
+                    let point = self
+                        .history
+                        .test_controls
+                        .get(key)
+                        .map(|rect| rect.center() * ui.ctx().pixels_per_point())
+                        .unwrap_or_default();
+                    status.push_str(&format!("{} {}\n", point.x, point.y));
+                }
+                let temporary = self.state.with_extension("tmp");
+                std::fs::write(&temporary, status).unwrap();
+                std::fs::rename(temporary, &self.state).unwrap();
+            }
+        }
+        let complete = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let completed = complete.clone();
+        eframe::run_native(
+            "Flameshot History Fixture",
+            eframe::NativeOptions {
+                viewport: crate::app_ui::viewport().with_inner_size([900.0, 480.0]),
+                event_loop_builder: Some(Box::new(|builder| {
+                    builder.with_any_thread(true);
+                })),
+                ..Default::default()
+            },
+            Box::new(move |cc| {
+                crate::i18n::install_fonts(&cc.egui_ctx);
+                Ok(Box::new(Native {
+                    history: History {
+                        links: Default::default(),
+                        confirmation_required: true,
+                        test_delete: Some(first),
+                        test_controls: Default::default(),
+                        textures: Default::default(),
+                        clipboard: Default::default(),
+                        entries,
+                        confirm: None,
+                        job: None,
+                        remote_deleted: Default::default(),
+                        message: String::new(),
+                    },
+                    retry: Some(second),
+                    path,
+                    original,
+                    state,
+                    phase: "ready",
+                    complete: completed,
+                }))
+            }),
+        )
+        .unwrap();
+        assert!(complete.load(std::sync::atomic::Ordering::SeqCst));
+        for request in [failed.join().unwrap(), deleted.join().unwrap()] {
+            assert!(request.starts_with(b"DELETE /3/image/secret123 "));
+        }
+        assert!(crate::upload_history::list(root.path()).unwrap().is_empty());
+        assert_eq!(std::fs::read(unrelated).unwrap(), b"keep");
+    }
     fn mock_server(success: bool) -> (Imgur, std::thread::JoinHandle<Vec<u8>>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}/3/image", listener.local_addr().unwrap());
@@ -796,6 +935,8 @@ mod tests {
             links: Default::default(),
             confirmation_required: true,
             test_delete: None,
+            #[cfg(test)]
+            test_controls: Default::default(),
             textures: Default::default(),
             clipboard: Default::default(),
             entries: vec![crate::upload_history::Entry {
@@ -895,6 +1036,8 @@ mod tests {
             links: Default::default(),
             confirmation_required: true,
             test_delete: None,
+            #[cfg(test)]
+            test_controls: Default::default(),
             textures: Default::default(),
             clipboard: Default::default(),
             entries: vec![crate::upload_history::Entry {
@@ -1082,6 +1225,8 @@ mod tests {
             links: Default::default(),
             confirmation_required: true,
             test_delete: None,
+            #[cfg(test)]
+            test_controls: Default::default(),
             textures: Default::default(),
             clipboard: Default::default(),
             entries: vec![crate::upload_history::Entry {
