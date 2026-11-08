@@ -33,7 +33,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI, installed X11 and wlroots Wayland suites verified; Fedora and Nix evaluation/install evidence recorded; complete Nix binary build is pending an uncached nixpkgs bootstrap source; Flatpak/Snap manifests parse and packaging metadata is audited (see SANDBOX-MANIFEST-VALIDATION.md); full sandbox/provider builds remain pending (local Flatpak Builder 1.14.6 segfaulted before build; Snapcraft provider unavailable), along with other distro installs |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME integer/fractional mixed scale and normalized left-of-primary layout pass (see GNOME-VALIDATION.md); GNOME IBus Pinyin also passes at normal/fractional scale; named desktop matrix audited in DESKTOP-ACCEPTANCE.md with explicit version/hardware boundaries |
-| Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
+| Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Complete: C++/Qt/CMake source and legacy build workflows removed; compatibility evidence remains in Git history/frozen fixtures |
 
 ## Compatibility facts from source
 
@@ -3999,3 +3999,18 @@ those remain only in the mixed checkout as a behavioral reference. The archive h
 and report are recorded in SOURCE-VALIDATION.md and `target/current-source-review-2`.
 This proves a portable Rust source snapshot while final checkout cleanup remains
 pending the explicit acceptance/package gates.
+
+### Final Rust-only source cleanup
+
+After the Linux desktop and functional acceptance audit, the mixed checkout was
+cleaned: the legacy root C++/Qt source tree, CMake files, old CMake/Qt workflows,
+and obsolete Windows installer assets were removed. The current tracked source now
+contains no `.cpp`, C++ header, CMakeLists or `.cmake` files. The Rust workspace,
+Rust packaging workflows, frozen compatibility fixtures and Git history preserve the
+behavioral evidence without keeping a second implementation in the project.
+
+README.md now documents only Cargo/Rust development. Debian metadata was rewritten
+for the Rust source set. The final local Rust gate, optimized release/staging checks
+and offline vendored archive validation pass after cleanup. Hosted CI and provider
+build limitations remain packaging evidence boundaries; they no longer prevent the
+repository itself from being a pure Rust project.

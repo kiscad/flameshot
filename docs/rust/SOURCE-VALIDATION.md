@@ -29,7 +29,9 @@ linker, native system libraries, fonts and test utilities were already installed
 this is an offline source/dependency validation, not a hermetic operating-system
 image or a clean-distro installation test. Ignored desktop/private-bus tests were
 not run by cargo test; desktop evidence is recorded separately in MIGRATION.md
-and RELEASE-VALIDATION.md. The main checkout still retains its C++ reference tree.
+and RELEASE-VALIDATION.md. The mixed checkout used for this historical section has since been cleaned; the
+current checkout contains only the Rust workspace. The C++ reference remains in Git
+history and frozen compatibility fixtures.
 
 A machine-readable local record is available at target/rust-source-review.json.
 Later source changes require a new archive and validation snapshot.
@@ -52,5 +54,6 @@ packaging metadata, data and test fixtures. Only four Cargo-home bookkeeping fil
 were created, so no registry download was hidden by the test. This validates the
 portable Rust source snapshot independently of the mixed reference checkout.
 
-The main checkout still retains the C++ reference tree until the final Linux
-acceptance and package/provider audit authorizes its removal.
+The current checkout contains no C++/Qt/CMake implementation; the reference remains
+in Git history and frozen compatibility fixtures. Package/provider gates are tracked
+separately from source purity.

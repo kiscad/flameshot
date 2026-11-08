@@ -1,8 +1,9 @@
 # Building the Rust migration branch
 
-The Rust application is developed on `rewrite/rust`. It is not yet a complete
-replacement for the C++ application; see [the migration matrix](MIGRATION.md).
-Existing C++ files remain a behavior reference until Linux parity is verified.
+The Rust application is the repository implementation on `rewrite/rust`; see [the
+migration matrix](MIGRATION.md) for compatibility and remaining provider gates. The
+former C++/Qt/CMake implementation is retained only in Git history and frozen test
+fixtures.
 
 ## Build
 

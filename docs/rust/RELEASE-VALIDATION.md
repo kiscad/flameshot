@@ -27,8 +27,8 @@ Live Bash/Fish completion checks and Fish/Zsh syntax checks passed.
 
 These are local optimized-build and staged-payload checks. They do not establish
 clean-distro installation, deployed sandbox confinement, hosted CI, complete IME or
-all compositor coverage. The C++ reference tree still exists pending Linux acceptance;
-absence of Qt linkage in this executable does not make the repository Rust-only.
+all compositor coverage. That historical snapshot predates final source cleanup. The current checkout is Rust-only;
+absence of Qt linkage is additionally checked in the current release manifest.
 This snapshot must be superseded after further production changes before release.
 
 The complete isolated Xvfb suite also passed using this staged executable, including
