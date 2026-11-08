@@ -3937,6 +3937,18 @@ Lehet, hogy meg kepp adnod egy &apos;\&apos; karaktert a &apos;#&apos; karakter 
         <source>Settings changed outside this window. Reload saved settings before saving.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Malformed configuration at line %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid shortcut %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcut conflict: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>RustNotifications</name>

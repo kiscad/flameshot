@@ -62,6 +62,33 @@ pub fn dbus_menu_label(value: &str) -> String {
 mod tests {
     use super::*;
     #[test]
+    fn configuration_diagnostic_placeholders_survive_all_finished_catalogs() {
+        let pattern = regex::Regex::new(r"%L?[0-9]+").unwrap();
+        let sources = [
+            "Unrecognized setting: '%1'\n",
+            "Unrecognized shortcut name: '%1'.\n",
+            "Bad value in '%1'. Expected: %2\n",
+            "Malformed configuration at line %1",
+            "Invalid shortcut %1: %2",
+            "Shortcut conflict: %1",
+        ];
+        for catalog in CATALOGS {
+            for &(context, source, translated) in catalog.messages {
+                if matches!(context, "ConfigHandler" | "RustConfig") && sources.contains(&source) {
+                    let expected: std::collections::BTreeSet<_> = pattern
+                        .find_iter(source)
+                        .map(|item| item.as_str())
+                        .collect();
+                    let actual = pattern
+                        .find_iter(translated)
+                        .map(|item| item.as_str())
+                        .collect();
+                    assert_eq!(expected, actual, "{}: {context}/{source}", catalog.language);
+                }
+            }
+        }
+    }
+    #[test]
     fn menu_labels_preserve_translation_and_literal_ampersands() {
         let chinese = Translator::new("zh_CN");
         assert_eq!(
@@ -127,7 +154,7 @@ mod tests {
                 .iter()
                 .filter(|(context, _, _)| *context == "RustConfig")
                 .collect();
-            assert_eq!(messages.len(), 81, "{locale}");
+            assert_eq!(messages.len(), 84, "{locale}");
             for (_, source, translated) in messages {
                 assert_ne!(source, translated, "{locale}: {source}");
                 assert_eq!(

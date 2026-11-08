@@ -541,14 +541,14 @@ Premeu Espai per obrir el calaix lateral.</translation>
         <location filename="../../src/utils/confighandler.cpp" line="600"/>
         <source>Unrecognized setting: &apos;%1&apos;
 </source>
-        <translation>அங்கீகரிக்கப்படாத அமைப்பு: &apos;% 1&apos;
+        <translation>அங்கீகரிக்கப்படாத அமைப்பு: &apos;%1&apos;
 </translation>
     </message>
     <message>
         <location filename="../../src/utils/confighandler.cpp" line="608"/>
         <source>Unrecognized shortcut name: &apos;%1&apos;.
 </source>
-        <translation>அடையாளம் காணப்படாத குறுக்குவழி பெயர்: &apos;% 1&apos;.
+        <translation>அடையாளம் காணப்படாத குறுக்குவழி பெயர்: &apos;%1&apos;.
 </translation>
     </message>
     <message>
@@ -562,7 +562,7 @@ Premeu Espai per obrir el calaix lateral.</translation>
         <location filename="../../src/utils/confighandler.cpp" line="689"/>
         <source>Bad value in &apos;%1&apos;. Expected: %2
 </source>
-        <translation>&apos;% 1&apos; இல் மோசமான மதிப்பு. எதிர்பார்க்கப்படுகிறது:% 2
+        <translation>&apos;%1&apos; இல் மோசமான மதிப்பு. எதிர்பார்க்கப்படுகிறது:%2
 </translation>
     </message>
     <message>
@@ -3697,6 +3697,18 @@ You சி-வைகாசி need பெறுநர் escape the &apos;#&apos
     </message>
     <message>
         <source>Settings changed outside this window. Reload saved settings before saving.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Malformed configuration at line %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid shortcut %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcut conflict: %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

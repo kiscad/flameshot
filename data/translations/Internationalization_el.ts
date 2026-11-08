@@ -562,7 +562,7 @@ Press Space to open the side panel.</source>
         <location filename="../../src/utils/confighandler.cpp" line="600"/>
         <source>Unrecognized setting: &apos;%1&apos;
 </source>
-        <translation>Μη αναγνωρισμένη ρύθμιση: &apos;% 1&apos;
+        <translation>Μη αναγνωρισμένη ρύθμιση: &apos;%1&apos;
 </translation>
     </message>
     <message>
@@ -583,7 +583,7 @@ Press Space to open the side panel.</source>
         <location filename="../../src/utils/confighandler.cpp" line="689"/>
         <source>Bad value in &apos;%1&apos;. Expected: %2
 </source>
-        <translation>Λάθος τιμή στο &apos;% 1&apos;. Αναμενόμενο: %2
+        <translation>Λάθος τιμή στο &apos;%1&apos;. Αναμενόμενο: %2
 </translation>
     </message>
     <message>
@@ -3879,6 +3879,18 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
     </message>
     <message>
         <source>Settings changed outside this window. Reload saved settings before saving.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Malformed configuration at line %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Invalid shortcut %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Shortcut conflict: %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

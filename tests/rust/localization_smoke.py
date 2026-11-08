@@ -183,12 +183,15 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
     print('PASS:',locale,'localized pin menu, rotation, zoom reset and close')
     # Translation initialization must not fall back to LC_ALL=C on unrelated INI errors.
     valid_config=config.read_bytes()
-    invalid_config=valid_config+b'\n[General]\ndrawThickness=bad\n'
+    invalid_config=valid_config+b'\n[General]\ndrawThickness=bad\nbroken line\n'
     config.write_bytes(invalid_config)
     process=subprocess.Popen([binary,'config'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
     try:
         identifier=window('^'+config_title+'$')
         tool('windowfocus','--sync',identifier);time.sleep(.4)
+        captured=subprocess.run([binary,'full','--raw'],capture_output=True,timeout=10)
+        assert captured.returncode==0,captured.stderr.decode()
+        Path(artifacts,f'rust-config-{locale}-repair.png').write_bytes(captured.stdout)
         tool('key','Escape');out,err=process.communicate(timeout=10)
         assert process.returncode==0,err.decode()
         assert config.read_bytes()==invalid_config,'Opening repair changed the file'

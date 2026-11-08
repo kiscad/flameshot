@@ -553,14 +553,14 @@ Press Space to open the side panel.</source>
         <location filename="../../src/utils/confighandler.cpp" line="600"/>
         <source>Unrecognized setting: &apos;%1&apos;
 </source>
-        <translation>Unrecognized setting: &apos;%1&apos;
+        <translation>無法識別的設定：&apos;%1&apos;
 </translation>
     </message>
     <message>
         <location filename="../../src/utils/confighandler.cpp" line="608"/>
         <source>Unrecognized shortcut name: &apos;%1&apos;.
 </source>
-        <translation>Unrecognized shortcut name: &apos;%1&apos;.
+        <translation>無法識別的快捷鍵名稱：&apos;%1&apos;。
 </translation>
     </message>
     <message>
@@ -574,7 +574,7 @@ Press Space to open the side panel.</source>
         <location filename="../../src/utils/confighandler.cpp" line="689"/>
         <source>Bad value in &apos;%1&apos;. Expected: %2
 </source>
-        <translation>Bad value in &apos;%1&apos;. Expected: %2
+        <translation>&apos;%1&apos; 的值不正確。預期為：%2
 </translation>
     </message>
     <message>
@@ -3907,6 +3907,18 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
     <message>
         <source>Settings changed outside this window. Reload saved settings before saving.</source>
         <translation>設定已在其他地方變更，請重新載入已儲存的設定後再儲存。</translation>
+    </message>
+    <message>
+        <source>Malformed configuration at line %1</source>
+        <translation>設定檔第 %1 行格式錯誤</translation>
+    </message>
+    <message>
+        <source>Invalid shortcut %1: %2</source>
+        <translation>快捷鍵 %1 無效：%2</translation>
+    </message>
+    <message>
+        <source>Shortcut conflict: %1</source>
+        <translation>快捷鍵衝突：%1</translation>
     </message>
 </context>
 <context>

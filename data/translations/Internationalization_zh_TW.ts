@@ -3869,6 +3869,18 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</source>
         <source>Settings changed outside this window. Reload saved settings before saving.</source>
         <translation>設定已在其他地方變更，請重新載入已儲存的設定後再儲存。</translation>
     </message>
+    <message>
+        <source>Malformed configuration at line %1</source>
+        <translation>設定檔第 %1 行格式錯誤</translation>
+    </message>
+    <message>
+        <source>Invalid shortcut %1: %2</source>
+        <translation>快捷鍵 %1 無效：%2</translation>
+    </message>
+    <message>
+        <source>Shortcut conflict: %1</source>
+        <translation>快捷鍵衝突：%1</translation>
+    </message>
 </context>
 <context>
     <name>RustNotifications</name>

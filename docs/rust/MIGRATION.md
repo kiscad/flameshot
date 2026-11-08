@@ -3701,3 +3701,32 @@ runs pass. Catalog tests also verify the Chinese pin/cancellation entries, and t
 literal lookup checker now covers 267 calls. Dynamic configuration diagnostics and
 help prose remain in the resource audit; this is not a claim that all user-facing
 text or installed desktop notification rendering has been validated.
+
+### Localized configuration diagnostics preserve data
+
+Configuration problems now retain a display template independently of the existing
+CLI message. The repair view translates unknown-setting/shortcut messages, invalid
+values, malformed-line notices and shortcut-conflict explanations. Technical ranges,
+setting names and parser details remain literal data. Save-time draft validation uses
+the same localized presentation; CLI diagnostics and repair targets are unchanged.
+A single-pass formatter prevents percent sequences inside names/details from being
+interpreted again as placeholders. Log-style trailing newlines are removed from the
+template before substitution, without trimming argument data.
+
+The three new RustConfig templates have entries in all 49 catalogs, Chinese
+translations and source fallback elsewhere. Hong Kong configuration messages were
+completed. The audit also found five existing Greek/Tamil translations with `% 1`
+or `% 2` instead of valid placeholders; those markers were repaired without changing
+the translated wording. A core test now verifies parameter markers in every finished
+configuration-diagnostic translation. The literal lookup checker includes diagnostic
+template declarations.
+
+Application tests verify Chinese presentation, Greek/Tamil setting-name retention,
+unchanged CLI messages and literal percent sequences. Native simplified/traditional
+Chinese recovery screenshots were inspected. This exposed clipped range details;
+diagnostic rows now wrap, and the full numeric bound is visible. The repair heading
+uses Resolve configuration errors instead of telling users to open the window they
+are already using. Native locale and recovery tests pass. The complete local Rust
+gate passed after the wrapping/catalog fixes, followed by focused diagnostic tests,
+Clippy and rebuilt native locale validation for the final presentation adjustments.
+Help prose and remaining dynamic resource lookups remain separate audit work.

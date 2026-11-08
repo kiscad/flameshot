@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Check ordinary quoted app translation calls and local tr wrappers against TS keys.
+"""Check quoted translation calls, local tr wrappers and diagnostic templates against TS keys.
 This does not infer dynamic labels/raw strings or require unfinished translations to be complete.
 """
 import json
@@ -20,9 +20,9 @@ for path in catalogs:
                 keys.add((context.findtext('name'), message.findtext('source')))
 
 literal = r'"(?:[^"\\]|\\.)*"'
-pair = re.compile(r'\btr\(\s*('+literal+r')\s*,\s*('+literal+r')', re.S)
+pair = re.compile(r'\b(?:tr|localized)\(\s*('+literal+r')\s*,\s*('+literal+r')', re.S)
 wrapper = re.compile(r'(?:fn tr\([^)]*\)[^{]*\{|let tr\s*=\s*\|\w+\|)\s*crate::i18n::tr\(\s*('+literal+r')\s*,\s*\w+\s*\)', re.S)
-single = re.compile(r'\btr\(\s*('+literal+r')\s*\)', re.S)
+single = re.compile(r'\b(?:tr|localized)\(\s*('+literal+r')\s*\)', re.S)
 missing = []
 checked = 0
 for path in (project/'crates/flameshot/src').rglob('*.rs'):

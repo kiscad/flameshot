@@ -48,10 +48,9 @@ impl Recovery {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
             return false;
         }
-        ui.heading(crate::i18n::tr("ConfigWindow", "Configuration"));
-        ui.label(crate::i18n::tr(
-            "ConfigHandler",
-            "The configuration contains an error. Open configuration to resolve.",
+        ui.heading(crate::i18n::tr(
+            "ConfigResolver",
+            "Resolve configuration errors",
         ));
         ui.label(self.path.display().to_string());
         let frame = ui.ctx().cumulative_frame_nr();
@@ -74,7 +73,7 @@ impl Recovery {
                                     repairs.push(repair.clone());
                                 }
                             }
-                            ui.label(&problem.message);
+                            ui.add(egui::Label::new(problem.display()).wrap());
                         });
                     });
                 }
@@ -126,9 +125,19 @@ impl Recovery {
                 && self.handled_frame != Some(frame)
             {
                 self.handled_frame = Some(frame);
-                match Settings::replace_source_checked(&self.path, &self.baseline, &self.draft) {
-                    Ok(()) => done = true,
-                    Err(error) => self.status = error.to_string(),
+                let problems = crate::config_check::diagnose(&self.draft);
+                if problems.is_empty() {
+                    match Settings::replace_source_checked(&self.path, &self.baseline, &self.draft)
+                    {
+                        Ok(()) => done = true,
+                        Err(error) => self.status = error.to_string(),
+                    }
+                } else {
+                    self.status = problems
+                        .iter()
+                        .map(crate::config_check::Problem::display)
+                        .collect::<Vec<_>>()
+                        .join("\n");
                 }
             }
             if (ui
