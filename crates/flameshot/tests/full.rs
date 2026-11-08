@@ -139,4 +139,37 @@ async fn full_outputs_only_png_on_stdout_and_saves_without_overwrite() {
         source.exists(),
         "Portal-provided file must not be blindly deleted"
     );
+    for invalid in [
+        "drawThickness=2147483648",
+        "unknown=value",
+        "savePath=",
+        "[Shortcuts]\nTYPE_COPY=Ctrl+NoSuchKey",
+    ] {
+        let text = format!("[General]\nuseX11LegacyScreenshot=true\n{invalid}\n");
+        let path = config.join("flameshot.ini");
+        std::fs::write(&path, &text).unwrap();
+        let result = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("XDG_CONFIG_HOME", temp.path().join("config"))
+            .env("XDG_SESSION_TYPE", "x11")
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .args(["full", "--raw"])
+            .output()
+            .unwrap();
+        assert!(result.status.success(), "{result:?}");
+        assert_eq!(
+            image::load_from_memory(&result.stdout).unwrap().to_rgba8(),
+            expected
+        );
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert_eq!(
+            stderr
+                .matches("The configuration contains an error.")
+                .count(),
+            1,
+            "{stderr}"
+        );
+        assert_eq!(std::fs::read_to_string(path).unwrap(), text);
+    }
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 7);
 }

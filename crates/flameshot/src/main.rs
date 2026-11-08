@@ -382,18 +382,17 @@ async fn run(cli: Cli) -> Result<()> {
         return updates_ui::show();
     }
     if matches!(command, Command::InternalOpenSavePath) {
-        if let Some(directory) = settings::Settings::load()?.save_path {
-            if app_ui::restricted_bus_names() {
-                let connection = daemon::session_connection().await?;
-                flameshot_platform::open_portal::open_directory(
-                    &connection,
-                    &directory,
-                    Duration::from_secs(120),
-                )
-                .await?;
-            } else {
-                flameshot_platform::applications::open_directory(&directory)?;
-            }
+        let directory = settings::Settings::load()?.save_directory();
+        if app_ui::restricted_bus_names() {
+            let connection = daemon::session_connection().await?;
+            flameshot_platform::open_portal::open_directory(
+                &connection,
+                &directory,
+                Duration::from_secs(120),
+            )
+            .await?;
+        } else {
+            flameshot_platform::applications::open_directory(&directory)?;
         }
         return Ok(());
     }

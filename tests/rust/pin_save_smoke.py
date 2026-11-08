@@ -31,7 +31,7 @@ from PIL import Image
 binary,xdotool,artifacts=sys.argv[1:]
 base=Path(os.environ['XDG_CONFIG_HOME']);folder=base/'saved';folder.mkdir()
 config=base/'flameshot/flameshot.ini';config.parent.mkdir(exist_ok=True)
-config.write_text(f'[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\ndisabledTrayIcon=true\nuseX11LegacyScreenshot=true\nsavePath={folder}\nfilenamePattern=pin-save\nfutureKey=keep\n')
+config.write_text(f'[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\ndisabledTrayIcon=true\nuseX11LegacyScreenshot=true\nsavePath={folder}\nfilenamePattern=pin-save\n[External]\nfutureKey=keep\n[General]\n')
 def tool(*args):
     r=subprocess.run([xdotool,*args],capture_output=True,timeout=5);assert r.returncode==0,r.stderr
     return r.stdout.decode()

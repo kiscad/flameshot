@@ -90,6 +90,10 @@ jobs:
           WGPU_BACKEND: gl
           FLAMESHOT_TEST_ARTIFACT_DIR: target/wayland-gl-artifacts
         run: python3 tests/rust/wayland_smoke.py / target/debug/flameshot
+      - name: Runtime configuration fallback without network features
+        run: |
+          cargo build --locked -p flameshot --no-default-features
+          python3 tests/rust/config_fallback_smoke.py / target/debug/flameshot
       - name: Release build
         run: |
           cargo build --locked --release --all-features

@@ -26,7 +26,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, numeric/repetition/help rules, parse statuses and completions implemented/tested; final command/shell behavior audit remains |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, NoReply metadata, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
-| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; typed fixtures, atomic updates, idle reload and locked form conflict checks tested; remaining semantic audit pending |
+| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; runtime fallback, repair UI, atomic writes, idle reload and conflict checks tested; save-directory write semantics and remaining audit pending |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines/preferences and upload/history/update widget flows tested; native network-window integration audit remains |
@@ -3482,3 +3482,47 @@ toolchain anomaly, not a source-test failure or a diagnosed compiler root cause.
 
 Runtime-wide configuration fallback and error presentation remain outstanding;
 these repair actions do not claim to complete that separate compatibility behavior.
+
+### Runtime configuration fallback and recovery notices
+
+Runtime loading now validates the complete configuration before applying any values.
+Semantic errors, unknown General/Shortcuts keys and invalid shortcut definitions select the whole set
+of built-in defaults, matching the legacy error-state behavior. The file is never
+rewritten by fallback. Strict checking and repair validation still reject invalid
+input; file-read failures remain errors. Per-process diagnostics track transitions
+per configuration path, reporting entry into error state and successful recovery
+once rather than repeating warnings on every settings poll.
+
+The editor shows the translated error notice and, after repair, the legacy restart
+notice. Existing live global render preferences continue to refresh. The notice is
+painted near the bottom, outside the default toolbar, hides while the pointer is over
+it, and is never part of document export. Native screenshots were inspected; an
+initial placement over the toolbar was corrected. The pixel fixture excludes the
+independently timed selection-geometry label when comparing notice transitions.
+
+Private-portal tests verify successful PNG-only output with invalid numeric values,
+unknown settings, empty savePath values and invalid shortcuts, while retaining
+INI bytes and emitting only one warning. Pure tests cover global defaults, restored
+valid values and repeated error/resolution transitions. The native minimal-feature
+fixture covers capture, live notices, pointer avoidance, repeated recovery and exact
+export equality to the pre-editor image. Network features are disabled for that
+fixture so default preferences cannot start an external update request.
+
+Open Save Path now opens the fallback directory when unset or invalid, as the legacy
+handler does. An isolated desktop-handler test verifies default Pictures, literal
+configured paths and fallback after invalid configuration. Configuration-repair and
+pin-save native checks pass, as does the complete local Rust gate. A rust-lld crash
+on the first standalone directory-test build was followed by an unchanged successful
+retry; no compiler root cause is claimed.
+
+Test fixtures now put unrelated custom keys in an External group, use `uiLanguage`
+instead of the unrecognized `language`, and trigger autosave failure through a real
+filename-length filesystem error rather than invalid settings. This retains clipboard
+failure-path coverage while allowing the new legacy-compatible fallback behavior.
+The configuration audit still needs to reconcile form writes of empty/nonexistent
+save directories with the strict checker; this entry does not close that remaining
+semantic gap or refresh the previously recorded release/package artifacts.
+
+The corrected full X11 suite and Sway/IME suite also pass on the minimal build,
+including mixed-scale negative-origin capture, grid/pixel picking and pin save/clipboard
+flows. These tests used private displays and buses; no host desktop was exercised.

@@ -348,3 +348,16 @@ It requires the same Pinyin packages as the X11 IME fixture.
 
 For isolated KWin 5 portal/editor testing and its runtime setup, see
 [KDE-VALIDATION.md](KDE-VALIDATION.md).
+
+## Runtime configuration fallback fixture
+
+The fallback test intentionally uses the minimal build: invalid settings restore
+built-in defaults, including the update-check preference when that feature exists.
+Disabling network features keeps this private-display test independent of external
+services. It checks live error/resolution notices and PNG export without those notices.
+
+```sh
+cargo build --locked -p flameshot --no-default-features
+python3 tests/rust/config_fallback_smoke.py / target/debug/flameshot
+cargo build --locked -p flameshot --all-features
+```

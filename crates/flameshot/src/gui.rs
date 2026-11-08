@@ -178,6 +178,8 @@ struct Editor {
     font_family: String,
     text_style: flameshot_core::editor::TextStyle,
     error: String,
+    configuration_error: bool,
+    configuration_resolved: bool,
     show_help: bool,
     selected_object: Option<usize>,
     property_pointer_down: bool,
@@ -271,6 +273,8 @@ impl Editor {
             text: String::new(),
             font_size: (settings.font_size * 4.0 / 3.0).min(1000.0),
             error: String::new(),
+            configuration_error: settings.configuration_error,
+            configuration_resolved: false,
             show_help: crate::settings::Settings::load()?.show_help,
             selected_object: None,
             property_pointer_down: false,
@@ -995,6 +999,12 @@ impl eframe::App for Editor {
         if self.last_render_refresh.elapsed() >= interval {
             self.last_render_refresh = std::time::Instant::now();
             if let Ok(settings) = crate::settings::Settings::load() {
+                if settings.configuration_error {
+                    self.configuration_resolved = false;
+                } else if self.configuration_error {
+                    self.configuration_resolved = true;
+                }
+                self.configuration_error = settings.configuration_error;
                 self.reverse_arrow = settings.reverse_arrow;
                 self.counter_outline = settings.counter_outline;
                 self.insecure_pixelate = settings.insecure_pixelate;
@@ -1111,6 +1121,48 @@ impl eframe::App for Editor {
             return;
         }
         let ctx = ui.ctx().clone();
+        let notice = if self.configuration_error {
+            Some(tr(
+                "ConfigHandler",
+                "The configuration contains an error. Open configuration to resolve.",
+            ))
+        } else if self.configuration_resolved {
+            Some(tr(
+                "CaptureWidget",
+                "Configuration error resolved. Launch `flameshot gui` again to apply it.",
+            ))
+        } else {
+            None
+        };
+        if let Some(notice) = notice {
+            let painter = ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::unique("configuration-notice"),
+            ));
+            let galley = painter.layout(
+                notice.to_owned(),
+                egui::FontId::proportional(16.0),
+                Color32::WHITE,
+                (ctx.content_rect().width() - 40.0).max(80.0),
+            );
+            let position = egui::pos2(
+                (ctx.content_rect().right() - galley.size().x - 16.0)
+                    .max(ctx.content_rect().left() + 16.0),
+                (ctx.content_rect().bottom() - galley.size().y - 28.0)
+                    .max(ctx.content_rect().top() + 16.0),
+            );
+            let notice_rect = egui::Rect::from_min_size(position, galley.size()).expand(6.0);
+            if !ctx.input(|input| {
+                input
+                    .pointer
+                    .hover_pos()
+                    .is_some_and(|pointer| notice_rect.contains(pointer))
+            }) {
+                painter.rect_filled(notice_rect, 4.0, Color32::from_black_alpha(210));
+                painter.galley(position, galley, Color32::WHITE);
+            }
+        }
+
         let constrain = ctx.input(|input| {
             if self.points.is_empty() {
                 input.modifiers.ctrl

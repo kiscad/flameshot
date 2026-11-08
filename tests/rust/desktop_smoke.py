@@ -96,7 +96,8 @@ try:
     result=subprocess.run([binary,'full','--clipboard'],env=dict(os.environ,HOME=str(saved_folder)),capture_output=True,timeout=20)
     assert result.returncode==0,result.stderr.decode()
     assert (saved_folder/'fallback.png').exists(),'Missing savePath did not use default directory'
-    config.write_text(f'[General]\ncheckForUpdates=false\nsaveAfterCopy=true\nsavePath={saved_folder}/missing/directory\n')
+    # Keep settings valid and force a real filesystem save error (ENAMETOOLONG).
+    config.write_text(f'[General]\ncheckForUpdates=false\nsaveAfterCopy=true\nsavePath={saved_folder}\nfilenamePattern={"x"*300}\n')
     result=subprocess.run([binary,'full','--clipboard'],capture_output=True,timeout=20)
     assert result.returncode==0 and b'Cannot save image after copy' in result.stderr,result.stderr.decode()
     copied=subprocess.run([xclip,'-selection','clipboard','-t','image/png','-o'],capture_output=True,timeout=5)
@@ -543,12 +544,12 @@ print('PASS: capture lock is released after a killed editor')
                 flags=['--raw','--region','400x200+500+450']
                 data=struct.pack('>II',127,11)+b'QList<int>\0'+struct.pack('>I',0)
                 variant='@Variant('+''.join(chr(92)+'x'+format(byte,'02x') for byte in data)+')'
-                test_config.write_text('[General]\ncheckForUpdates=false\nlanguage=en\nshowSelectionGeometry=0\ndrawColor=#ff0000\nuserColors=#00ff00, #0000ff, #ff0000\nbuttons='+variant+'\n')
+                test_config.write_text('[General]\ncheckForUpdates=false\nuiLanguage=en\nshowSelectionGeometry=0\ndrawColor=#ff0000\nuserColors=#00ff00, #0000ff, #ff0000\nbuttons='+variant+'\n')
             if mode=='counterdelete':
                 flags=['--raw','--region','400x200+500+450']
                 data=struct.pack('>II',127,11)+b'QList<int>\0'+struct.pack('>I',0)
                 variant='@Variant('+''.join(chr(92)+'x'+format(byte,'02x') for byte in data)+')'
-                test_config.write_text('[General]\ncheckForUpdates=false\nlanguage=en\nshowSelectionGeometry=0\nbuttons='+variant+'\n[Shortcuts]\nTYPE_CIRCLECOUNT=F10\n')
+                test_config.write_text('[General]\ncheckForUpdates=false\nuiLanguage=en\nshowSelectionGeometry=0\nbuttons='+variant+'\n[Shortcuts]\nTYPE_CIRCLECOUNT=F10\n')
             if mode=='constraints':
                 flags=['--raw','--region','400x200+500+450']
                 test_config.write_text('[General]\ncheckForUpdates=false\nshowSelectionGeometry=0\ndrawColor=#ff0000\ndrawThickness=3\n')
@@ -556,7 +557,7 @@ print('PASS: capture lock is released after a killed editor')
                 flags=['--raw','--region','400x200+500+450']
                 data=struct.pack('>II',127,11)+b'QList<int>\0'+struct.pack('>I',0)
                 variant='@Variant('+''.join(chr(92)+'x'+format(byte,'02x') for byte in data)+')'
-                test_config.write_text('[General]\ncheckForUpdates=false\nlanguage=en\nuserColors=#00ff00, #0000ff, #ff0000\nshowSelectionGeometry=0\nbuttons='+variant+'\n[Shortcuts]\nTYPE_SIZEINCREASE=F9\n')
+                test_config.write_text('[General]\ncheckForUpdates=false\nuiLanguage=en\nuserColors=#00ff00, #0000ff, #ff0000\nshowSelectionGeometry=0\nbuttons='+variant+'\n[Shortcuts]\nTYPE_SIZEINCREASE=F9\n')
             if mode=='textedit':
                 flags=['--raw','--region','400x200+500+450']
                 test_config.write_text('[General]\ncheckForUpdates=false\ncopyOnDoubleClick=true\ndrawFontSize=18\nshowSelectionGeometry=0\n')

@@ -2,6 +2,38 @@
 use anyhow::{Context, Result, ensure};
 use flameshot_core::config::IniDocument;
 use std::path::PathBuf;
+#[derive(Default)]
+struct ConfigurationDiagnostics {
+    failing: std::collections::HashSet<PathBuf>,
+}
+impl ConfigurationDiagnostics {
+    fn transition(&mut self, path: &std::path::Path, errors: &[String]) -> Option<String> {
+        if errors.is_empty() {
+            self.failing
+                .remove(path)
+                .then(|| "You have successfully resolved the configuration error.".into())
+        } else if self.failing.insert(path.to_owned()) {
+            Some(format!(
+                "The configuration contains an error. Open configuration to resolve.\n{}",
+                errors.join("\n")
+            ))
+        } else {
+            None
+        }
+    }
+}
+fn report_configuration(path: &std::path::Path, errors: &[String]) {
+    static DIAGNOSTICS: std::sync::OnceLock<std::sync::Mutex<ConfigurationDiagnostics>> =
+        std::sync::OnceLock::new();
+    let message = DIAGNOSTICS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .transition(path, errors);
+    if let Some(message) = message {
+        eprintln!("flameshot: {message}");
+    }
+}
 fn integer_setting(value: &str, key: &str, minimum: i32, maximum: i32) -> Result<i32> {
     let expected = || format!("{key} must be an integer between {minimum} and {maximum}");
     let parsed: i32 = value.parse().with_context(expected)?;
@@ -10,6 +42,7 @@ fn integer_setting(value: &str, key: &str, minimum: i32, maximum: i32) -> Result
 }
 #[derive(Debug, Clone)]
 pub struct Settings {
+    pub configuration_error: bool,
     pub auto_close_idle: bool,
     pub jpeg_clipboard: bool,
     pub show_quit_prompt: bool,
@@ -77,6 +110,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            configuration_error: false,
             auto_close_idle: false,
             jpeg_clipboard: false,
             show_quit_prompt: false,
@@ -162,9 +196,28 @@ impl Settings {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(e).context("Cannot read Flameshot configuration"),
         };
-        let mut settings = Self::parse(&source)?;
-        settings.startup_launch = flameshot_platform::desktop::autostart_enabled(&directory);
+        let (mut settings, errors) = Self::runtime_settings(&source);
+        report_configuration(&path, &errors);
+        if !settings.configuration_error {
+            settings.startup_launch = flameshot_platform::desktop::autostart_enabled(&directory);
+        }
         Ok(settings)
+    }
+    fn runtime_settings(source: &str) -> (Self, Vec<String>) {
+        let mut errors = crate::config_check::check(source);
+        if errors.is_empty() {
+            match Self::parse(source) {
+                Ok(settings) => return (settings, errors),
+                Err(error) => errors.push(error.to_string()),
+            }
+        }
+        (
+            Self {
+                configuration_error: true,
+                ..Self::default()
+            },
+            errors,
+        )
     }
     pub fn set_startup(enabled: bool) -> Result<()> {
         let directory = dirs::config_dir().context("Cannot locate startup directory")?;
@@ -537,6 +590,66 @@ pub fn default_palette(large: bool) -> Vec<Option<[u8; 4]>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn runtime_errors_use_global_defaults_and_valid_sources_recover() {
+        for invalid in [
+            "drawThickness=2147483648",
+            "unknown=value",
+            "showHelp=bad",
+            "savePath=",
+            "[Shortcuts]\nTYPE_COPY=Ctrl+NoSuchKey",
+        ] {
+            let source =
+                format!("[General]\nuseX11LegacyScreenshot=true\ndrawColor=blue\n{invalid}\n");
+            let (settings, errors) = Settings::runtime_settings(&source);
+            assert!(!errors.is_empty(), "{source}");
+            assert!(settings.configuration_error);
+            assert!(!settings.use_x11_legacy_screenshot);
+            assert_eq!(settings.draw_color, Settings::default().draw_color);
+            assert_eq!(settings.draw_thickness, Settings::default().draw_thickness);
+        }
+        let (settings, errors) =
+            Settings::runtime_settings("[General]\nuseX11LegacyScreenshot=true\ndrawColor=blue\n");
+        assert!(errors.is_empty());
+        assert!(!settings.configuration_error);
+        assert!(settings.use_x11_legacy_screenshot);
+        assert_eq!(settings.draw_color, [0, 0, 255, 255]);
+    }
+    #[test]
+    fn runtime_diagnostics_report_only_error_state_transitions_per_file() {
+        let mut diagnostics = ConfigurationDiagnostics::default();
+        let first = std::path::Path::new("first.ini");
+        let second = std::path::Path::new("second.ini");
+        assert!(diagnostics.transition(first, &[]).is_none());
+        assert!(
+            diagnostics
+                .transition(first, &["bad value".into()])
+                .unwrap()
+                .contains("bad value")
+        );
+        assert!(
+            diagnostics
+                .transition(first, &["another error".into()])
+                .is_none()
+        );
+        assert!(
+            diagnostics
+                .transition(second, &["bad value".into()])
+                .is_some()
+        );
+        assert!(
+            diagnostics
+                .transition(first, &[])
+                .unwrap()
+                .contains("resolved")
+        );
+        assert!(diagnostics.transition(first, &[]).is_none());
+        assert!(
+            diagnostics
+                .transition(first, &["bad again".into()])
+                .is_some()
+        );
+    }
     #[test]
     fn form_guard_runs_under_lock_and_rejection_preserves_entire_file() {
         let root = tempfile::tempdir().unwrap();

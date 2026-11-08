@@ -19,6 +19,22 @@ fn run(root: &Path) -> std::process::Output {
         .unwrap()
 }
 
+fn expect_directory(receipt: &Path, directory: &Path) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !receipt.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Default handler did not receive directory"
+        );
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(
+        std::fs::read_to_string(receipt).unwrap(),
+        format!("1\n{}", directory.display())
+    );
+    std::fs::remove_file(receipt).unwrap();
+}
+
 #[test]
 fn configured_directory_uses_default_handler_and_preserves_literal_paths() {
     let temp = tempfile::tempdir().unwrap();
@@ -27,6 +43,13 @@ fn configured_directory_uses_default_handler_and_preserves_literal_paths() {
     std::fs::create_dir_all(&applications).unwrap();
     std::fs::create_dir(root.join("flameshot")).unwrap();
     std::fs::create_dir(root.join("empty")).unwrap();
+    let pictures = root.join("pictures");
+    std::fs::create_dir(&pictures).unwrap();
+    std::fs::write(
+        root.join("user-dirs.dirs"),
+        format!("XDG_PICTURES_DIR=\"{}\"\n", pictures.display()),
+    )
+    .unwrap();
     let receipt = root.join("received");
     let receiver = root.join("receiver.py");
     std::fs::write(&receiver, format!(
@@ -44,10 +67,7 @@ fn configured_directory_uses_default_handler_and_preserves_literal_paths() {
     std::fs::write(&config, "[General]\ncheckForUpdates=false\n").unwrap();
     let output = run(root);
     assert!(output.status.success(), "{:?}", output.stderr);
-    assert!(
-        !receipt.exists(),
-        "Unset savePath unexpectedly opened a directory"
-    );
+    expect_directory(&receipt, &pictures);
     for name in ["截图 space $(literal); & folder", "-relative:folder"] {
         let directory = root.join(name);
         std::fs::create_dir(&directory).unwrap();
@@ -59,23 +79,17 @@ fn configured_directory_uses_default_handler_and_preserves_literal_paths() {
         .unwrap();
         let output = run(root);
         assert!(output.status.success(), "{:?}", output.stderr);
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
-        while !receipt.exists() {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "Default handler did not receive directory"
-            );
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        assert_eq!(
-            std::fs::read_to_string(&receipt).unwrap(),
-            format!("1\n{}", directory.display())
-        );
-        std::fs::remove_file(&receipt).unwrap();
+        expect_directory(&receipt, &directory);
     }
     std::fs::write(&config, "[General]\nsavePath=missing-directory\n").unwrap();
     let output = run(root);
-    assert_eq!(output.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&output.stderr).contains("Save directory does not exist"));
-    assert!(!receipt.exists());
+    assert!(output.status.success(), "{:?}", output.stderr);
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("The configuration contains an error")
+    );
+    expect_directory(&receipt, &pictures);
+    assert_eq!(
+        std::fs::read_to_string(&config).unwrap(),
+        "[General]\nsavePath=missing-directory\n"
+    );
 }
