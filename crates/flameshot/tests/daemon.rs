@@ -241,6 +241,13 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
         interface_contract(include_str!("fixtures/qt-dbus-interface.xml")),
         "Public method signatures or annotations differ from the Qt reference",
     );
+    assert_eq!(
+        interface_contract(include_str!(
+            "../../../data/dbus/org.flameshot.Flameshot.xml"
+        )),
+        interface_contract(&xml),
+        "Installed interface description differs from runtime introspection",
+    );
     let properties = Proxy::new(
         &connection,
         "org.flameshot.Flameshot",

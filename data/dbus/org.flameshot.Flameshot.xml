@@ -7,7 +7,9 @@
 
         Open the GUI screenshot capture tool.
     -->
-    <method name="captureScreen"/>
+    <method name="captureScreen">
+      <annotation name="org.freedesktop.DBus.Method.NoReply" value="true"/>
+    </method>
 
     <!--
         attachPin:
@@ -18,17 +20,19 @@
     -->
     <method name="attachPin">
       <arg name="data" type="ay" direction="in"/>
+      <annotation name="org.freedesktop.DBus.Method.NoReply" value="true"/>
     </method>
 
     <!--
         attachScreenshotToClipboard:
-        @screenshot: Byte array containing the screenshot pixmap.
+        @data: Byte array containing the screenshot pixmap.
 
         Copy the screenshot to the daemon's clipboard, to prevent losing the
         clipboard when a flameshot subcommand exits.
     -->
     <method name="attachScreenshotToClipboard">
-      <arg name="screenshot" type="ay" direction="in"/>
+      <arg name="data" type="ay" direction="in"/>
+      <annotation name="org.freedesktop.DBus.Method.NoReply" value="true"/>
     </method>
 
     <!--
@@ -42,6 +46,7 @@
     <method name="attachTextToClipboard">
       <arg name="text" type="s" direction="in"/>
       <arg name="notification" type="s" direction="in"/>
+      <annotation name="org.freedesktop.DBus.Method.NoReply" value="true"/>
     </method>
 
   </interface>

@@ -3343,3 +3343,16 @@ and the normal pin-save regression (retry, overwrite, formats and directory pref
 All GUI checks used private displays, D-Bus sessions and XDG directories. These tests
 establish the specified request/cancellation behavior; hosted CI, installed sandbox
 validation and the other migration acceptance gates remain pending.
+
+### Synchronize the installed D-Bus interface description
+
+The installed XML still lacked the four NoReply annotations and named the screenshot
+argument `screenshot`, unlike the verified runtime/Qt `data` argument. The resource now
+matches the public runtime contract. The daemon integration test compares this shipped
+resource with runtime introspection, and staging checks compare the installed copy with
+the checked-in Qt reference. Wire argument types and method behavior are unchanged.
+
+The private-bus contract test and staging checks passed, including normal and spaced
+installation prefixes, permissions, desktop/AppStream resources and activation quoting.
+This corrects the published interface resource; a refreshed optimized-build validation
+follows separately and does not replace remaining install/sandbox acceptance.
