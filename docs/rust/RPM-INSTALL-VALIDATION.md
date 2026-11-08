@@ -18,8 +18,9 @@ ELF dependencies, license/patch notices, D-Bus interface and unchanged synthetic
 user configuration. It removes only its own generated container.
 
 The default fixture does not exercise GUI rendering. The optional X11 mode is
-covered below. Fedora Wayland/portals and an upgrade from an older Fedora Flameshot
-package remain separate runtime/upgrade validation.
+covered below. Installed Fedora wlroots Wayland/portal coverage is recorded in
+[WAYLAND-TRANSFORM-VALIDATION.md](WAYLAND-TRANSFORM-VALIDATION.md). An upgrade from
+an older Fedora Flameshot package remains separate validation.
 
 Both install/remove cycles passed. The container was removed after validation.
 

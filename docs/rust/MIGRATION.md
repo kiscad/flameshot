@@ -18,7 +18,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 
 | Area | Required evidence | Status |
 | --- | --- | --- |
-| Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
+| Core geometry | Negative origin, fractional scale, clipped selection tests | Core and frozen Qt selection tests, mixed/fractional-scale crops and native output rotations pass; compositor-specific coverage is tracked separately |
 | Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway, headless GNOME and KWin 5 capture cases pass; broader compositor acceptance remains |
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Baseline tools/IDs/default shortcuts, drawing/text formatting, selection, picking, live edits, undo/redo, properties, sizes and grid audited; see EDITOR-COMPATIBILITY.md; environment coverage remains in desktop validation |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Branding assets and 49 catalogs preserved; finite lookups, locale/source fallback, placeholders and Chinese native windows validated; see RESOURCE-VALIDATION.md |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update, upload and history confirmation/cancellation/failure/retry/deletion pass against loopback; external service availability is not an acceptance dependency |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI and installed X11 suite verified (see RPM-INSTALL-VALIDATION.md); Fedora Wayland, other distro installs and sandbox/provider builds pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI, installed X11 and wlroots Wayland suites verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -3894,3 +3894,20 @@ feature matrices. Fresh native arrow-style, text-format and keyboard-geometry te
 also passed, complementing the full X11/Fedora and Sway runs. The editor software
 inventory audit is complete; compositor/IME/hardware environments and installed
 sandbox behavior retain their separate acceptance requirements.
+
+### Rotated outputs and installed Fedora Wayland
+
+The private Wayland fixture now checks 90/180/270-degree rotations at 2x scale and
+a negative origin using an asymmetric reference wallpaper. Full-desktop placement,
+screen capture and native editor crop are compared pixel-for-pixel with independent
+screencopy. All three pass on the existing Sway 1.9 fixture. Four additional mirrored
+transforms pass on Fedora 44 Sway 1.11/wlroots 0.19.3 with the explicit mirror flag.
+The older Pixman fixture renders gray mirrored references even without Flameshot;
+this environment limitation is recorded rather than treated as application failure.
+
+Both complete Wayland suites pass, including fractional-scale boundaries, grid,
+clipboard/pins and precision color picking. The Fedora run uses the installed RPM,
+with clean post-run package verification. The temporary container was removed.
+WAYLAND-TRANSFORM-VALIDATION.md records versions, hashes, setup and evidence. This
+closes the core geometry software acceptance item and adds installed Fedora wlroots
+coverage; remaining GNOME/IME, sandbox/provider and other distribution gates remain.

@@ -115,6 +115,15 @@ checks; this fixture is not part of the hosted CI job yet.
 Desktop tests create private display/bus sessions and isolated XDG directories.
 They disable automatic update checking and never perform real Imgur uploads.
 The Wayland test injects input only into its own compositor via the Rust helper.
+It also checks 90/180/270-degree output rotation at 2x scale with a negative origin,
+comparing full/screen captures and editor crops with an asymmetric reference image.
+Set `FLAMESHOT_TEST_MIRRORED_OUTPUTS=1` to include all four mirrored transforms.
+Those cases pass on Sway 1.11/wlroots 0.19; the older Sway 1.9/Pixman fixture renders
+the reference wallpaper gray even without Flameshot, so it runs ordinary rotations.
+A nonuniform reference-image readiness check prevents blank frames from passing.
+The overall suite deadline is 300 seconds to include the additional editor windows;
+individual operation deadlines remain bounded.
+
 Desktop test success on Sway/Xvfb is not proof of every GNOME/KDE/IME combination.
 
 ## Package staging

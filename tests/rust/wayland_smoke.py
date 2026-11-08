@@ -44,7 +44,7 @@ if '--inside' not in sys.argv:
         env['LD_LIBRARY_PATH']=str(root/'usr/lib/x86_64-linux-gnu')+':'+env.get('LD_LIBRARY_PATH','')
         env['PATH']=str(root/'usr/bin')+':'+env['PATH']
         if '--ime' in sys.argv:env['FLAMESHOT_TEST_WAYLAND_IME']='1'
-        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(root),str(binary),'--inside',str(directory)],env=env,timeout=180,pass_fds=(portal_lock,))
+        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(root),str(binary),'--inside',str(directory)],env=env,timeout=300,pass_fds=(portal_lock,))
         if result.returncode:
             for log in directory.glob('*.log'):print(log.name,log.read_text(errors='replace')[-5000:],file=sys.stderr)
         sys.exit(result.returncode)
@@ -280,6 +280,73 @@ try:
         pixels=Image.open(BytesIO(result.stdout)).convert('RGB')
         assert pixels.getpixel((size[0]//2,size[1]//2))==color,(index,pixels.getpixel((size[0]//2,size[1]//2)))
     print('PASS: mixed-scale negative-origin monitor crops preserve dimensions and pixels',flush=True)
+    # Compare output transforms with independent screencopy of asymmetric wallpaper.
+    # The old Sway 1.9/Pixman fixture renders mirrored outputs gray; opt into
+    # mirrored cases on a capable backend (validated with Sway 1.11/wlroots 0.19).
+    # HEADLESS-2 remains at 2x with a negative origin.
+    pattern=Image.new('RGB',(80,60))
+    from PIL import ImageDraw
+    draw=ImageDraw.Draw(pattern)
+    for bounds,color in [((0,0,39,29),(255,0,0)),((40,0,79,29),(0,255,0)),
+                         ((0,30,39,59),(0,0,255)),((40,30,79,59),(255,255,0))]:
+        draw.rectangle(bounds,fill=color)
+    draw.rectangle((7,9,12,43),fill=(255,0,255))
+    wallpaper=directory/'rotated-output.png';pattern.save(wallpaper)
+    transforms=['90','180','270']
+    if env.get('FLAMESHOT_TEST_MIRRORED_OUTPUTS')=='1':
+        transforms += ['flipped','flipped-90','flipped-180','flipped-270']
+    for transform in transforms:
+        portrait=transform in ['90','270','flipped-90','flipped-270']
+        width,height=(960,1280) if portrait else (1280,960)
+        for command in [f'output HEADLESS-2 transform {transform}',
+                        f'output HEADLESS-2 position {-width//2} 0',
+                        f'output HEADLESS-2 bg {wallpaper} stretch']:
+            result=call(str(root/'usr/bin/swaymsg'),command)
+            assert result.returncode==0 and all(item['success'] for item in json.loads(result.stdout)),result.stderr.decode()
+        time.sleep(.5)
+        result=call(str(root/'usr/bin/swaymsg'),'-t','get_outputs')
+        output=next(item for item in json.loads(result.stdout) if item['name']=='HEADLESS-2')
+        assert (output['rect']['x'],output['rect']['width'],output['rect']['height'])==(-width//2,width//2,height//2),(transform,output)
+        deadline=time.monotonic()+5
+        while True:
+            reference=call(str(root/'usr/bin/grim'),'-o','HEADLESS-2','-')
+            assert reference.returncode==0,reference.stderr.decode()
+            expected=Image.open(BytesIO(reference.stdout)).convert('RGB')
+            assert expected.size==(width,height),(transform,expected.size)
+            corners=[expected.getpixel(point) for point in [(width//4,height//4),(3*width//4,height//4),
+                        (width//4,3*height//4),(3*width//4,3*height//4)]]
+            (artifact_dir/f'rust-wayland-output-{transform}.png').write_bytes(reference.stdout)
+            if set(corners)=={(255,0,0),(0,255,0),(0,0,255),(255,255,0)}:break
+            assert time.monotonic()<deadline,(transform,'Reference wallpaper is not ready',corners)
+            time.sleep(.1)
+        full_capture=call(str(binary),'full','--raw');assert full_capture.returncode==0,full_capture.stderr.decode()
+        desktop=Image.open(BytesIO(full_capture.stdout)).convert('RGB')
+        assert desktop.size==(width+2048,1536),(transform,desktop.size)
+        assert desktop.crop((0,0,width,height)).tobytes()==expected.tobytes(),(transform,'full-desktop placement differs')
+        capture=call(str(binary),'screen','--number','1','--raw')
+        assert capture.returncode==0,capture.stderr.decode()
+        actual=Image.open(BytesIO(capture.stdout)).convert('RGB')
+        assert actual.size==expected.size and actual.tobytes()==expected.tobytes(),(transform,'screen orientation/pixels differ')
+        x,y=width//4,height//4;w,h=width//2,height//2
+        editor=subprocess.Popen([str(binary),'screen','--number','1','--edit',
+            '--region',f'{w}x{h}+{x}+{y}','--raw'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE);processes.append(editor)
+        def rotated_editor_ready():
+            result=call(str(root/'usr/bin/swaymsg'),'-t','get_tree')
+            def locate(node,screen=None):
+                if node.get('type')=='output':screen=node.get('name')
+                if node.get('pid')==editor.pid:return screen=='HEADLESS-2'
+                return any(locate(child,screen) for key in ['nodes','floating_nodes'] for child in node.get(key,[]))
+            return result.returncode==0 and locate(json.loads(result.stdout))
+        wait_for(rotated_editor_ready,20)
+        call(str(root/'usr/bin/swaymsg'),f'[pid={editor.pid}] focus')
+        result=call(str(root/'usr/bin/wtype'),'-s','400','-k','Return');assert result.returncode==0,result.stderr.decode()
+        out,err=editor.communicate(timeout=15);assert editor.returncode==0,err.decode()
+        exported=Image.open(BytesIO(out)).convert('RGB');crop=expected.crop((x,y,x+w,y+h))
+        assert exported.size==crop.size and exported.tobytes()==crop.tobytes(),(transform,'editor crop differs')
+        print(f'PASS: Wayland output {transform} at 2x/negative origin preserves full/screen capture and editor crop pixels',flush=True)
+    for command in ['output HEADLESS-2 transform normal','output HEADLESS-2 position -640 0','output HEADLESS-2 bg #e02020 solid_color']:
+        result=call(str(root/'usr/bin/swaymsg'),command);assert result.returncode==0,result.stderr.decode()
+    time.sleep(.5)
     capture_config=directory/'config/flameshot/flameshot.ini'
     capture_config.write_text('[General]\ncheckForUpdates=false\nuseX11LegacyScreenshot=true\ncaptureActiveMonitor=true\n')
     rejected=call(str(binary),'gui','--region','all','--raw',timeout=10)
