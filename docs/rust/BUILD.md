@@ -203,6 +203,20 @@ Driver recommendations use the distro packages
 and [openSUSE libvulkan_lvp](https://slc-downloadcontent.opensuse.org/repositories/X11%3A/XOrg/openSUSE_Factory/x86_64/).
 Select a screenshot portal backend appropriate for the running desktop.
 
+To validate dependency-resolved installation in an isolated Fedora container:
+
+```sh
+docker pull fedora:44
+python3 tests/rust/rpm_install.py path/to/flameshot.rpm fedora:44 SOURCE_REVISION
+```
+
+Pass the revision used to produce the source archive. The fixture uses the locally
+available image, mounts no host directories, installs/removes/reinstalls through
+DNF, checks RPM integrity/resources and preserves a synthetic user INI. It removes
+its own container and writes logs plus hashes under `target/rpm-install-validation`.
+This fixture checks installation and CLI behavior; desktop rendering is a separate
+native-runtime validation.
+
 ## Arch development packages
 
 The PKGBUILD consumes a local snapshot produced by the source-archive helper:

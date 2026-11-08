@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Branding assets and 49 catalogs preserved; finite lookups, locale/source fallback, placeholders and Chinese native windows validated; see RESOURCE-VALIDATION.md |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update, upload and history confirmation/cancellation/failure/retry/deletion pass against loopback; external service availability is not an acceptance dependency |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall and CLI verified (see RPM-INSTALL-VALIDATION.md); Fedora GUI, other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -3851,3 +3851,19 @@ pin retention/idle exit, owned pin shutdown and launcher/capture descendant clea
 after abrupt owner death. DAEMON-COMPATIBILITY.md maps these cases to implementation
 and baseline behavior. This closes the independent process-lifecycle audit; actual
 installed sandbox confinement remains in the packaging acceptance gate.
+
+### Refreshed RPM and Fedora installation
+
+A clean source archive at r2512.47e1e77e was rebuilt with the RPM spec, including
+optimized distro-feature compilation, workspace tests and desktop-file validation.
+The host uses extracted RPM tools on Ubuntu, so RPM build dependency database
+checks were bypassed; actual compilation/tests were retained. This is not a native
+Fedora toolchain build.
+
+A reusable fixture installed the RPM through DNF in a disposable Fedora 44 container
+with no host mounts. Required runtime dependencies resolved successfully without
+weak recommendations. Two install/remove cycles passed: RPM integrity, expected
+Imgur/no-update command policy, ELF dependencies without Qt, license/patch notices,
+D-Bus metadata and unchanged synthetic INI. The container was cleaned up. Artifact
+and image hashes are recorded in RPM-INSTALL-VALIDATION.md. Fedora GUI/portal and
+old-package upgrade behavior remain separate acceptance work.
