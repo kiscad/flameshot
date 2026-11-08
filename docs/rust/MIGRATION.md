@@ -19,20 +19,20 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Area | Required evidence | Status |
 | --- | --- | --- |
 | Core geometry | Negative origin, fractional scale, clipped selection tests | Core and frozen Qt selection tests, mixed/fractional-scale crops and native output rotations pass; compositor-specific coverage is tracked separately |
-| Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway, headless GNOME and KWin 5 capture cases pass; broader compositor acceptance remains |
+| Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Direct X11 and real GNOME/wlr/KDE portals pass full/screen/gui checks; mapped editor cancellation, real refusal and controlled timeout cleanup are audited in DESKTOP-ACCEPTANCE.md |
 | Editor | All existing tools, selection, undo/redo, magnifier, color picker | Baseline tools/IDs/default shortcuts, drawing/text formatting, selection, picking, live edits, undo/redo, properties, sizes and grid audited; see EDITOR-COMPATIBILITY.md; environment coverage remains in desktop validation |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
-| Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
+| Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text, persistence and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR and replacement/idle behavior audited in DESKTOP-ACCEPTANCE.md |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and tray actions tested; duplicate ownership and exit-status matrix covers native/Flatpak/Snap markers; see DAEMON-COMPATIBILITY.md; installed confinement remains a packaging gate |
 | CLI | Existing commands/options, stdout PNG, exit codes | Baseline option scopes, parse/value rules, stream/status behavior, feature gating and live Bash/Fish/Zsh completions tested; see CLI-COMPATIBILITY.md |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Qt reference metadata/wire fixtures, all four public methods, reply/no-reply dispatch, malformed payloads and singleton ownership tested; see DBUS-COMPATIBILITY.md |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | INI/QVariant round trips, unknown-data preservation, runtime fallback, repair UI, atomic writes, idle reload, conflict handling and save-directory semantics tested |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Branding assets and 49 catalogs preserved; finite lookups, locale/source fallback, placeholders and Chinese native windows validated; see RESOURCE-VALIDATION.md |
-| Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
+| Desktop | Notifications, autostart, launcher, configuration windows | Native tray/launcher/configuration UI, notification wire behavior, autostart/resources and portal/document integration audited; installed sandbox confinement remains in Packaging |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update, upload and history confirmation/cancellation/failure/retry/deletion pass against loopback; external service availability is not an acceptance dependency |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI, installed X11 and wlroots Wayland suites verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME integer/fractional mixed scale and normalized left-of-primary layout pass (see GNOME-VALIDATION.md); GNOME IBus Pinyin also passes at normal/fractional scale; final desktop acceptance audit remains |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME integer/fractional mixed scale and normalized left-of-primary layout pass (see GNOME-VALIDATION.md); GNOME IBus Pinyin also passes at normal/fractional scale; named desktop matrix audited in DESKTOP-ACCEPTANCE.md with explicit version/hardware boundaries |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -3943,3 +3943,18 @@ initial timeout was a fixture click landing in the font-family field, corrected 
 placing the text region below the toolbar. GNOME-VALIDATION.md records versions,
 setup commands, screenshots and logs. GNOME IME acceptance is now covered; final
 cross-desktop audit and remaining package/sandbox work are still outstanding.
+
+### Cross-desktop functional acceptance audit
+
+DESKTOP-ACCEPTANCE.md maps capture, clipboard, integration and the named desktop
+matrix to unit/private-bus/native evidence. Current-source KWin clipboard,
+fractional/hotplug and Pinyin modes were rerun in an isolated dependency-cache
+container and passed. The audit found that old cancellation evidence could stop at
+portal consent; the fixture now waits for a mapped fullscreen native editor before
+Escape. All modes pass the stronger cancellation assertion, and cleanup leaves no
+test desktop processes.
+
+The functional capture/clipboard/desktop acceptance items are covered for the
+explicit tested versions. This is not a universal hardware/compositor claim or an
+installed sandbox result. Packaging/providers, final optimized/source artifacts,
+hosted CI evidence and final removal of legacy C++/Qt/CMake remain outstanding.

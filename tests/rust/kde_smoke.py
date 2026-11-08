@@ -107,6 +107,13 @@ app.exec_()
     if '--fractional' in sys.argv:
         cases=[(command,args,((2561,1152) if command=='full' else (1536,1152) if command=='screen' else (1025,768) if size else None),accept) for command,args,size,accept in cases]
     for command,args,size,accept in cases:
+        if not accept:
+            # Exercise cancellation of a mapped editor, not portal consent.
+            permission=subprocess.run(['gdbus','call','--session','--dest','org.freedesktop.impl.portal.PermissionStore',
+                '--object-path','/org/freedesktop/impl/portal/PermissionStore',
+                '--method','org.freedesktop.impl.portal.PermissionStore.SetPermission',
+                'screenshot','true','screenshot','',"['yes']"],env=env,capture_output=True,timeout=5)
+            assert permission.returncode==0,permission.stderr.decode()
         capture=start('capture-'+command,[str(binary),*args],stdout=subprocess.PIPE)
         deadline=time.monotonic()+20
         placement_checked=False
@@ -117,6 +124,12 @@ app.exec_()
                 break
             except subprocess.TimeoutExpired:
                 assert time.monotonic()<deadline,'KDE screenshot request timed out'
+                if not accept:
+                    pointer.stdin.write('geometry org.flameshot.Flameshot\n');pointer.stdin.flush()
+                    if pointer.stdout.readline().strip()=='none':continue
+                    pointer.stdin.write('fullscreen org.flameshot.Flameshot\n');pointer.stdin.flush()
+                    if pointer.stdout.readline().strip()!='true':continue
+                    placement_checked=True
                 if command in ['editor-second','chooser-second']:
                     pointer.stdin.write('geometry org.flameshot.Flameshot\n');pointer.stdin.flush()
                     geometry=pointer.stdout.readline().strip()
@@ -134,8 +147,9 @@ app.exec_()
                         placement_checked=True
                 key(28 if accept else 1) # Private-session consent/accept or Escape.
         if not accept:
+            assert placement_checked,'Cancellation did not reach a mapped fullscreen editor'
             assert capture.returncode==2 and not data,(capture.returncode,len(data))
-            print('PASS: KWin cancellation returns 2 with empty stdout',flush=True)
+            print('PASS: KWin mapped fullscreen editor cancellation returns 2 with empty stdout',flush=True)
             continue
         assert capture.returncode==0,(command,capture.returncode)
         if command in ['editor-second','chooser-second']:assert placement_checked,'Editor exited before native geometry could be checked'

@@ -249,3 +249,18 @@ coverage includes other IME engines, additional scale/rotation combinations and 
 outputs, physical hardware removal and installed sandbox behavior. The plain `screen` command cannot
 infer the pointer's monitor on this Wayland backend; the existing diagnostic asks
 for `--number`. Hosted CI has not run this fixture.
+
+## Current-source acceptance refresh
+
+The current all-feature executable (`07564353`, SHA-256
+`96b0c14b472811272b239a9b6d1b93d71c94ee704b7e2b21bea542583346fd01`) and input helper
+passed refreshed clipboard, fractional/hotplug and Pinyin modes. The dependency
+cache was reused only for libraries/tools; binaries and fixture were copied from
+the current checkout. The temporary container had no network or host mounts and
+was removed after confirming no test desktop processes remained.
+
+The earlier cancellation caveat is now resolved: the fixture preauthorizes the
+private screenshot permission, observes native window geometry and fullscreen state,
+then sends Escape. Every mode verifies the mapped editor returns status 2 with no
+PNG output. It can no longer count portal-consent cancellation as editor coverage.
+See DESKTOP-ACCEPTANCE.md and `target/cross-desktop-audit/` for refreshed evidence.
