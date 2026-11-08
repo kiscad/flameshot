@@ -58,6 +58,27 @@ pub fn defaults() -> Vec<i32> {
 mod tests {
     use super::*;
     #[test]
+    fn catalog_matches_frozen_qt_tool_ids_and_priority() {
+        let mut expected: Vec<(usize, i32)> =
+            include_str!("../tests/fixtures/legacy-editor-tools.tsv")
+                .lines()
+                .filter(|line| !line.starts_with('#'))
+                .filter_map(|line| {
+                    let fields: Vec<_> = line.split('\t').collect();
+                    (fields[2] != "-")
+                        .then(|| (fields[2].parse().unwrap(), fields[1].parse().unwrap()))
+                })
+                .collect();
+        expected.sort_unstable();
+        assert_eq!(
+            CATALOG.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            expected.into_iter().map(|(_, id)| id).collect::<Vec<_>>()
+        );
+        for invalid in [-1, 7, 24] {
+            assert!(!valid(invalid));
+        }
+    }
+    #[test]
     fn legacy_order_is_independent_of_storage_order_and_defaults_exclude_size_buttons() {
         assert_eq!(normalize(vec![23, 7, 2, 0, 2, 24, 18]), vec![0, 2, 18, 23]);
         assert!(!defaults().contains(&20));

@@ -329,6 +329,19 @@ pub fn validate(sequence: &str) -> Result<(), String> {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn defaults_match_frozen_linux_qt_shortcuts() {
+        let expected: std::collections::BTreeMap<_, _> =
+            include_str!("../tests/fixtures/legacy-editor-shortcuts.tsv")
+                .lines()
+                .filter(|line| !line.starts_with('#'))
+                .map(|line| line.split_once('\t').unwrap())
+                .collect();
+        let actual: std::collections::BTreeMap<_, _> = super::DEFAULTS.iter().copied().collect();
+        assert_eq!(actual.len(), super::DEFAULTS.len());
+        assert_eq!(actual, expected);
+    }
+
     use super::*;
     fn key(key: egui::Key, ctrl: bool, shift: bool) -> egui::Event {
         egui::Event::Key {

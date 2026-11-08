@@ -2151,6 +2151,37 @@ fn selected_rect(a: Point, b: Point, size: [u32; 2]) -> Option<PixelRect> {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn drawing_tools_use_frozen_legacy_identifiers() {
+        let ids: std::collections::BTreeMap<_, i32> =
+            include_str!("../tests/fixtures/legacy-editor-tools.tsv")
+                .lines()
+                .filter(|line| !line.starts_with('#'))
+                .map(|line| {
+                    let fields: Vec<_> = line.split('\t').collect();
+                    (fields[0], fields[1].parse().unwrap())
+                })
+                .collect();
+        for (name, tool) in [
+            ("TYPE_PENCIL", super::Tool::Pencil),
+            ("TYPE_DRAWER", super::Tool::Line),
+            ("TYPE_ARROW", super::Tool::Arrow),
+            ("TYPE_SELECTION", super::Tool::Rectangle),
+            ("TYPE_RECTANGLE", super::Tool::FilledRectangle),
+            ("TYPE_CIRCLE", super::Tool::Ellipse),
+            ("TYPE_MARKER", super::Tool::Marker),
+            ("TYPE_MOVESELECTION", super::Tool::MoveSelection),
+            ("TYPE_PIXELATE", super::Tool::Pixelate),
+            ("TYPE_TEXT", super::Tool::Text),
+            ("TYPE_CIRCLECOUNT", super::Tool::Counter),
+            ("TYPE_INVERT", super::Tool::Invert),
+        ] {
+            assert_eq!(tool.legacy_id(), Some(ids[name]), "{name}");
+        }
+        assert_eq!(super::Tool::Select.legacy_id(), None);
+        assert_eq!(super::Tool::Move.legacy_id(), None);
+    }
+
     use super::*;
     #[test]
     fn drawing_keeps_mouse_release_modifiers_when_control_is_released_in_same_frame() {

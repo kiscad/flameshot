@@ -20,7 +20,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | --- | --- | --- |
 | Core geometry | Negative origin, fractional scale, clipped selection tests | Core tests and mixed-scale crop tests pass; final desktop placement audit remains |
 | Capture | Portal and direct X11; full/screen/gui; cancel/refusal/timeout | Implemented; mock portal, Xvfb, Sway, headless GNOME and KWin 5 capture cases pass; broader compositor acceptance remains |
-| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Drawing/text formatting, rendered picking, live movement, selected properties, numeric size entry and drawing grid implemented/tested; remaining parity audit pending |
+| Editor | All existing tools, selection, undo/redo, magnifier, color picker | Baseline tools/IDs/default shortcuts, drawing/text formatting, selection, picking, live edits, undo/redo, properties, sizes and grid audited; see EDITOR-COMPATIBILITY.md; environment coverage remains in desktop validation |
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and tray actions tested; duplicate ownership and exit-status matrix covers native/Flatpak/Snap markers; see DAEMON-COMPATIBILITY.md; installed confinement remains a packaging gate |
@@ -3878,3 +3878,19 @@ explicit Super modifier; native event inspection confirms the exact modifier sta
 Application shortcut handling is unchanged. Fedora Wayland/portal and old-package
 upgrade acceptance are not implied by the X11 result. RPM-INSTALL-VALIDATION.md
 records artifact hashes, diagnostics and the installed runtime evidence.
+
+### Frozen editor contract and functional inventory audit
+
+Two fixtures independently extracted from the Qt baseline preserve toolbar IDs and
+priorities plus Linux default shortcut bindings. Application tests compare all 23
+configurable tools, 42 shortcut entries and drawing-tool enum IDs. Internal/non-toolbar
+values and platform/feature conditionals are documented beside the fixtures. These
+references survive final removal of the C++ tree without deriving expected values
+from the new Rust implementation.
+
+EDITOR-COMPATIBILITY.md maps the tool/selection/history/input inventory to code and
+unit/native evidence. The full local Rust gate passed with the new fixtures in all
+feature matrices. Fresh native arrow-style, text-format and keyboard-geometry tests
+also passed, complementing the full X11/Fedora and Sway runs. The editor software
+inventory audit is complete; compositor/IME/hardware environments and installed
+sandbox behavior retain their separate acceptance requirements.
