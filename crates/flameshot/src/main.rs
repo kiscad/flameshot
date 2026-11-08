@@ -354,7 +354,7 @@ async fn main() -> std::process::ExitCode {
                         flameshot_platform::desktop::notify_no_reply(
                             &connection,
                             "Flameshot",
-                            "Screenshot aborted.",
+                            i18n::tr("RustNotifications", "Screenshot aborted."),
                         )
                         .await
                     })
@@ -778,17 +778,29 @@ async fn run(cli: Cli) -> Result<()> {
             if copy {
                 daemon::copy(&capture).await?;
             }
-            if settings.notifications && (copy || pin || saved.is_some()) {
-                let body = if copy {
-                    "Capture copied to clipboard"
-                } else if pin {
-                    "Capture pinned"
-                } else {
-                    "Capture saved"
+            if settings.notifications {
+                let body = match (copy, pin, saved.as_ref()) {
+                    (true, _, _) => {
+                        Some(i18n::tr("QObject", "Capture saved to clipboard.").to_owned())
+                    }
+                    (_, true, _) => {
+                        Some(i18n::tr("RustNotifications", "Capture pinned").to_owned())
+                    }
+                    (_, _, Some(path)) => Some(format!(
+                        "{}{}",
+                        i18n::tr("QObject", "Capture saved as "),
+                        path.display()
+                    )),
+                    _ => None,
                 };
-                let _ =
-                    flameshot_platform::desktop::notify_no_reply(&connection, "Flameshot", body)
-                        .await;
+                if let Some(body) = body {
+                    let _ = flameshot_platform::desktop::notify_no_reply(
+                        &connection,
+                        "Flameshot",
+                        &body,
+                    )
+                    .await;
+                }
             }
             if raw {
                 let png = output::encode(&capture, image::ImageFormat::Png)?;

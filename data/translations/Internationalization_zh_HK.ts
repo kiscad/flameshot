@@ -3909,4 +3909,15 @@ You may need to escape the &apos;#&apos; sign as in &apos;\#FFF&apos;</translati
         <translation>設定已在其他地方變更，請重新載入已儲存的設定後再儲存。</translation>
     </message>
 </context>
+<context>
+    <name>RustNotifications</name>
+    <message>
+        <source>Capture pinned</source>
+        <translation>截圖已置頂</translation>
+    </message>
+    <message>
+        <source>Screenshot aborted.</source>
+        <translation>截圖已取消。</translation>
+    </message>
+</context>
 </TS>

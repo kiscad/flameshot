@@ -3678,3 +3678,26 @@ covered the final title corrections, and the rebuilt simplified/traditional Chin
 native suite passes. Native configuration recovery and pin/editor save checks also
 pass. Dynamic diagnostic/help/notification lookups remain in the resource audit;
 this checker is not a claim that every generated UI string is covered.
+
+### Localized capture notifications retain output behavior
+
+CLI capture notifications now use catalog lookups. Save success includes the returned
+saved path with the existing QObject prefix, and clipboard success uses the existing
+translated clipboard message. Pin/cancellation messages have source entries in all
+49 catalogs, Chinese translations and unfinished/source fallback elsewhere. Clipboard
+notification priority when saving and copying together is preserved.
+
+The private notification integration test now runs simplified, traditional and Hong
+Kong Chinese with LC_ALL=C, verifying the actual no-reply D-Bus body for cancellation,
+save, copy and combined save/copy. A private clipboard receiver decodes the delivered
+pixmap and checks pixels; no host clipboard or GUI is used. Save paths include Unicode,
+spaces and a literal %1. The test checks raw PNG pixels, saved files, unchanged INI
+bytes and no-reply flags. Existing disabled-notification, rejection and held-handler
+cases continue to pass; a held notification handler does not delay CLI completion.
+English expectations explicitly use LC_ALL=C to avoid developer locale dependence.
+
+The complete local Rust gate and explicit all-feature/minimal private notification
+runs pass. Catalog tests also verify the Chinese pin/cancellation entries, and the
+literal lookup checker now covers 267 calls. Dynamic configuration diagnostics and
+help prose remain in the resource audit; this is not a claim that all user-facing
+text or installed desktop notification rendering has been validated.

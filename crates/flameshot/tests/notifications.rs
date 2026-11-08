@@ -47,6 +47,17 @@ impl Notifications {
         }
     }
 }
+struct ClipboardReceiver(std::sync::mpsc::Sender<image::RgbaImage>);
+#[zbus::interface(name = "org.flameshot.Flameshot")]
+impl ClipboardReceiver {
+    #[zbus(name = "attachScreenshotToClipboard")]
+    fn attach_screenshot(&self, data: Vec<u8>) -> zbus::fdo::Result<()> {
+        let image = flameshot_core::qt_wire::decode_clipboard(&data)
+            .map_err(|error| zbus::fdo::Error::InvalidArgs(error.to_string()))?;
+        self.0.send(image).unwrap();
+        Ok(())
+    }
+}
 struct CapturePortal(std::sync::Arc<std::sync::Mutex<Option<String>>>);
 #[zbus::interface(name = "org.freedesktop.portal.Screenshot")]
 impl CapturePortal {
@@ -130,6 +141,7 @@ async fn capture_notifications_are_nonblocking_and_preserve_preferences_and_outp
         std::fs::write(config.join("flameshot.ini"),format!("[General]\nshowDesktopNotification={notifications}\nshowAbortNotification={abort}\ncheckForUpdates=false\n")).unwrap();
         let result = Command::new(env!("CARGO_BIN_EXE_flameshot"))
             .env("XDG_CONFIG_HOME", temp.path())
+            .env("LC_ALL", "C")
             .env("XDG_SESSION_TYPE", "wayland")
             .env_remove("DISPLAY")
             .args(["full", "--raw"])
@@ -156,6 +168,7 @@ async fn capture_notifications_are_nonblocking_and_preserve_preferences_and_outp
     .unwrap();
     let failed_notification = Command::new(env!("CARGO_BIN_EXE_flameshot"))
         .env("XDG_CONFIG_HOME", temp.path())
+        .env("LC_ALL", "C")
         .env("XDG_SESSION_TYPE", "wayland")
         .env_remove("DISPLAY")
         .args(["full", "--raw"])
@@ -180,6 +193,7 @@ async fn capture_notifications_are_nonblocking_and_preserve_preferences_and_outp
         let mut command = Command::new(env!("CARGO_BIN_EXE_flameshot"));
         command
             .env("XDG_CONFIG_HOME", temp.path())
+            .env("LC_ALL", "C")
             .env("XDG_CACHE_HOME", temp.path())
             .env("XDG_DATA_HOME", temp.path())
             .env("XDG_SESSION_TYPE", "wayland")
@@ -210,15 +224,15 @@ async fn capture_notifications_are_nonblocking_and_preserve_preferences_and_outp
         );
         assert_eq!(result.status.code(), Some(if success { 0 } else { 2 }));
         let body = if success {
-            "Capture saved"
+            format!("Capture saved as {}", destination.display())
         } else {
-            "Screenshot aborted."
+            "Screenshot aborted.".to_owned()
         };
         assert_eq!(
             received
                 .recv_timeout(std::time::Duration::from_secs(2))
                 .unwrap(),
-            (body.into(), true)
+            (body, true)
         );
         if success {
             assert_eq!(
@@ -230,5 +244,94 @@ async fn capture_notifications_are_nonblocking_and_preserve_preferences_and_outp
             assert!(result.stdout.is_empty());
         }
         gate.add_permits(1);
+    }
+    hold.store(false, std::sync::atomic::Ordering::SeqCst);
+    let (clipboard_sender, clipboard_received) = std::sync::mpsc::channel();
+    let _clipboard = zbus::connection::Builder::session()
+        .unwrap()
+        .name("org.flameshot.Flameshot")
+        .unwrap()
+        .serve_at("/", ClipboardReceiver(clipboard_sender))
+        .unwrap()
+        .build()
+        .await
+        .unwrap();
+    for locale in ["zh_CN", "zh_TW", "zh_HK"] {
+        let text = format!(
+            "[General]\nuiLanguage={locale}\nshowDesktopNotification=true\nshowAbortNotification=true\ncheckForUpdates=false\n"
+        );
+        std::fs::write(config.join("flameshot.ini"), &text).unwrap();
+        let tr = flameshot_core::i18n::Translator::new(locale);
+        for operation in ["cancel", "save", "copy", "save-copy"] {
+            *source_uri.lock().unwrap() =
+                (operation != "cancel").then(|| format!("file://{}", source.display()));
+            let destination = temp
+                .path()
+                .join(format!("{locale} {operation} 截图 %1.png"));
+            let mut command = Command::new(env!("CARGO_BIN_EXE_flameshot"));
+            command
+                .env("XDG_CONFIG_HOME", temp.path())
+                .env("LC_ALL", "C")
+                .env("XDG_SESSION_TYPE", "wayland")
+                .env_remove("DISPLAY")
+                .env_remove("WAYLAND_DISPLAY")
+                .args(["full", "--raw"]);
+            let body = match operation {
+                "save" => {
+                    command.arg("--path").arg(&destination);
+                    format!(
+                        "{}{}",
+                        tr.translate("QObject", "Capture saved as "),
+                        destination.display()
+                    )
+                }
+                "copy" | "save-copy" => {
+                    command.arg("--clipboard");
+                    if operation == "save-copy" {
+                        command.arg("--path").arg(&destination);
+                    }
+                    tr.translate("QObject", "Capture saved to clipboard.")
+                        .to_owned()
+                }
+                _ => tr
+                    .translate("RustNotifications", "Screenshot aborted.")
+                    .to_owned(),
+            };
+            let result = command.output().unwrap();
+            assert_eq!(
+                result.status.code(),
+                Some(if operation == "cancel" { 2 } else { 0 }),
+                "{result:?}"
+            );
+            assert_eq!(
+                received
+                    .recv_timeout(std::time::Duration::from_secs(2))
+                    .unwrap(),
+                (body, true)
+            );
+            if operation == "cancel" {
+                assert!(result.stdout.is_empty());
+            } else {
+                assert_eq!(
+                    image::load_from_memory(&result.stdout).unwrap().to_rgba8(),
+                    pixels
+                );
+            }
+            if operation == "copy" || operation == "save-copy" {
+                assert_eq!(
+                    clipboard_received
+                        .recv_timeout(std::time::Duration::from_secs(2))
+                        .unwrap(),
+                    pixels
+                );
+            }
+            if operation == "save" || operation == "save-copy" {
+                assert_eq!(image::open(&destination).unwrap().to_rgba8(), pixels);
+            }
+            assert_eq!(
+                std::fs::read_to_string(config.join("flameshot.ini")).unwrap(),
+                text
+            );
+        }
     }
 }

@@ -4106,4 +4106,15 @@ You can find me in the system tray.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>RustNotifications</name>
+    <message>
+        <source>Capture pinned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screenshot aborted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

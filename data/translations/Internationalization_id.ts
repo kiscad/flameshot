@@ -3915,4 +3915,15 @@ Anda mungkin perlu untuk escape dari tanda &apos;#&apos; seperti pada &apos;\#FF
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>RustNotifications</name>
+    <message>
+        <source>Capture pinned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screenshot aborted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

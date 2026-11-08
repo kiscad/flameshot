@@ -3874,4 +3874,15 @@ Sinun on ehkä vältettävä &quot;#&quot; merkkiä kuten &quot;\#FFF&quot;</tra
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>RustNotifications</name>
+    <message>
+        <source>Capture pinned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screenshot aborted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

@@ -3938,4 +3938,15 @@ Lehet, hogy meg kepp adnod egy &apos;\&apos; karaktert a &apos;#&apos; karakter 
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>RustNotifications</name>
+    <message>
+        <source>Capture pinned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screenshot aborted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>

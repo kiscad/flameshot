@@ -148,6 +148,8 @@ mod tests {
             for (context, source) in [
                 ("ShortcutsWidget", "Close Active Pinned Window"),
                 ("QObject", "Capture saved as "),
+                ("RustNotifications", "Capture pinned"),
+                ("RustNotifications", "Screenshot aborted."),
                 ("QObject", "Save Error"),
                 ("QObject", "Error while saving to clipboard"),
             ] {

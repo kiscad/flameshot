@@ -3905,4 +3905,15 @@ Puede ser que necesites preceder el símbolo &quot;#&quot; con &quot;\&quot;, co
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>RustNotifications</name>
+    <message>
+        <source>Capture pinned</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Screenshot aborted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
 </TS>
