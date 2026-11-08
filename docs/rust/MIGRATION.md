@@ -32,7 +32,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update, upload and history confirmation/cancellation/failure/retry/deletion pass against loopback; external service availability is not an acceptance dependency |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI, installed X11 and wlroots Wayland suites verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
-| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
+| Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME integer/fractional mixed scale and normalized left-of-primary layout pass (see GNOME-VALIDATION.md); GNOME IME and remaining environment coverage are pending |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
 
 ## Compatibility facts from source
@@ -3911,3 +3911,18 @@ with clean post-run package verification. The temporary container was removed.
 WAYLAND-TRANSFORM-VALIDATION.md records versions, hashes, setup and evidence. This
 closes the core geometry software acceptance item and adds installed Fedora wlroots
 coverage; remaining GNOME/IME, sandbox/provider and other distribution gates remain.
+
+### GNOME mixed/fractional layout and native clipboard
+
+The private GNOME fixture now applies temporary DisplayConfig layouts with a 2x or
+Mutter-supported ~1.5x primary and a 1x secondary to its left. It verifies actual
+scale/logical dimensions, independent Shell screenshot dimensions, output crops,
+primary/secondary fullscreen placement, export/cancel and real portal refusal.
+A negative-coordinate request is rejected atomically by Mutter, then the test uses
+the normalized left-of-primary layout instead of claiming negative global support.
+
+Both mixed modes pass; fractional mode also passes native Wayland PNG/JPEG/Unicode
+clipboard receipt and editor clipboard lifetime through the Xwayland bridge. The
+original two-monitor baseline passes as well. GNOME-VALIDATION.md records versions,
+exact dimensions, commands and evidence. These checks close the GNOME layout items;
+Chinese IME and the remaining package/sandbox acceptance work are still pending.

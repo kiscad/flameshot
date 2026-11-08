@@ -109,8 +109,15 @@ IBus, the default renderer and a test-only acknowledgement
 of the otherwise absent systemd X11 session-services target. It does not modify the
 compositor clipboard bridge. Add `--multi-monitor` for a 1024x768 plus 640x480 virtual desktop, including
 second-output pixel checks and explicit/interactive editor placement. The flags can
-be combined. GNOME IME, mixed-scale and negative-origin acceptance remain separate
-checks; this fixture is not part of the hosted CI job yet.
+be combined. `--mixed-scale` uses 2048x1536 and 1280x960 virtual outputs with 2x/1x
+scales, placing the secondary to the left of the primary. `--fractional-scale`
+selects Mutter's supported scale nearest 1.5x for the primary and implies the mixed
+layout. Both modes verify temporary configuration, screen crops, fullscreen placement
+on both monitors and exports against independent GNOME screenshot dimensions.
+GNOME rejects negative global monitor coordinates; the fixture checks rejection
+leaves the layout unchanged, then tests the normalized left-of-primary layout.
+Fractional mode with `--clipboard` also passed native Wayland PNG/JPEG/text receipt.
+GNOME IME remains a separate check; this fixture is not part of hosted CI yet.
 
 Desktop tests create private display/bus sessions and isolated XDG directories.
 They disable automatic update checking and never perform real Imgur uploads.

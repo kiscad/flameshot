@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Private headless GNOME Wayland fixture. Usage: gnome_smoke.py FLAMESHOT_BINARY [--clipboard] [--multi-monitor]
+"""Private headless GNOME Wayland fixture. Usage: gnome_smoke.py FLAMESHOT_BINARY [--clipboard] [--multi-monitor] [--mixed-scale] [--fractional-scale]
 Requires GNOME Shell, GNOME/GTK portals, PyGObject and their normal runtime libraries.
 Debug input/evaluation is enabled only in the disposable private compositor.
 """
@@ -14,6 +14,8 @@ import tempfile
 import time
 
 binary=Path(sys.argv[1]).resolve()
+if '--fractional-scale' in sys.argv and '--mixed-scale' not in sys.argv:sys.argv.append('--mixed-scale')
+if '--mixed-scale' in sys.argv and '--multi-monitor' not in sys.argv:sys.argv.append('--multi-monitor')
 if '--inside' not in sys.argv:
     with tempfile.TemporaryDirectory(prefix='flameshot-gnome-') as directory:
         root=Path(directory)
@@ -56,6 +58,9 @@ export default class TestInput extends Extension {
 ''')
         settings=root/'config/glib-2.0/settings';settings.mkdir(parents=True)
         (settings/'keyfile').write_text("[org/gnome/shell]\nenabled-extensions=['flameshot-test@local']\ndisable-user-extensions=false\nwelcome-dialog-last-shown-version='99.0'\n[org/gnome/desktop/interface]\nenable-animations=false\n")
+        if '--mixed-scale' in sys.argv:
+            with (settings/'keyfile').open('a') as settings_file:
+                settings_file.write("[org/gnome/mutter]\nexperimental-features=['scale-monitor-framebuffer']\n")
         (root/'config/user-dirs.dirs').write_text(f'XDG_PICTURES_DIR="{root}/pictures"\n')
         config=root/'config/flameshot';config.mkdir()
         (config/'flameshot.ini').write_text('[General]\ncheckForUpdates=false\nshowStartupLaunchMessage=false\nshowDesktopNotification=false\n')
@@ -75,7 +80,7 @@ export default class TestInput extends Extension {
             ibus=helpers/'ibus-daemon';ibus.write_text('#!/bin/sh\nexit 0\n');ibus.chmod(0o700)
             env['PATH']=str(helpers)+':'+env.get('PATH','')
 
-        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),*[flag for flag in ['--clipboard','--multi-monitor'] if flag in sys.argv],'--inside',str(root)],env=env,timeout=100)
+        result=subprocess.run(['dbus-run-session','--config-file',str(bus),'--',sys.executable,__file__,str(binary),*[flag for flag in ['--clipboard','--multi-monitor','--mixed-scale','--fractional-scale'] if flag in sys.argv],'--inside',str(root)],env=env,timeout=100)
         if result.returncode:
             for log in root.glob('*.log'):print(log.name,log.read_text(errors='replace')[-7000:],file=sys.stderr)
         sys.exit(result.returncode)
@@ -113,8 +118,15 @@ def click_shell_button(label):
 def key(value):
     evaluate(f'global.flameshotTest.key({value},true)');time.sleep(.05)
     evaluate(f'global.flameshotTest.key({value},false)')
+def wait_editor_monitor(index):
+    deadline=time.monotonic()+5
+    while True:
+        position=evaluate("(()=>{const w=global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot').meta_window;const r=w.get_frame_rect();return {monitor:w.get_monitor(),rect:{x:r.x,y:r.y,width:r.width,height:r.height}}})()")
+        if position['monitor']==index and position['rect']==monitors[index]:return
+        assert time.monotonic()<deadline,position
+        time.sleep(.1)
 try:
-    shell=start('shell',['gnome-shell','--headless','--wayland','--virtual-monitor','1024x768',*(['--virtual-monitor','640x480'] if '--multi-monitor' in sys.argv else []),'--wayland-display','flameshot-test',*([] if '--clipboard' in sys.argv else ['--no-x11']),'--sm-disable'])
+    shell=start('shell',['gnome-shell','--headless','--wayland','--virtual-monitor','2048x1536' if '--mixed-scale' in sys.argv else '1024x768',*(['--virtual-monitor','1280x960' if '--mixed-scale' in sys.argv else '640x480'] if '--multi-monitor' in sys.argv else []),'--wayland-display','flameshot-test',*([] if '--clipboard' in sys.argv else ['--no-x11']),'--sm-disable'])
     print('Private GNOME shell PID:',shell.pid,flush=True)
     deadline=time.monotonic()+15
     while True:
@@ -132,6 +144,38 @@ try:
         assert time.monotonic()<deadline,'GNOME overview did not hide'
         time.sleep(.1)
     print('PASS: private GNOME compositor and virtual input initialized',flush=True)
+    expected_layout=None
+    if '--mixed-scale' in sys.argv:
+        destination='org.gnome.Mutter.DisplayConfig';path='/org/gnome/Mutter/DisplayConfig'
+        state=call(destination,path,destination+'.GetCurrentState','()',())
+        outputs=state[1];assert len(outputs)==2
+        modes=[next(mode for mode in output[1] if mode[6].get('is-current')) for output in outputs]
+        target_scale=1.5 if '--fractional-scale' in sys.argv else 2.0
+        primary_scale=min(modes[0][5],key=lambda value:abs(value-target_scale))
+        assert abs(primary_scale-target_scale)<.01,(target_scale,modes[0][5])
+        left_width,left_height=modes[1][1:3]
+        configs=[(0,0,primary_scale,0,True,[(outputs[0][0][0],modes[0][0],{})]),
+                 (-left_width,0,1.0,0,False,[(outputs[1][0][0],modes[1][0],{})])]
+        signature='(uua(iiduba(ssa{sv}))a{sv})'
+        properties={'layout-mode':GLib.Variant('u',1)}
+        try:
+            call(destination,path,destination+'.ApplyMonitorsConfig',signature,(state[0],1,configs,properties))
+            raise AssertionError('GNOME unexpectedly accepted a negative global monitor origin')
+        except GLib.Error as error:
+            assert Gio.DBusError.get_remote_error(error)=='org.freedesktop.DBus.Error.InvalidArgs',error
+            assert 'position' in str(error),error
+        assert call(destination,path,destination+'.GetCurrentState','()',())==state,'Rejected layout changed monitor state'
+        configs[0]=(left_width,0,*configs[0][2:]);configs[1]=(0,0,*configs[1][2:])
+        call(destination,path,destination+'.ApplyMonitorsConfig',signature,(state[0],1,configs,properties))
+        expected_layout=[dict(x=left_width,y=0,width=round(modes[0][1]/primary_scale),height=round(modes[0][2]/primary_scale)),
+                         dict(x=0,y=0,width=left_width,height=left_height)]
+        deadline=time.monotonic()+5
+        while evaluate('Main.layoutManager.monitors.map(m=>({x:m.x,y:m.y,width:m.width,height:m.height}))')!=expected_layout:
+            assert time.monotonic()<deadline,'Mixed-scale monitor layout did not settle'
+            time.sleep(.1)
+        applied=call(destination,path,destination+'.GetCurrentState','()',())
+        assert applied[3]['layout-mode']==1 and [monitor[2] for monitor in applied[2]]==[primary_scale,1.0],applied
+        print('PASS: GNOME rejects negative origins atomically and applies left-of-primary mixed scale',primary_scale,flush=True)
     if '--clipboard' in sys.argv:
         env['DISPLAY']=evaluate("GLib.getenv('DISPLAY')")
         env['XAUTHORITY']=evaluate("GLib.getenv('XAUTHORITY')")
@@ -156,9 +200,19 @@ try:
     monitors=evaluate('Main.layoutManager.monitors.map(m=>({x:m.x,y:m.y,width:m.width,height:m.height}))')
     print('Private GNOME outputs:',monitors,flush=True)
     assert len(monitors)==(2 if '--multi-monitor' in sys.argv else 1)
-    desktop_size=(max(m['x']+m['width'] for m in monitors),max(m['y']+m['height'] for m in monitors))
+    logical_size=(max(m['x']+m['width'] for m in monitors),max(m['y']+m['height'] for m in monitors))
     evaluate('global.flameshotTest.paint()')
     time.sleep(.3)
+    import struct,io,math
+    from PIL import Image
+    reference_path=root/'layout-reference.png'
+    call('org.gnome.Shell.Screenshot','/org/gnome/Shell/Screenshot','org.gnome.Shell.Screenshot.Screenshot','(bbs)',(False,False,str(reference_path)))
+    desktop_size=Image.open(reference_path).size
+    sx,sy=desktop_size[0]/logical_size[0],desktop_size[1]/logical_size[1]
+    edge=lambda value:math.floor(value+.5)
+    screen_sizes=[(edge((m['x']+m['width'])*sx)-edge(m['x']*sx),edge((m['y']+m['height'])*sy)-edge(m['y']*sy)) for m in monitors]
+    primary_sample=(edge((monitors[0]['x']+200)*sx),edge((monitors[0]['y']+300)*sy))
+
     capture=subprocess.Popen([str(binary),'full','--raw'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
     processes.append(capture)
     deadline=time.monotonic()+12
@@ -171,19 +225,17 @@ try:
         time.sleep(.5)
     out,err=capture.communicate(timeout=10)
     assert capture.returncode==0,err.decode()
-    import struct,io
-    from PIL import Image
     artifacts=Path(os.environ.get('FLAMESHOT_TEST_ARTIFACT_DIR',str(binary.parent.parent)))
     artifacts.mkdir(parents=True,exist_ok=True)
     (artifacts/'rust-gnome-full.png').write_bytes(out)
-    assert Image.open(io.BytesIO(out)).getpixel((200,300))[:3]==(32,64,96)
+    assert Image.open(io.BytesIO(out)).getpixel(primary_sample)[:3]==(32,64,96)
     assert out[:8]==b'\x89PNG\r\n\x1a\n'
     assert struct.unpack('>II',out[16:24])==desktop_size
     print('PASS: native GNOME screenshot portal exports',desktop_size,'PNG',flush=True)
     screen=subprocess.run([str(binary),'screen','--number','0','--raw'],env=env,capture_output=True,timeout=20)
     assert screen.returncode==0,screen.stderr.decode()
     assert screen.stdout[:8]==b'\x89PNG\r\n\x1a\n'
-    assert struct.unpack('>II',screen.stdout[16:24])==(1024,768)
+    assert struct.unpack('>II',screen.stdout[16:24])==screen_sizes[0],screen_sizes
     for accept in [True,False]:
         args=['gui','--raw']+(['--region','80x60+200+300'] if accept else [])
         editor=subprocess.Popen([str(binary),*args],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
@@ -205,6 +257,7 @@ try:
         time.sleep(.3)
         if '--multi-monitor' in sys.argv:
             key(49);time.sleep(.3)
+        wait_editor_monitor(0)
         key(65293 if accept else 65307)
         try:
             out,err=editor.communicate(timeout=10)
@@ -220,11 +273,11 @@ try:
         else:assert not out
     print('PASS: GNOME screen capture, native Wayland editor export and Escape cancellation',flush=True)
     if '--multi-monitor' in sys.argv:
-        assert monitors==[dict(x=0,y=0,width=1024,height=768),dict(x=1024,y=0,width=640,height=480)]
+        assert monitors==(expected_layout or [dict(x=0,y=0,width=1024,height=768),dict(x=1024,y=0,width=640,height=480)])
         second=subprocess.run([str(binary),'screen','--number','1','--raw'],env=env,capture_output=True,timeout=20)
         assert second.returncode==0,second.stderr.decode()
         image=Image.open(io.BytesIO(second.stdout))
-        assert image.size==(640,480) and image.getpixel((200,300))[:3]==(160,80,32)
+        assert image.size==screen_sizes[1] and image.getpixel((200,300))[:3]==(160,80,32)
         for interactive in [False,True]:
             args=['gui','--raw','--region','80x60+200+300' if interactive else 'screen1']
             editor=subprocess.Popen([str(binary),*args],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
@@ -236,18 +289,13 @@ try:
             evaluate("global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot').meta_window.activate(global.get_current_time())")
             time.sleep(.3)
             if interactive:key(50)
-            deadline=time.monotonic()+5
-            while True:
-                position=evaluate("(()=>{const w=global.get_window_actors().find(a=>a.meta_window.get_title()==='Flameshot').meta_window;const r=w.get_frame_rect();return {monitor:w.get_monitor(),rect:{x:r.x,y:r.y,width:r.width,height:r.height}}})()")
-                if position['monitor']==1 and position['rect']==monitors[1]:break
-                assert time.monotonic()<deadline,position
-                time.sleep(.1)
+            wait_editor_monitor(1)
             time.sleep(.3)
             key(65293)
             out,err=editor.communicate(timeout=10)
             assert editor.returncode==0,err.decode()
             image=Image.open(io.BytesIO(out))
-            assert image.size==((80,60) if interactive else (640,480)),image.size
+            assert image.size==((80,60) if interactive else screen_sizes[1]),image.size
             assert image.getpixel((40,30))[:3]==(160,80,32)
         print('PASS: GNOME second-monitor crop, explicit/interactive selection and fullscreen placement',flush=True)
 
@@ -307,7 +355,7 @@ try:
                 assert all(abs(a-b)<=tolerance for a,b in zip(pixel,(32,64,96))),pixel
             receiver.destroy()
             while context.pending():context.iteration(False)
-        read_native_clipboard(*desktop_size,(200,300))
+        read_native_clipboard(*desktop_size,primary_sample)
         print('PASS: clipboard survives capture exit and crosses Xwayland into a native Wayland client',flush=True)
         editor=subprocess.Popen([str(binary),'gui','--region','80x60+200+300'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
         processes.append(editor)
@@ -330,7 +378,7 @@ try:
         config.write_text(config.read_text()+'useJpgForClipboard=true\n')
         copied=subprocess.run([str(binary),'full','--clipboard'],env=env,capture_output=True,timeout=20)
         assert copied.returncode==0 and not copied.stdout,copied.stderr.decode()
-        read_native_clipboard(*desktop_size,(200,300),tolerance=2,mime='image/jpeg')
+        read_native_clipboard(*desktop_size,primary_sample,tolerance=2,mime='image/jpeg')
         text='剪贴板 αβ\n第二行'
         call('org.flameshot.Flameshot','/','org.flameshot.Flameshot.attachTextToClipboard','(ss)',(text,''))
         read_native_clipboard(text=text,mime=None)
