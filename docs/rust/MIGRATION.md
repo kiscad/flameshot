@@ -3989,3 +3989,13 @@ including strict confinement, architectures, command, GPU extension, D-Bus slot 
 plugs. These are stronger current-source manifest checks, but local namespace/provider
 limitations still prevent claiming SDK compilation or installed strict confinement.
 Hosted sandbox workflows remain required.
+
+### Current offline Rust source archive
+
+The refreshed vendored archive at `022d6dafa` was extracted into a clean directory
+and `cargo test --frozen --workspace --all-features` passed with an empty Cargo home
+and separate target directory. It contains no root C++ `src/` or CMakeLists.txt;
+those remain only in the mixed checkout as a behavioral reference. The archive hash
+and report are recorded in SOURCE-VALIDATION.md and `target/current-source-review-2`.
+This proves a portable Rust source snapshot while final checkout cleanup remains
+pending the explicit acceptance/package gates.

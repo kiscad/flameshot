@@ -33,3 +33,24 @@ and RELEASE-VALIDATION.md. The main checkout still retains its C++ reference tre
 
 A machine-readable local record is available at target/rust-source-review.json.
 Later source changes require a new archive and validation snapshot.
+
+## Current archive refresh
+
+The current archive at revision `022d6dafa9f10228aa6023bef901f4925944d4a5` is
+`target/current-rust-source.tar.gz` (79,765,392 bytes, SHA-256
+`bdd735cffcb2a87ec134c01ed38c22830a7a8041458e9bf8cb774c942105e52a`). It was
+extracted into a fresh directory and built with `CARGO_NET_OFFLINE=true`, an empty
+Cargo home and a separate target directory:
+
+```sh
+cargo test --frozen --workspace --all-features
+```
+
+The complete workspace test run passed. The archive has no legacy root `src/` or
+root `CMakeLists.txt`; it contains the Rust workspace, vendored dependencies,
+packaging metadata, data and test fixtures. Only four Cargo-home bookkeeping files
+were created, so no registry download was hidden by the test. This validates the
+portable Rust source snapshot independently of the mixed reference checkout.
+
+The main checkout still retains the C++ reference tree until the final Linux
+acceptance and package/provider audit authorizes its removal.
