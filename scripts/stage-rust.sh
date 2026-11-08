@@ -25,6 +25,8 @@ sed '/<translation type="qt">flameshot<\/translation>/d' data/appdata/org.flames
 install -Dm644 data/img/app/org.flameshot.Flameshot.svg "$package_root/share/icons/hicolor/scalable/apps/org.flameshot.Flameshot.svg"
 install -Dm644 data/img/app/org.flameshot.Flameshot.png "$package_root/share/icons/hicolor/128x128/apps/org.flameshot.Flameshot.png"
 install -Dm644 LICENSE "$package_root/share/licenses/flameshot/LICENSE"
+install -Dm644 third-party/winit/LICENSE "$package_root/share/licenses/flameshot/winit-LICENSE"
+install -Dm644 third-party/README.md "$package_root/share/licenses/flameshot/winit-patch.txt"
 install -Dm644 data/img/app/flameshotLogoLicense.txt "$package_root/share/licenses/flameshot/logo-license.txt"
 install -Dm644 data/img/material/LICENSE.txt "$package_root/share/licenses/flameshot/material-icons-license.txt"
 chmod 644 "$package_root/share/applications/org.flameshot.Flameshot.desktop" \

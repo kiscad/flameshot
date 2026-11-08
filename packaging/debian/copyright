@@ -9,6 +9,13 @@ Comment:
  The author copied a few lines of code from KSnapshot regiongrabber.cpp
  revision 796531 (LGPL).
 
+Files: third-party/winit/*
+Copyright: The winit contributors
+           Pierre Krieger <pierre.krieger1708@gmail.com>
+License: Apache-2.0
+Comment:
+ Includes a local X11 wheel-button release fix described in third-party/README.md.
+
 Files: debian/*
 Copyright: 2017 Juanma Navarro Mañez <juanma1980@gmail.com>
            2018 Boyuan Yang <byang@debian.org>
@@ -113,7 +120,7 @@ License: Expat
  THE SOFTWARE.
 
 License: Apache-2.0
- Google Material Design Icons are licensed under Apache License 2.0.
+ Google Material Design Icons and winit are licensed under Apache License 2.0.
  .
  On Debian systems, the complete text of Apache License 2.0 can be
  found in "/usr/share/common-licenses/Apache-2.0".

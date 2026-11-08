@@ -40,6 +40,9 @@ with tempfile.TemporaryDirectory(prefix='flameshot-stage-') as directory:
         for relative in ['share/man/man1/flameshot.1','share/bash-completion/completions/flameshot','share/zsh/site-functions/_flameshot','share/fish/vendor_completions.d/flameshot.fish','share/dbus-1/interfaces/org.flameshot.Flameshot.xml']:
             assert (payload/relative).is_file(),relative
         assert interface_contract(payload/'share/dbus-1/interfaces/org.flameshot.Flameshot.xml')==reference
+        for source, installed_name in [('third-party/winit/LICENSE','winit-LICENSE'),
+                                       ('third-party/README.md','winit-patch.txt')]:
+            assert (payload/'share/licenses/flameshot'/installed_name).read_bytes()==Path(source).read_bytes()
         assert not list(payload.rglob('*.qm'))
         for path in (payload/'share').rglob('*'):
             if path.is_file():assert stat.S_IMODE(path.stat().st_mode)==0o644,path
