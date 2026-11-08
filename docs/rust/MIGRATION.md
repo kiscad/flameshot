@@ -4014,3 +4014,13 @@ for the Rust source set. The final local Rust gate, optimized release/staging ch
 and offline vendored archive validation pass after cleanup. Hosted CI and provider
 build limitations remain packaging evidence boundaries; they no longer prevent the
 repository itself from being a pure Rust project.
+
+### Final requirement-by-requirement audit
+
+FINAL-AUDIT.md records the current evidence for each migration requirement. The
+repository is now pure Rust at the project level: C++/Qt/CMake source, workflows,
+formatting configs, AppVeyor and obsolete Windows installer assets are gone. Native
+Linux behavior, compatibility, network flows and recorded package environments pass
+as documented. Flatpak/Snap provider builds, complete Nix realization and hosted CI
+remain explicitly unverified because their external environments are unavailable;
+the audit does not inflate static evidence into passing runtime claims.
