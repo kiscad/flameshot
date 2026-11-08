@@ -3381,3 +3381,33 @@ only wheel-button releases, preserving ordinary buttons and XI2 axis scrolling.
 Its original source and licenses are retained under `third-party/winit`; Cargo,
 source-archive export and Nix source filtering include this dependency. The native
 fixture's expected single-step size remains unchanged.
+
+### Patched-wheel release validation (`96c4c60c`)
+
+The debug and optimized builds now both pass the unchanged one-step pin zoom
+expectation. The native Chinese-window fixture also verifies a second complete
+wheel click and reverse scrolling. The optimized staged executable has SHA-256
+`1c3dd702093b067936fab5084d784194ebc2f5df02683a6eec8475acdfa356b9`;
+its dynamic dependencies contain no missing libraries or Qt libraries. Staging,
+Chinese-window lifecycle, pin save/overwrite/retry/clipboard, X11 full/screen/editor
+and Sway/IME suites pass. Sway includes mixed-scale negative-origin capture, grid, pixel picking,
+pin-save restoration and clipboard ownership after closing the pin.
+
+The full local `scripts/check-rust.sh` gate passes with the patched dependency:
+formatting, Clippy, workspace tests, private-bus integration, default/all/minimal
+feature configurations and shell completions. Hosted CI remains unverified.
+
+The first winit optimized compilation remained active in LLVM. A separate invocation
+with the same compiler arguments and environment, changing only its output directory,
+completed successfully. After stopping only that original owned build, the standard
+Cargo retry completed in 19.55 seconds without changing optimization settings. The
+compiler anomaly's underlying cause remains undetermined.
+
+The clean `96c4c60c` source archive has SHA-256
+`e88735c8231815f9f294a4112f5e81b53ed0eff70509edb876423b7d6d7cddba`.
+All 508 tracked files under crates, third-party, data, docs/rust and tests/rust
+were compared byte-for-byte after extraction. With a new empty Cargo home,
+`cargo metadata --frozen --offline` resolves the local patched winit and
+`cargo build --frozen --offline -p flameshot --all-features -j 8` succeeds
+in 61 seconds. This verifies source-archive compilation, not installed sandbox
+runtime behavior or a fresh optimized build from the archive.
