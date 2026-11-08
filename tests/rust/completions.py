@@ -46,6 +46,12 @@ with tempfile.TemporaryDirectory(prefix='flameshot completion ') as directory:
         zsh = tools/'bin/zsh'
         subprocess.run([fish,'--no-config','-n',scripts/'flameshot.fish'],env=shell_env,check=True)
         subprocess.run([zsh,'-n',scripts/'flameshot.zsh'],env=shell_env,check=True)
+        zsh_source = (scripts/'flameshot.zsh').read_text()
+        for command in ['gui','screen','full','config']:
+            body = re.search(r'_flameshot_'+command+r'_opts=\((.*?)\n\)', zsh_source, re.S)
+            assert body is not None, command
+            usage = subprocess.check_output([binary,command,'--help'],text=True,env=env)
+            assert set(re.findall(r'--[a-z][a-z-]*',body.group(1))) == set(re.findall(r'--[a-z][a-z-]*',usage)), command
         def fish_complete(line):
             code = 'set -p fish_function_path $argv[1]; source $argv[2]; complete -C $argv[3]'
             result = subprocess.run([fish,'--no-config','-c',code,'--',tools/'usr/share/fish/functions',scripts/'flameshot.fish',line],
@@ -59,3 +65,6 @@ with tempfile.TemporaryDirectory(prefix='flameshot completion ') as directory:
         for optional in ['history','updates']:
             assert (optional in fish_complete('flameshot ')) == bool(re.search(r'^  '+optional+r'\s',help_text,re.M))
         print('PASS: Fish live completion and Fish/Zsh syntax')
+
+        from zsh_completions import check_zsh
+        check_zsh(binary, tools, scripts, shell_env, help_text)

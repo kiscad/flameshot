@@ -24,7 +24,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Rasterization | Shared preview/export, text shaping, pixelation tests | Shared renderer and secure/insecure pixelation tests pass; exact Qt raster equivalence is not a goal |
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
-| CLI | Existing commands/options, stdout PNG, exit codes | Commands, numeric/repetition/help rules, parse statuses and completions implemented/tested; final command/shell behavior audit remains |
+| CLI | Existing commands/options, stdout PNG, exit codes | Baseline option scopes, parse/value rules, stream/status behavior, feature gating and live Bash/Fish/Zsh completions tested; see CLI-COMPATIBILITY.md |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Qt reference metadata/wire fixtures, all four public methods, reply/no-reply dispatch, malformed payloads and singleton ownership tested; see DBUS-COMPATIBILITY.md |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | INI/QVariant round trips, unknown-data preservation, runtime fallback, repair UI, atomic writes, idle reload, conflict handling and save-directory semantics tested |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
@@ -3608,3 +3608,22 @@ The contract and evidence mapping are recorded in DBUS-COMPATIBILITY.md. This cl
 the public-protocol audit item, without closing installed sandbox or desktop gates.
 The minimal-feature private-bus daemon test and all-feature daemon-test Clippy check
 also pass. The native wrapper's wrong-executable rejection was tested explicitly.
+
+### CLI and shell contract audit
+
+A baseline fixture now fixes the original Linux command/option scopes, primary short
+aliases and flag/value shapes. The schema test passes with all and minimal features.
+Additional headless integration verifies optional history/updates availability and
+the help extension, without creating configuration files or requiring a desktop.
+Existing parse/repetition/config-write tests pass in both feature configurations;
+private portal PNG-output and daemon signal/bus-loss tests also pass.
+
+The audit identified that Zsh previously had only syntax validation. Completion tests
+now compare its declared option scopes with CLI help and drive actual ZLE completion
+inside a disposable PTY. The fixture disables history/cache writes, supplies isolated
+completion functions and captures the edited command line without executing it.
+Contexts, booleans, numeric/flag distinctions, escaped space-containing filenames and
+optional commands pass in all-feature and minimal builds. Bash/Fish checks and
+all-feature Clippy pass as well. CLI-COMPATIBILITY.md maps the contract to its evidence;
+the CLI/shell audit is closed, while separate desktop, resource and packaging gates
+remain active.

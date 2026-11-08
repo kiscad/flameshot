@@ -828,6 +828,47 @@ fn unavailable(error: &portal::CaptureError) -> bool {
 mod cli_tests {
     use super::*;
     #[test]
+    fn legacy_commands_keep_their_exact_option_scopes_and_value_shapes() {
+        let reference = include_str!("../tests/fixtures/legacy-cli-options.tsv");
+        let mut expected: std::collections::BTreeMap<
+            &str,
+            std::collections::BTreeSet<(String, String, bool)>,
+        > = Default::default();
+        for line in reference.lines() {
+            let fields: Vec<_> = line.split('\t').collect();
+            assert_eq!(fields.len(), 4);
+            assert!(expected.entry(fields[0]).or_default().insert((
+                fields[1].into(),
+                fields[2].into(),
+                fields[3] == "1"
+            )));
+        }
+        assert_eq!(expected.len(), 6);
+        let mut schema = Cli::command();
+        schema.build();
+        for (name, expected) in expected {
+            let command = if name == "root" {
+                &schema
+            } else {
+                schema.find_subcommand(name).unwrap()
+            };
+            let actual = command
+                .get_arguments()
+                .filter(|argument| !argument.is_hide_set())
+                .map(|argument| {
+                    (
+                        argument.get_long().unwrap().to_owned(),
+                        argument
+                            .get_short()
+                            .map_or_else(|| "-".into(), |short| short.to_string()),
+                        argument.get_action().takes_values(),
+                    )
+                })
+                .collect();
+            assert_eq!(expected, actual, "Option contract for {name}");
+        }
+    }
+    #[test]
     fn legacy_shape_distinguishes_help_from_option_values() {
         for args in [
             vec!["flameshot", "--help"],

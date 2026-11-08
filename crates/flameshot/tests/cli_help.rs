@@ -2,6 +2,43 @@
 use std::process::Command;
 
 #[test]
+fn optional_commands_and_help_extension_are_headless_and_match_build_features() {
+    let root = tempfile::tempdir().unwrap();
+    for (command, available) in [
+        ("history", cfg!(feature = "imgur")),
+        ("updates", cfg!(feature = "update-check")),
+        ("help", true),
+    ] {
+        let arguments = if command == "help" {
+            vec!["help", "config"]
+        } else {
+            vec![command, "--help"]
+        };
+        let output = Command::new(env!("CARGO_BIN_EXE_flameshot"))
+            .env("XDG_CONFIG_HOME", root.path())
+            .env("DBUS_SESSION_BUS_ADDRESS", "not-a-valid-dbus-address")
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .args(arguments)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(0), "{command}: {output:?}");
+        if available {
+            assert!(
+                !output.stdout.is_empty() && output.stderr.is_empty(),
+                "{command}: {output:?}"
+            );
+        } else {
+            assert!(
+                output.stdout.is_empty() && !output.stderr.is_empty(),
+                "{command}: {output:?}"
+            );
+        }
+    }
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+}
+
+#[test]
 fn legacy_version_flag_and_aliases_do_not_start_desktop_services() {
     let temp = tempfile::tempdir().unwrap();
     for flag in ["-v", "-V", "--version"] {
