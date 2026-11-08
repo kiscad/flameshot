@@ -37,3 +37,4 @@ workspace = true
 [dev-dependencies]
 roxmltree = "0.20"
 x11rb = "0.13"
+winit = { version = "0.30", default-features = false, features = ["x11"] }

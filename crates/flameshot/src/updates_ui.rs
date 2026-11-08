@@ -18,6 +18,8 @@ pub fn show() -> anyhow::Result<()> {
                 test_endpoint: None,
                 #[cfg(test)]
                 test_settings_path: None,
+                #[cfg(test)]
+                test_controls: Default::default(),
                 update: None,
                 message: tr("RustUpdates", "Checking for updates…").into(),
             };
@@ -32,6 +34,8 @@ struct Updates {
     test_endpoint: Option<String>,
     #[cfg(test)]
     test_settings_path: Option<std::path::PathBuf>,
+    #[cfg(test)]
+    test_controls: std::collections::HashMap<&'static str, egui::Rect>,
     links: crate::links::LinkOpener,
     job: Option<std::sync::mpsc::Receiver<Result<Option<Update>, String>>>,
     update: Option<Update>,
@@ -111,6 +115,8 @@ impl Updates {
 impl Updates {
     fn ui_contents(&mut self, ui: &mut egui::Ui) {
         self.poll();
+        #[cfg(test)]
+        self.test_controls.clear();
         egui::ScrollArea::vertical()
             .max_height((ui.available_height() - 32.0).max(0.0))
             .show(ui, |ui| {
@@ -124,21 +130,21 @@ impl Updates {
                 if let Some(update) = &self.update {
                     self.links
                         .link(ui, tr("RustUpdates", "Open release page"), &update.url);
-                    if ui
-                        .button(tr("RustUpdates", "Ignore this version"))
-                        .clicked()
-                    {
+                    let ignore = ui.button(tr("RustUpdates", "Ignore this version"));
+                    #[cfg(test)]
+                    self.test_controls.insert("ignore", ignore.rect);
+                    if ignore.clicked() {
                         self.ignore_current();
                     }
                 }
                 self.links.status(ui);
-                if ui
-                    .add_enabled(
-                        self.job.is_none(),
-                        egui::Button::new(tr("RustConfig", "Check for updates")),
-                    )
-                    .clicked()
-                {
+                let check = ui.add_enabled(
+                    self.job.is_none(),
+                    egui::Button::new(tr("RustConfig", "Check for updates")),
+                );
+                #[cfg(test)]
+                self.test_controls.insert("check", check.rect);
+                if check.clicked() {
                     self.begin(ui.ctx());
                 }
             });
@@ -160,6 +166,142 @@ impl eframe::App for Updates {
 mod tests {
     use super::*;
     use crate::ui_test::{click_label, ui_frame};
+    #[test]
+    #[ignore = "requires the private native update-window fixture"]
+    #[cfg(target_os = "linux")]
+    fn native_update_window_uses_only_loopback_and_persists_ignore() {
+        use winit::platform::x11::EventLoopBuilderExtX11;
+        assert_eq!(
+            std::env::var("FLAMESHOT_TEST_NATIVE_UPDATES").as_deref(),
+            Ok("1")
+        );
+        assert_eq!(
+            std::env::var("FLAMESHOT_TEST_PRIVATE_BUS").as_deref(),
+            Ok("1")
+        );
+        let state =
+            std::path::PathBuf::from(std::env::var_os("FLAMESHOT_TEST_NATIVE_STATE").unwrap());
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("flameshot.ini");
+        std::fs::write(
+            &path,
+            "[General]\ncheckForUpdates=false\n[External]\nprivate=keep\n",
+        )
+        .unwrap();
+        let (failure, release_failure, failure_server) = server("invalid JSON");
+        let (first, release_first, first_server) = server(
+            r#"{"tag_name":"v99.0.0","html_url":"https://github.com/flameshot-org/flameshot/releases/tag/v99.0.0"}"#,
+        );
+        let (second, release_second, second_server) = server(
+            r#"{"tag_name":"v1.0.0","html_url":"https://github.com/flameshot-org/flameshot/releases/tag/v1.0.0"}"#,
+        );
+        release_failure.send(()).unwrap();
+        release_first.send(()).unwrap();
+        release_second.send(()).unwrap();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _runtime = runtime.enter();
+        struct Native {
+            window: Updates,
+            state: std::path::PathBuf,
+            retry: Option<String>,
+            second: Option<String>,
+            phase: &'static str,
+            verified: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        }
+        impl eframe::App for Native {
+            fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+                self.window.ui_contents(ui);
+                if self.phase == "waiting"
+                    && self.window.job.is_none()
+                    && self.window.message.contains("Invalid release response")
+                {
+                    assert!(self.window.update.is_none());
+                    self.window.test_endpoint = self.retry.take();
+                    self.phase = "failed";
+                }
+                if self.phase == "failed" && self.window.update.is_some() {
+                    self.phase = "available";
+                }
+                if self.phase == "available" && self.window.message == "Version ignored" {
+                    self.window.test_endpoint = self.second.take();
+                    self.phase = "ignored";
+                }
+                if self.phase == "ignored"
+                    && self.window.job.is_none()
+                    && self.window.message == "You have the latest version"
+                {
+                    assert!(self.window.update.is_none());
+                    self.phase = "rechecked";
+                    self.verified
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                let point = |name| {
+                    self.window
+                        .test_controls
+                        .get(name)
+                        .map(|rect| rect.center() * ui.ctx().pixels_per_point())
+                        .unwrap_or_default()
+                };
+                let ignore = point("ignore");
+                let check = point("check");
+                let value = format!(
+                    "{}\n{} {}\n{} {}\n",
+                    self.phase, ignore.x, ignore.y, check.x, check.y
+                );
+                let temporary = self.state.with_extension("tmp");
+                std::fs::write(&temporary, value).unwrap();
+                std::fs::rename(temporary, &self.state).unwrap();
+            }
+        }
+        let verified = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let finished = verified.clone();
+        let settings_path = path.clone();
+        eframe::run_native(
+            "Flameshot Updates",
+            eframe::NativeOptions {
+                viewport: crate::app_ui::viewport().with_inner_size([440.0, 180.0]),
+                event_loop_builder: Some(Box::new(|builder| {
+                    builder.with_any_thread(true);
+                })),
+                ..Default::default()
+            },
+            Box::new(move |cc| {
+                crate::i18n::install_fonts(&cc.egui_ctx);
+                let mut window = Updates {
+                    links: Default::default(),
+                    job: None,
+                    update: None,
+                    message: String::new(),
+                    test_endpoint: Some(failure),
+                    test_settings_path: Some(settings_path),
+                    test_controls: Default::default(),
+                };
+                window.begin(&cc.egui_ctx);
+                Ok(Box::new(Native {
+                    window,
+                    state,
+                    retry: Some(first),
+                    second: Some(second),
+                    phase: "waiting",
+                    verified: finished,
+                }))
+            }),
+        )
+        .unwrap();
+        assert!(verified.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(failure_server.join().unwrap().starts_with(b"GET /latest "));
+        assert!(first_server.join().unwrap().starts_with(b"GET /latest "));
+        assert!(second_server.join().unwrap().starts_with(b"GET /latest "));
+        let saved = std::fs::read_to_string(path).unwrap();
+        let ini = flameshot_core::config::IniDocument::parse(saved.clone());
+        assert_eq!(
+            ini.string("General", "ignoreUpdateToVersion")
+                .unwrap()
+                .as_deref(),
+            Some("99.0.0")
+        );
+        assert!(saved.contains("[External]\nprivate=keep\n"));
+    }
     fn server(
         body: &str,
     ) -> (
@@ -204,6 +346,7 @@ mod tests {
             message: String::new(),
             test_endpoint: None,
             test_settings_path: Some(path.clone()),
+            test_controls: Default::default(),
         };
         for (body, available) in [
             ("invalid JSON", false),
@@ -293,6 +436,7 @@ mod tests {
         let mut window = Updates {
             test_endpoint: None,
             test_settings_path: None,
+            test_controls: Default::default(),
             links: Default::default(),
             job: Some(receiver),
             update: None,

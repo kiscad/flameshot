@@ -29,7 +29,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | INI/QVariant round trips, unknown-data preservation, runtime fallback, repair UI, atomic writes, idle reload, conflict handling and save-directory semantics tested |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Branding assets and 49 catalogs preserved; finite lookups, locale/source fallback, placeholders and Chinese native windows validated; see RESOURCE-VALIDATION.md |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
-| Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines/preferences and upload/history/update widget flows tested; native network-window integration audit remains |
+| Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update failure/retry/ignore/recheck passes against loopback; native upload/history audit remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
@@ -3771,3 +3771,25 @@ X11/text/config/locale tests pass, with final locale and layer-rendering reruns 
 the branch refactoring. RESOURCE-VALIDATION.md records the evidence and boundaries.
 The catalog/icon/lookup acceptance item is closed; desktop/font environments and
 release/package refreshes remain separate gates.
+
+### Native update-window network integration
+
+An ignored, Linux-only application test now runs the real update UI inside eframe's
+native event loop on a private Xvfb display and bus. Three loopback servers supply an
+invalid response, an available release and an older release. The external controller
+uses actual mouse input to retry, ignore and recheck, then closes the window with
+Escape. It waits for the window to be mapped as well as for the expected UI state.
+The fixture verifies request paths, disappearance of the stale release, persisted
+ignored version and preservation of unrelated INI data.
+
+Test-only response rectangles guide clicks; endpoints and probes do not exist in the
+production build. Existing test endpoint guards restrict requests to loopback and
+release-page links are never opened. Winit is a direct dev dependency solely for its
+X11 test-thread event-loop hook, using the already pinned/patched dependency version.
+The wrapper selects the actual Cargo test executable and verifies the named test's
+passing summary. It is registered in the workflow and build guide.
+
+The native failure/retry/ignore/recheck fixture and complete local Rust gate pass.
+This closes native update-window behavior coverage, not the native upload/history
+flows or external service availability. No screenshot was uploaded and no public
+update endpoint or user desktop was contacted.

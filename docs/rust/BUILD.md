@@ -378,3 +378,12 @@ complete. Existing source-text fallback remains supported.
 Completion fixtures use an isolated configuration and default to English. Set
 `FLAMESHOT_TEST_UI_LANGUAGE=zh_CN` to exercise localized help discovery. The Rust
 check script runs both English and Chinese completion checks for all/minimal builds.
+
+## Native network-window fixtures
+
+`python3 tests/rust/network_ui_smoke.py /` builds the application test harness and
+runs the update window against loopback HTTP servers on a private Xvfb display and
+session bus. The controller uses real mouse input, waits for a mapped native window,
+and checks failure/retry, ignore/recheck state plus persisted preferences. Endpoint/control probes are
+compiled only in tests; production endpoints have no environment override. The
+fixture never opens release links or contacts external update services.
