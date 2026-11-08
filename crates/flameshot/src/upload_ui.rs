@@ -51,6 +51,8 @@ pub struct UploadDialog {
     #[cfg(test)]
     test_begin: Option<(crate::settings::Settings, Imgur, std::path::PathBuf)>,
     copy_after_upload: bool,
+    #[cfg(test)]
+    test_upload_rect: Option<egui::Rect>,
 }
 impl UploadDialog {
     pub fn new(image: image::RgbaImage) -> Self {
@@ -77,6 +79,8 @@ impl UploadDialog {
             auto_start_pending: settings.is_some_and(|s| s.upload_without_confirmation),
             #[cfg(test)]
             test_begin: None,
+            #[cfg(test)]
+            test_upload_rect: None,
             copy_after_upload: settings.is_some_and(|s| s.copy_url_after_upload),
         }
     }
@@ -191,7 +195,7 @@ impl UploadDialog {
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .show(ctx, |ui| {
                 if self.texture.is_none() {
-                    let thumbnail = image::imageops::thumbnail(&self.image, 400, 250);
+                    let thumbnail = flameshot_core::preview::thumbnail(&self.image, 400, 250);
                     self.texture = Some(ctx.load_texture(
                         "upload-preview",
                         egui::ColorImage::from_rgba_unmultiplied(
@@ -213,7 +217,12 @@ impl UploadDialog {
                     ctx.request_repaint_after(Duration::from_millis(100));
                 } else {
                     ui.label(tr("ImgUploadDialog", "Do you want to upload this capture?"));
-                    if ui.button(tr("ImgUploaderBase", "Upload image")).clicked() {
+                    let upload = ui.button(tr("ImgUploaderBase", "Upload image"));
+                    #[cfg(test)]
+                    {
+                        self.test_upload_rect = Some(upload.rect);
+                    }
+                    if upload.clicked() {
                         self.begin(ctx);
                     }
                 }
@@ -507,6 +516,142 @@ mod tests {
     use super::*;
     use crate::ui_test::{click_label, ui_frame};
     use std::io::{Read, Write};
+    #[test]
+    #[ignore = "requires the private native upload-window fixture"]
+    #[cfg(target_os = "linux")]
+    fn native_upload_window_confirms_retries_and_saves_history() {
+        use winit::platform::x11::EventLoopBuilderExtX11;
+        assert_eq!(
+            std::env::var("FLAMESHOT_TEST_NATIVE_UPLOAD").as_deref(),
+            Ok("1")
+        );
+        assert_eq!(
+            std::env::var("FLAMESHOT_TEST_PRIVATE_BUS").as_deref(),
+            Ok("1")
+        );
+        let state =
+            std::path::PathBuf::from(std::env::var_os("FLAMESHOT_TEST_NATIVE_STATE").unwrap());
+        let history = tempfile::tempdir().unwrap();
+        let settings = crate::settings::Settings {
+            copy_url_after_upload: false,
+            upload_without_confirmation: false,
+            ..Default::default()
+        };
+        let pixels = image::RgbaImage::from_pixel(64, 48, image::Rgba([32, 64, 96, 255]));
+        let (first, failed) = mock_server(false);
+        let (second, uploaded) = mock_server(true);
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let _runtime = runtime.enter();
+        struct Native {
+            dialog: UploadDialog,
+            retry: Option<(crate::settings::Settings, Imgur, std::path::PathBuf)>,
+            history: std::path::PathBuf,
+            state: std::path::PathBuf,
+            phase: &'static str,
+            complete: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        }
+        impl eframe::App for Native {
+            fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+                let keep = self.dialog.show(ui.ctx());
+                if self.phase == "confirm"
+                    && self.dialog.job.is_none()
+                    && self.dialog.message.is_empty()
+                {
+                    assert!(
+                        self.dialog.test_begin.is_some(),
+                        "Request began without confirmation"
+                    );
+                    assert!(
+                        crate::upload_history::list(&self.history)
+                            .unwrap()
+                            .is_empty()
+                    );
+                }
+                if self.phase == "confirm"
+                    && self.dialog.job.is_none()
+                    && !self.dialog.message.is_empty()
+                {
+                    assert!(self.dialog.uploaded.is_none());
+                    assert!(
+                        crate::upload_history::list(&self.history)
+                            .unwrap()
+                            .is_empty()
+                    );
+                    self.dialog.test_begin = self.retry.take();
+                    self.phase = "failed";
+                }
+                if self.phase == "failed" && self.dialog.uploaded.is_some() {
+                    assert!(self.dialog.message.is_empty());
+                    assert_eq!(crate::upload_history::list(&self.history).unwrap().len(), 1);
+                    self.phase = "uploaded";
+                    self.complete
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                }
+                let point = self
+                    .dialog
+                    .test_upload_rect
+                    .map(|rect| rect.center() * ui.ctx().pixels_per_point())
+                    .unwrap_or_default();
+                let temporary = self.state.with_extension("tmp");
+                std::fs::write(
+                    &temporary,
+                    format!("{}\n{} {}\n", self.phase, point.x, point.y),
+                )
+                .unwrap();
+                std::fs::rename(temporary, &self.state).unwrap();
+                if !keep {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+        }
+        let complete = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let completed = complete.clone();
+        let directory = history.path().to_owned();
+        let image = pixels.clone();
+        eframe::run_native(
+            "Flameshot Upload Fixture",
+            eframe::NativeOptions {
+                viewport: crate::app_ui::viewport().with_inner_size([640.0, 480.0]),
+                event_loop_builder: Some(Box::new(|builder| {
+                    builder.with_any_thread(true);
+                })),
+                ..Default::default()
+            },
+            Box::new(move |cc| {
+                crate::i18n::install_fonts(&cc.egui_ctx);
+                let mut dialog = UploadDialog::with_settings(image, Some(&settings));
+                dialog.test_begin = Some((settings.clone(), first, directory.clone()));
+                Ok(Box::new(Native {
+                    dialog,
+                    retry: Some((settings, second, directory.clone())),
+                    history: directory,
+                    state,
+                    phase: "confirm",
+                    complete: completed,
+                }))
+            }),
+        )
+        .unwrap();
+        assert!(complete.load(std::sync::atomic::Ordering::SeqCst));
+        for request in [failed.join().unwrap(), uploaded.join().unwrap()] {
+            assert!(request.starts_with(b"POST /3/image "));
+            let png = request
+                .windows(8)
+                .position(|bytes| bytes == b"\x89PNG\r\n\x1a\n")
+                .unwrap();
+            assert_eq!(
+                image::load_from_memory(&request[png..]).unwrap().to_rgba8(),
+                pixels
+            );
+        }
+        let entries = crate::upload_history::list(history.path()).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].link, "https://i.imgur.com/abc123.png");
+        assert_eq!(entries[0].deletehash.as_deref(), Some("secret123"));
+        let thumbnail = image::open(&entries[0].path).unwrap().to_rgba8();
+        assert_eq!(thumbnail.dimensions(), (133, 100));
+        assert!(thumbnail.pixels().all(|pixel| pixel.0 == [32, 64, 96, 255]));
+    }
     fn mock_server(success: bool) -> (Imgur, std::thread::JoinHandle<Vec<u8>>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let endpoint = format!("http://{}/3/image", listener.local_addr().unwrap());

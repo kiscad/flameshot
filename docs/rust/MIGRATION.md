@@ -29,7 +29,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | INI/QVariant round trips, unknown-data preservation, runtime fallback, repair UI, atomic writes, idle reload, conflict handling and save-directory semantics tested |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Branding assets and 49 catalogs preserved; finite lookups, locale/source fallback, placeholders and Chinese native windows validated; see RESOURCE-VALIDATION.md |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
-| Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update failure/retry/ignore/recheck passes against loopback; native upload/history audit remains |
+| Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update failure/retry/ignore/recheck passes against loopback; native upload confirmation/retry/payload/history-write passes; native history deletion audit remains |
 | Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME IME/mixed-scale/negative-origin and broader scale/rotation acceptance remain |
@@ -3793,3 +3793,26 @@ The native failure/retry/ignore/recheck fixture and complete local Rust gate pas
 This closes native update-window behavior coverage, not the native upload/history
 flows or external service availability. No screenshot was uploaded and no public
 update endpoint or user desktop was contacted.
+
+### Native upload confirmation and proportional previews
+
+The native network wrapper now also opens the real upload dialog on private Xvfb
+with isolated XDG directories and D-Bus. Actual mouse input confirms an upload,
+retries a failed response and closes the successful dialog. Both clients use
+loopback-only test endpoints. The fixture checks that neither a request nor history
+is produced before confirmation, failure leaves history empty, both multipart PNG
+payloads retain the original pixels, and success saves the expected link/delete hash.
+No external upload, browser or host clipboard is used.
+
+This exposed stretched upload/monitor previews and stored history thumbnails: the
+image library's thumbnail function takes exact output dimensions. A shared core
+helper now computes dimensions within the requested bounds while preserving aspect
+ratio. Triangle resampling also preserves constant pixels when enlarging small
+images, unlike the previous thumbnail sampler. Unit cases cover landscape, portrait,
+small, one-pixel-thin and empty inputs; the native fixture checks the saved 64×48
+image has a 133×100 thumbnail. Original uploaded pixels remain unchanged.
+
+Native update and upload fixtures, the complete local Rust gate and Sway regression
+pass, including interactive monitor selection, mixed-scale/negative-origin crops
+and fractional-scale drawing-grid mapping. Native history deletion and the remaining
+platform/package acceptance items are still separate work.

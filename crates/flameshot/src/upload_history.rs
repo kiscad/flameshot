@@ -73,7 +73,7 @@ pub fn save(
         "Invalid upload history identifiers"
     );
     std::fs::create_dir_all(directory)?;
-    let thumbnail = image::imageops::thumbnail(image, 250, 100);
+    let thumbnail = flameshot_core::preview::thumbnail(image, 250, 100);
     let mut data = Cursor::new(Vec::new());
     thumbnail.write_to(&mut data, image::ImageFormat::Png)?;
     let mut file = tempfile::NamedTempFile::new_in(directory)?;
@@ -104,7 +104,7 @@ mod tests {
         assert_eq!(entries[0].deletehash.as_deref(), Some("secret"));
         assert_eq!(entries[0].link, uploaded.link);
         let thumbnail = image::open(&entries[0].path).unwrap();
-        assert!(thumbnail.width() <= 250 && thumbnail.height() <= 100);
+        assert_eq!((thumbnail.width(), thumbnail.height()), (200, 100));
         std::fs::write(temp.path().join("unrelated.png"), "keep").unwrap();
         save(temp.path(), &uploaded, &image, 0).unwrap();
         assert!(list(temp.path()).unwrap().is_empty());

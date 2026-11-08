@@ -319,7 +319,7 @@ impl Editor {
             let image = self.screen_image.as_ref().unwrap();
             for (index, (_, r)) in self.options.screens.iter().enumerate() {
                 let crop = image::imageops::crop_imm(image, r.x, r.y, r.width, r.height).to_image();
-                let thumb = image::imageops::thumbnail(&crop, 300, 180);
+                let thumb = flameshot_core::preview::thumbnail(&crop, 300, 180);
                 self.screen_previews.push(ctx.load_texture(
                     format!("screen-{index}"),
                     egui::ColorImage::from_rgba_unmultiplied(

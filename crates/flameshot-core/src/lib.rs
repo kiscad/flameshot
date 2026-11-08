@@ -18,3 +18,5 @@ pub mod region;
 pub mod color;
 
 pub mod constraints;
+
+pub mod preview;
