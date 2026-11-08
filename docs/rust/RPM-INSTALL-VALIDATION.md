@@ -31,3 +31,20 @@ Both install/remove cycles passed. The container was removed after validation.
 
 Detailed local evidence: `target/rpm-refresh-build.log`,
 `target/rpm-install-validation/install.log` and `report.json`.
+
+## Installed X11 validation in progress
+
+The optional `--desktop` fixture installs Xvfb and Fedora's Mesa Vulkan driver,
+then runs the existing capture/editor/clipboard suite against `/usr/bin/flameshot`.
+The first run passed clipboard ownership, pins, launcher/owner-death and
+configuration cases, but an editor exit timed out before the suite completed.
+The original fixture did not identify the specific mode at that point. This is
+an unresolved failure, not a passing installed desktop result.
+
+The fixture now prints each editor mode and captures the display on exit timeout;
+container artifacts are copied even when the desktop test fails. A diagnostic
+rerun stopped during dependency reinstallation after DNF exceeded 600 seconds,
+before exercising the editor. Subsequent runs retain downloaded packages within
+the container, bound slow mirror transfers, and use separate artifact directories
+for each invocation so failure logs do not overwrite earlier evidence. Python
+syntax checks pass; installed GUI acceptance remains pending.

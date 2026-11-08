@@ -502,6 +502,7 @@ print('PASS: capture lock is released after a killed editor')
         print('PASS: configuration saves preserve external values and show the language restart notice')
         for mode in ('cancel','raw','geometry','both','autosave','adjust','magnifier','save-retry','save-cancel','preset','last','lastconfig','lastoverride','fixed','shortcut','shortcutmeta','shortcutdefault','openwith','toolsize','undolimit','color','opacity','textedit','objectmove','constraints','counterdelete','layers','palette','uploadcancel','buttons','geometryoverlay','pixelatesafe','pixelateinsecure','quitresume','quitconfirm','quitdisable','monitors','monitoroverride','monitordelay'):
             if mode=='uploadcancel' and b'history' not in help_text: continue
+            print(f'RUN: editor {mode}', flush=True)
             cancel = mode in ('cancel','quitconfirm','quitdisable')
             flags = ['--raw'] if mode in ('cancel','raw') else ['--accept-on-select','--print-geometry']
             if mode in ('pixelatesafe','pixelateinsecure'):
@@ -1170,7 +1171,13 @@ print('PASS: capture lock is released after a killed editor')
                     assert pixels.getpixel((250,350))==(255,255,255),('Shade leaked into selection',pixels.getpixel((250,350)))
                     tool('key','Return')
                 if mode in ('raw','adjust','magnifier'): tool('key', 'Return')
-            out, err = process.communicate(timeout=15)
+            try:
+                out, err = process.communicate(timeout=15)
+            except subprocess.TimeoutExpired as error:
+                captured = subprocess.run(bus_command+[str(binary),'full','--raw'],env=env,capture_output=True,timeout=20)
+                if captured.returncode == 0:
+                    (artifact_dir/f'rust-timeout-{mode}.png').write_bytes(captured.stdout)
+                raise AssertionError(f'Editor mode {mode} did not exit; stderr={error.stderr!r}') from error
             assert process.returncode == (2 if cancel else 0), err.decode()
             if cancel:
                 assert out == b''

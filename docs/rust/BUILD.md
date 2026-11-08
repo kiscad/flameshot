@@ -214,8 +214,19 @@ Pass the revision used to produce the source archive. The fixture uses the local
 available image, mounts no host directories, installs/removes/reinstalls through
 DNF, checks RPM integrity/resources and preserves a synthetic user INI. It removes
 its own container and writes logs plus hashes under `target/rpm-install-validation`.
-This fixture checks installation and CLI behavior; desktop rendering is a separate
-native-runtime validation.
+By default this fixture checks installation and CLI behavior. To additionally run
+the installed executable through the private Xvfb desktop suite:
+
+```sh
+cargo build --locked -p flameshot-platform --example x11_clipboard_probe
+python3 tests/rust/rpm_install.py path/to/flameshot.rpm fedora:44 SOURCE_REVISION --desktop
+```
+
+The optional mode installs X11 test tools and Fedora's Mesa Vulkan software driver,
+copies only fixtures and the clipboard probe, and uses container-local displays,
+configuration and clipboard. Docker's init process reaps orphaned descendants during
+owner-death tests. It retains screenshots in the artifact directory and verifies
+RPM integrity again after the desktop run.
 
 ## Arch development packages
 
