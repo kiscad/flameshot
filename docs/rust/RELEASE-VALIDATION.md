@@ -51,3 +51,14 @@ Evidence is in `target/current-release-manifest.json`,
 This refresh supersedes the older optimized snapshot for source/staging evidence;
 it does not turn unrun hosted CI, installed Flatpak/Snap confinement or the pending
 Nix binary build into completed gates.
+
+
+## Final Rust gate rerun
+
+After the current source/archive and documentation updates,
+`FLAMESHOT_COMPLETION_TOOL_ROOT=target/package-validation/tools scripts/check-rust.sh`
+was rerun successfully. The final log is `target/final-rust-gate.log`; it includes
+formatting, translation lookup validation, workspace/default/all-feature/minimal
+Clippy and tests, private portal/D-Bus/notification/daemon checks and English/Chinese
+shell completion tests. This is a local gate; hosted workflow execution remains
+unverified.
