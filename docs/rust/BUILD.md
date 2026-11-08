@@ -319,11 +319,13 @@ nix develop
 
 Both `x86_64-linux` and `aarch64-linux` expressions are evaluated locally. The
 portable application-launch test also passes after removing its hardcoded Python
-path. A complete Nix build is **not yet verified**: the available Nix 2.18 client
-can fetch/evaluate in a relocated private store, but cannot execute builders at
-the canonical `/nix/store` paths in this environment. Enabling its sandbox option
-does not resolve that mapping. The `Rust Nix` workflow uses a normal Nix store to
-build and test the native package; that hosted workflow has not run yet. Evaluation
+path. Nix evaluation is verified in an isolated Nix 2.35 container: both Linux targets,
+packages, checks, dev shells and formatter evaluate with the locked flake. An
+x86_64 build was attempted with the existing private cache but stopped because the
+locked nixpkgs bootstrap dependency `gcc-g++-4.6.4.tar.gz` was not cached and its
+source mirror timed out. See NIX-VALIDATION.md and `target/nix-container-build.log`.
+The hosted Rust Nix workflow uses a normal Nix store/binary cache and remains the
+authoritative complete-build gate; it has not run here. Evaluation
 of aarch64 does not constitute an aarch64 compilation or desktop test.
 
 ## Snap

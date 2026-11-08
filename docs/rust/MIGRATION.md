@@ -30,7 +30,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Branding assets and 49 catalogs preserved; finite lookups, locale/source fallback, placeholders and Chinese native windows validated; see RESOURCE-VALIDATION.md |
 | Desktop | Notifications, autostart, launcher, configuration windows | Native tray/launcher/configuration UI, notification wire behavior, autostart/resources and portal/document integration audited; installed sandbox confinement remains in Packaging |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines and widget flows tested; native update, upload and history confirmation/cancellation/failure/retry/deletion pass against loopback; external service availability is not an acceptance dependency |
-| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI, installed X11 and wlroots Wayland suites verified; other distro installs and sandbox/provider builds pending |
+| Packaging | Debian/RPM/Arch/Flatpak/Snap/Nix Cargo migration | Debian/RPM/Arch locally built; Ubuntu Base Debian install/purge/reinstall and X11 runtime verified; Fedora 44 RPM install/remove/reinstall, CLI, installed X11 and wlroots Wayland suites verified; Fedora and Nix evaluation/install evidence recorded; complete Nix binary build is pending an uncached nixpkgs bootstrap source; other distro installs and sandbox/provider builds pending |
 | CI | fmt, Clippy, tests, optional builds, release build | Rust workflow added; local gates and optimized release validation pass at `96c4c60c`; hosted workflow remains unverified |
 | Desktop validation | X11, GNOME/KDE Wayland, wlroots, mixed DPI, IME | Xvfb, Sway/mixed-DPI, X11/Sway/KWin Fcitx Pinyin, headless GNOME and KWin 5 capture/editor cases pass; GNOME integer/fractional mixed scale and normalized left-of-primary layout pass (see GNOME-VALIDATION.md); GNOME IBus Pinyin also passes at normal/fractional scale; named desktop matrix audited in DESKTOP-ACCEPTANCE.md with explicit version/hardware boundaries |
 | Final removal | Remove C++/Qt/CMake after complete Linux acceptance | Pending; legacy source remains a reference, so this is not yet a pure-Rust-only repository |
@@ -3958,3 +3958,14 @@ The functional capture/clipboard/desktop acceptance items are covered for the
 explicit tested versions. This is not a universal hardware/compositor claim or an
 installed sandbox result. Packaging/providers, final optimized/source artifacts,
 hosted CI evidence and final removal of legacy C++/Qt/CMake remain outstanding.
+
+### Nix flake evaluation and build attempt
+
+The locked flake now has authoritative isolated evaluation evidence: Nix 2.35
+`flake check --all-systems --no-build --offline` passed for x86_64 and aarch64
+packages/checks/dev shells/formatter. A real x86_64 build reached dependency
+realization but stopped at an uncached nixpkgs GCC 4.6 bootstrap source whose mirror
+timed out. This is recorded as an external cache/mirror limitation, not a source
+failure; the disposable container was removed. NIX-VALIDATION.md records commands,
+revision, logs and hosted-workflow boundaries. A complete binary build still awaits
+normal Nix cache/source availability.
