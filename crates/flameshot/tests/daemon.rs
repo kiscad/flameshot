@@ -8,6 +8,57 @@ use zbus::{
     Connection, Proxy,
     zvariant::{OwnedObjectPath, OwnedValue, Structure, Value},
 };
+async fn close_native_window(xdotool: &std::path::Path, title: &str) {
+    let find = || {
+        let output = Command::new(xdotool)
+            .args(["search", "--onlyvisible", "--name", title])
+            .output()
+            .unwrap();
+        output.status.success().then(|| {
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .lines()
+                .last()
+                .unwrap()
+                .to_owned()
+        })
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let window = loop {
+        if let Some(window) = find() {
+            break window;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "D-Bus method did not open {title}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    };
+    assert!(
+        Command::new(xdotool)
+            .args(["windowfocus", "--sync", &window])
+            .status()
+            .unwrap()
+            .success()
+    );
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert!(
+        Command::new(xdotool)
+            .args(["key", "Escape"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while find().is_some() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Child window did not close: {title}"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct MethodContract {
     arguments: Vec<std::collections::BTreeMap<String, String>>,
@@ -489,13 +540,49 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
             expected_image
         );
         notification_gate.add_permits(1);
+        // Send bytes produced by Qt, not just a Rust encoder round trip.
+        proxy
+            .call_noreply(
+                "attachScreenshotToClipboard",
+                &(
+                    include_bytes!("../../flameshot-core/tests/fixtures/qt6-clipboard.bin")
+                        .to_vec(),
+                ),
+            )
+            .await
+            .unwrap();
+        let expected_qt = image::RgbaImage::from_pixel(3, 2, image::Rgba([20, 80, 160, 255]));
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let output = Command::new(&xclip)
+                    .args(["-selection", "clipboard", "-t", "image/png", "-o"])
+                    .output()
+                    .unwrap();
+                if output.status.success()
+                    && image::load_from_memory(&output.stdout)
+                        .is_ok_and(|image| image.to_rgba8() == expected_qt)
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .unwrap();
         // Q_NOREPLY clients must still trigger the clipboard side effect.
         proxy
             .call_noreply("attachTextToClipboard", &("legacy no-reply text", ""))
             .await
             .unwrap();
         tokio::time::timeout(Duration::from_secs(3), async {
-            while read_clipboard() != b"legacy no-reply text" {
+            loop {
+                let output = Command::new(&xclip)
+                    .args(["-selection", "clipboard", "-t", "UTF8_STRING", "-o"])
+                    .output()
+                    .unwrap();
+                if output.status.success() && output.stdout == b"legacy no-reply text" {
+                    break;
+                }
                 tokio::time::sleep(Duration::from_millis(20)).await;
             }
         })
@@ -609,6 +696,45 @@ async fn daemon_protocol_single_instance_tray_icon_and_quit() {
                 .unwrap()
                 .success()
         );
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while Command::new(&xdotool)
+            .args(["search", "--onlyvisible", "--name", "^Flameshot$"])
+            .output()
+            .unwrap()
+            .status
+            .success()
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "Previous tray capture did not close"
+            );
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        // Exercise the public methods themselves, including Qt's no-reply callers.
+        // Tray activation above is not a substitute for these service entry points.
+        for no_reply in [false, true] {
+            if no_reply {
+                proxy.call_noreply("captureScreen", &()).await.unwrap();
+            } else {
+                proxy.call::<_, _, ()>("captureScreen", &()).await.unwrap();
+            }
+            close_native_window(&xdotool, "^Flameshot$").await;
+            let payload =
+                include_bytes!("../../flameshot-core/tests/fixtures/qt6-pin.bin").to_vec();
+            if no_reply {
+                proxy.call_noreply("attachPin", &(payload,)).await.unwrap();
+            } else {
+                proxy
+                    .call::<_, _, ()>("attachPin", &(payload,))
+                    .await
+                    .unwrap();
+            }
+            close_native_window(&xdotool, "^flameshot-pin$").await;
+            assert!(
+                daemon.0.try_wait().unwrap().is_none(),
+                "Closing a child stopped the daemon"
+            );
+        }
         let _: bool = menu.call("AboutToShow", &(0_i32,)).await.unwrap();
         let (_, (_, _, children)): (u32, Layout) = menu
             .call("GetLayout", &(0_i32, -1_i32, vec!["label"]))

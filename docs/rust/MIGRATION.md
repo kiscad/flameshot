@@ -25,7 +25,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Clipboard | Image/text transfer after editor closes on X11 and Wayland | PNG/JPEG/text and ownership verified on Xvfb/Sway/KWin 5 and the GNOME Xwayland bridge; X11 INCR tested; broader compositor/version paths remain |
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, numeric/repetition/help rules, parse statuses and completions implemented/tested; final command/shell behavior audit remains |
-| D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, NoReply metadata, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
+| D-Bus | Existing service/path/methods and QDataStream payload fixtures | Qt reference metadata/wire fixtures, all four public methods, reply/no-reply dispatch, malformed payloads and singleton ownership tested; see DBUS-COMPATIBILITY.md |
 | Configuration | QSettings INI and QVariant round trips; unknown keys preserved | INI/QVariant round trips, unknown-data preservation, runtime fallback, repair UI, atomic writes, idle reload, conflict handling and save-directory semantics tested |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
@@ -3587,3 +3587,24 @@ edge case (retaining width 10 instead of clipping to 9); the updated all-feature
 executable passes all eight native cases. The complete local Rust gate passes after
 the change. The fixture is registered in the workflow/build guide; hosted CI and
 broader compositor placement acceptance remain separate.
+
+### Public D-Bus contract audit
+
+The audit found a native coverage gap: tray actions exercised capture and pin logic,
+but valid direct captureScreen/attachPin calls were not checked independently. The
+private daemon test now opens and closes children through both reply-requesting and
+no-reply calls, verifying that the daemon remains alive. A Qt-produced clipboard
+payload is also sent with no reply and verified against actual X11 clipboard pixels.
+No-reply polling tolerates the transient old clipboard format until the new owner is
+ready, while retaining the bounded deadline and exact-data assertions.
+
+The test wrapper now requires the actual named Rust test and passing summary. One
+temporary invocation mistakenly selected the application executable from Cargo JSON;
+its exit-zero CLI rejection was discarded as invalid evidence. Selecting the daemon
+target explicitly passed, and deliberately supplying the wrong executable now fails
+the wrapper. The complete private D-Bus/native wrapper suite passed before the final
+image no-reply addition; the focused daemon/native test verifies that final addition.
+The contract and evidence mapping are recorded in DBUS-COMPATIBILITY.md. This closes
+the public-protocol audit item, without closing installed sandbox or desktop gates.
+The minimal-feature private-bus daemon test and all-feature daemon-test Clippy check
+also pass. The native wrapper's wrong-executable rejection was tested explicitly.

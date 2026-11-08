@@ -29,8 +29,11 @@ with tempfile.TemporaryDirectory(prefix='flameshot-tray-') as directory:
             bitmap = Path(directory)/'monitors.xbm'
             bitmap.write_text('#define colors_width 1024\n#define colors_height 1\nstatic unsigned char colors_bits[] = {\n'+','.join(['0xff']*64+['0x00']*64)+'};\n')
             subprocess.run(['xsetroot','-fg','blue','-bg','red','-bitmap',str(bitmap)],env=env,check=True,timeout=5)
-            subprocess.run(['dbus-run-session','--config-file',str(bus_config),'--',str(test),'--ignored','--nocapture'],env=env,check=True,timeout=40)
-            print('PASS: actual tray monitor selection copies the selected red 512x768 output and refreshes after removal')
+            result=subprocess.run(['dbus-run-session','--config-file',str(bus_config),'--',str(test),'--ignored','--nocapture'],env=env,capture_output=True,text=True,timeout=60)
+            print(result.stdout,end='');print(result.stderr,end='',file=sys.stderr)
+            result.check_returncode()
+            assert 'daemon_protocol_single_instance_tray_icon_and_quit' in result.stdout and 'test result: ok. 1 passed;' in result.stdout, 'The daemon test harness did not run successfully'
+            print('PASS: tray monitor capture/refresh and direct captureScreen/attachPin calls with replies and no-reply dispatch')
         finally:
             display.terminate()
             display.wait(timeout=5)
