@@ -151,7 +151,7 @@ impl Recovery {
                 }
             }
         });
-        ui.label(&self.status);
+        ui.label(crate::i18n::tr("RustConfig", &self.status));
         done
     }
 }

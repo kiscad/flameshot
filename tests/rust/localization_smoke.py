@@ -181,6 +181,22 @@ for locale,title in [('zh_CN','Flameshot 启动器'),('zh_TW','Flameshot 啟動�
     finally:
         if process.poll() is None:process.kill();process.wait()
     print('PASS:',locale,'localized pin menu, rotation, zoom reset and close')
+    # Translation initialization must not fall back to LC_ALL=C on unrelated INI errors.
+    valid_config=config.read_bytes()
+    invalid_config=valid_config+b'\n[General]\ndrawThickness=bad\n'
+    config.write_bytes(invalid_config)
+    process=subprocess.Popen([binary,'config'],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+    try:
+        identifier=window('^'+config_title+'$')
+        tool('windowfocus','--sync',identifier);time.sleep(.4)
+        tool('key','Escape');out,err=process.communicate(timeout=10)
+        assert process.returncode==0,err.decode()
+        assert config.read_bytes()==invalid_config,'Opening repair changed the file'
+    finally:
+        if process.poll() is None:process.kill();process.wait()
+        config.write_bytes(valid_config)
+    print('PASS:',locale,'configured language retained while repairing invalid preferences')
+
 
 '''
         subprocess.run(['dbus-run-session','--config-file',str(config),'--',sys.executable,'-c',driver,str(binary),str(root/'usr/bin/xdotool'),str(artifacts)],env=env,check=True,timeout=100)

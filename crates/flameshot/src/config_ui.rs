@@ -67,11 +67,7 @@ fn shortcut_label(name: &str) -> &str {
 }
 pub fn show() -> anyhow::Result<()> {
     let recovery = crate::config_recovery::Recovery::load()?;
-    let settings = if recovery.is_some() {
-        Settings::default()
-    } else {
-        Settings::load()?
-    };
+    let settings = Settings::load()?;
     let path = settings
         .save_path
         .as_ref()
@@ -99,7 +95,7 @@ pub fn show() -> anyhow::Result<()> {
             let mut config = Config {
                 recovery,
                 recovered_frame: None,
-                initial_language: settings.language.clone(),
+                initial_language: crate::i18n::session_language().to_owned(),
                 buttons_reset: false,
                 baseline: Default::default(),
                 shortcut_baseline: Default::default(),
@@ -716,6 +712,21 @@ impl eframe::App for Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn repaired_preferences_do_not_request_restart_when_session_language_matches() {
+        let mut form = form();
+        form.initial_language = "zh_CN".into();
+        form.reload_saved(Settings {
+            language: "zh_CN".into(),
+            ..Default::default()
+        });
+        assert!(!form.language_restart_needed());
+        form.reload_saved(Settings {
+            language: "zh_TW".into(),
+            ..Default::default()
+        });
+        assert!(form.language_restart_needed());
+    }
     #[test]
     fn every_configurable_shortcut_has_a_readable_label() {
         for (name, _) in crate::shortcuts::DEFAULTS {

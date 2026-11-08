@@ -3627,3 +3627,31 @@ optional commands pass in all-feature and minimal builds. Bash/Fish checks and
 all-feature Clippy pass as well. CLI-COMPATIBILITY.md maps the contract to its evidence;
 the CLI/shell audit is closed, while separate desktop, resource and packaging gates
 remain active.
+
+### Preserve the chosen UI language during configuration repair
+
+Translation initialization previously loaded the complete runtime settings object.
+An unrelated invalid preference therefore selected runtime defaults and discarded a
+valid uiLanguage preference, opening the repair window in the system language. The
+translator now reads that single INI string independently, with the same auto-locale
+fallback for missing/unreadable/invalid language values. Other runtime preferences
+still use the established global error-state defaults.
+
+The cached localization state retains its original language selector. The configuration
+form uses that selector for restart notices, so repairing other preferences does not
+incorrectly request a language restart. The form still loads runtime settings to
+report configuration error/recovery transitions. Known repair status messages now
+also pass through the existing RustConfig catalog lookup.
+
+Pure tests cover valid Chinese language choices alongside invalid preferences,
+invalid typed language data, missing keys and repeated sections. Native simplified
+and traditional Chinese suites now open invalid configurations with LC_ALL=C and
+verify the localized repair-window title and unchanged file bytes. Both native
+locale suites and the full configuration-recovery fixture pass. Widget-frame unit
+tests use source-language labels independently of developer preferences; a separate
+run with an isolated Chinese preference confirms those tests remain deterministic.
+The complete local Rust gate passes, including live Bash/Fish/Zsh completion.
+
+This corrects locale initialization and restart-state handling. The remaining resource
+audit includes formatted diagnostic/notification/help lookups; no claim of complete
+UI translation coverage or refreshed release packages is made here.
