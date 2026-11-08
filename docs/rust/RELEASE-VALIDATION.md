@@ -62,3 +62,12 @@ formatting, translation lookup validation, workspace/default/all-feature/minimal
 Clippy and tests, private portal/D-Bus/notification/daemon checks and English/Chinese
 shell completion tests. This is a local gate; hosted workflow execution remains
 unverified.
+
+## Pure-Rust repository cleanup
+
+The current branch now tracks zero `.cpp`, C++ header, `.cmake` or `CMakeLists.txt`
+files. Legacy CMake/Qt workflows and the obsolete Windows installer assets were
+removed; README, Debian copyright and CI point at the Cargo/Rust implementation.
+The final vendored source archive was extracted and its complete all-feature
+workspace tests passed offline after a serial rustc retry for a known parallel LLVM
+SIGSEGV. C++ compatibility evidence remains in Git history and frozen data fixtures.

@@ -57,3 +57,13 @@ portable Rust source snapshot independently of the mixed reference checkout.
 The current checkout contains no C++/Qt/CMake implementation; the reference remains
 in Git history and frozen compatibility fixtures. Package/provider gates are tracked
 separately from source purity.
+
+## Pure-Rust checkout cleanup refresh
+
+After removal of the legacy implementation, `target/pure-rust-source-final.tar.gz`
+was generated from the current Git tree. It was extracted and tested offline with an
+empty Cargo home. The first parallel rustc run hit the known LLVM SIGSEGV while
+compiling `image`; the serial retry with `CARGO_BUILD_JOBS=1` and
+`RUST_MIN_STACK=33554432` passed the complete workspace/all-feature test suite.
+The extracted tree contains zero C++/CMake source files. The final report is under
+`target/pure-rust-source-final-review/report.json`.
