@@ -59,6 +59,8 @@ jobs:
         run: python3 tests/rust/desktop_smoke.py / target/debug/flameshot
       - name: Configuration conflict handling
         run: python3 tests/rust/config_conflict_smoke.py / target/debug/flameshot
+      - name: Configuration error recovery
+        run: python3 tests/rust/config_recovery_smoke.py / target/debug/flameshot
       - name: Simplified and traditional Chinese desktop UI
         run: python3 tests/rust/localization_smoke.py / target/debug/flameshot
       - name: Text formatting preview and export

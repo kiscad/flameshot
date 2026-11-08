@@ -66,7 +66,12 @@ fn shortcut_label(name: &str) -> &str {
     }
 }
 pub fn show() -> anyhow::Result<()> {
-    let settings = Settings::load()?;
+    let recovery = crate::config_recovery::Recovery::load()?;
+    let settings = if recovery.is_some() {
+        Settings::default()
+    } else {
+        Settings::load()?
+    };
     let path = settings
         .save_path
         .as_ref()
@@ -92,6 +97,8 @@ pub fn show() -> anyhow::Result<()> {
                 .collect::<Vec<_>>()
                 .join(", ");
             let mut config = Config {
+                recovery,
+                recovered_frame: None,
                 initial_language: settings.language.clone(),
                 buttons_reset: false,
                 baseline: Default::default(),
@@ -112,6 +119,8 @@ pub fn show() -> anyhow::Result<()> {
 }
 #[derive(Clone)]
 struct Config {
+    recovery: Option<crate::config_recovery::Recovery>,
+    recovered_frame: Option<u64>,
     settings: Settings,
     initial_language: String,
     path: String,
@@ -371,8 +380,30 @@ impl Config {
 }
 impl eframe::App for Config {
     fn ui(&mut self, ui: &mut egui::Ui, _: &mut eframe::Frame) {
+        if self.recovered_frame == Some(ui.ctx().cumulative_frame_nr()) {
+            return;
+        }
+        if let Some(recovery) = &mut self.recovery {
+            if recovery.show(ui) {
+                match Settings::load() {
+                    Ok(settings) => {
+                        self.recovered_frame = Some(ui.ctx().cumulative_frame_nr());
+                        self.recovery = None;
+                        self.reload_saved(settings);
+                    }
+                    Err(error) => recovery.status = error.to_string(),
+                }
+            }
+            return;
+        }
         let refresh_interval = std::time::Duration::from_secs(1);
         if self.last_refresh.elapsed() >= refresh_interval {
+            if !self.is_dirty()
+                && let Some(recovery) = crate::config_recovery::Recovery::load().ok().flatten()
+            {
+                self.recovery = Some(recovery);
+                return;
+            }
             self.refresh_if_clean(Settings::load);
             self.last_refresh = std::time::Instant::now();
         }
@@ -693,6 +724,8 @@ mod tests {
     }
     fn form() -> Config {
         let mut form = Config {
+            recovery: None,
+            recovered_frame: None,
             initial_language: Settings::default().language,
             settings: Settings::default(),
             path: String::new(),

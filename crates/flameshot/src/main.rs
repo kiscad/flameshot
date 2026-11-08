@@ -13,6 +13,7 @@ mod ui_test;
 mod wheel;
 // SPDX-License-Identifier: GPL-3.0-or-later
 mod config_check;
+mod config_recovery;
 mod config_ui;
 mod daemon;
 mod gui;

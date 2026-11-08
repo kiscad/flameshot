@@ -219,6 +219,74 @@ impl Settings {
         sections: &[(&str, &[(&str, String)])],
         check: impl FnOnce(&str, &Self) -> Result<()>,
     ) -> Result<()> {
+        Self::edit_source_checked(path, |source| {
+            let mut ini = IniDocument::parse(source.to_owned());
+            for &(section, values) in sections {
+                for (key, value) in values {
+                    if section == "General" && *key == "buttons" {
+                        let buttons = if value.is_empty() {
+                            Vec::new()
+                        } else {
+                            value
+                                .split(',')
+                                .map(|v| {
+                                    v.trim().parse::<i32>().context("Invalid toolbar button ID")
+                                })
+                                .collect::<Result<Vec<_>>>()?
+                        };
+                        ensure!(
+                            buttons.iter().all(|id| crate::buttons::valid(*id)),
+                            "Unknown toolbar button ID"
+                        );
+                        ini.set_integer_list(section, key, &crate::buttons::normalize(buttons))?;
+                    } else if section == "General" && *key == "userColors" {
+                        ini.set_string_list(
+                            section,
+                            key,
+                            &value
+                                .split(',')
+                                .map(|v| v.trim().to_owned())
+                                .collect::<Vec<_>>(),
+                        )?;
+                    } else {
+                        ini.set_string(section, key, value)?;
+                    }
+                }
+            }
+            let merged = Self::parse(ini.source())?;
+            if sections
+                .iter()
+                .any(|(section, values)| *section == "Shortcuts" && !values.is_empty())
+            {
+                crate::shortcuts::validate_overrides(&merged.shortcuts)
+                    .map_err(anyhow::Error::msg)?;
+            }
+            // Keep comparison and publication in the same cooperating-writer lock.
+            // Plain updates need not parse the old source, so they can still repair it.
+            check(source, &merged)?;
+            Ok(ini.source().to_owned())
+        })
+    }
+    pub(crate) fn replace_source_checked(
+        path: &std::path::Path,
+        baseline: &str,
+        replacement: &str,
+    ) -> Result<()> {
+        Self::edit_source_checked(path, |current| {
+            ensure!(
+                current == baseline,
+                "Settings changed outside this window. Reload saved settings before saving."
+            );
+            let errors = crate::config_check::check(replacement);
+            ensure!(errors.is_empty(), "{}", errors.join("\n"));
+            Self::parse(replacement)?;
+            Ok(replacement.to_owned())
+        })
+    }
+    fn edit_source_checked(
+        path: &std::path::Path,
+        edit: impl FnOnce(&str) -> Result<String>,
+    ) -> Result<()> {
         use std::io::Write;
         let parent = path.parent().context("Invalid configuration path")?;
         std::fs::create_dir_all(parent)?;
@@ -245,54 +313,14 @@ impl Settings {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
             Err(e) => return Err(e.into()),
         };
-        let mut ini = IniDocument::parse(source.clone());
-        for &(section, values) in sections {
-            for (key, value) in values {
-                if section == "General" && *key == "buttons" {
-                    let buttons = if value.is_empty() {
-                        Vec::new()
-                    } else {
-                        value
-                            .split(',')
-                            .map(|v| v.trim().parse::<i32>().context("Invalid toolbar button ID"))
-                            .collect::<Result<Vec<_>>>()?
-                    };
-                    ensure!(
-                        buttons.iter().all(|id| crate::buttons::valid(*id)),
-                        "Unknown toolbar button ID"
-                    );
-                    ini.set_integer_list(section, key, &crate::buttons::normalize(buttons))?;
-                } else if section == "General" && *key == "userColors" {
-                    ini.set_string_list(
-                        section,
-                        key,
-                        &value
-                            .split(',')
-                            .map(|v| v.trim().to_owned())
-                            .collect::<Vec<_>>(),
-                    )?;
-                } else {
-                    ini.set_string(section, key, value)?;
-                }
-            }
-        }
-        let merged = Self::parse(ini.source())?;
-        if sections
-            .iter()
-            .any(|(section, values)| *section == "Shortcuts" && !values.is_empty())
-        {
-            crate::shortcuts::validate_overrides(&merged.shortcuts).map_err(anyhow::Error::msg)?;
-        }
-        // Keep comparison and publication in the same cooperating-writer lock.
-        // Plain updates need not parse the old source, so they can still repair it.
-        check(&source, &merged)?;
+        let replacement = edit(&source)?;
         let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
         if let Ok(metadata) = std::fs::metadata(path) {
             temporary
                 .as_file()
                 .set_permissions(metadata.permissions())?;
         }
-        temporary.write_all(ini.source().as_bytes())?;
+        temporary.write_all(replacement.as_bytes())?;
         temporary.as_file().sync_all()?;
         temporary.persist(path).map_err(|e| e.error)?;
         Ok(())

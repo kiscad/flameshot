@@ -29,7 +29,7 @@ from pathlib import Path
 from PIL import Image
 binary,xdotool,artifacts=sys.argv[1:]
 config=Path(os.environ['XDG_CONFIG_HOME'])/'flameshot/flameshot.ini';config.parent.mkdir(exist_ok=True)
-config.write_text('[General]\ncheckForUpdates=false\nuseX11LegacyScreenshot=true\nfilenamePattern=initial\nprivateValue=keep\n')
+config.write_text('[General]\ncheckForUpdates=false\nuseX11LegacyScreenshot=true\nfilenamePattern=initial\n[External]\nprivateValue=keep\n')
 def tool(*args):
     result=subprocess.run([xdotool,*args],capture_output=True,timeout=5)
     assert result.returncode==0,result.stderr
@@ -80,7 +80,7 @@ try:
     saved=configparser.ConfigParser(interpolation=None);saved.read(config)
     assert saved.get('General','filenamePattern').strip(chr(34))=='resolved-value'
     assert saved.get('General','showDesktopNotification').strip(chr(34))=='false'
-    assert saved.get('General','privateValue')=='keep'
+    assert saved.get('External','privateValue')=='keep'
     tool('key','Escape');out,err=process.communicate(timeout=10);assert process.returncode==0,err.decode()
     print('PASS: conflict preserves file/draft, explicit reload adopts external values, and retry merges unrelated changes')
 finally:

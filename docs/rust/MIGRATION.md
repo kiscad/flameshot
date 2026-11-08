@@ -3425,3 +3425,32 @@ suites. The container had no network or mounts and has been removed. Current has
 commands, cached-dependency limits and historical upgrade evidence are recorded in
 DEBIAN-INSTALL-VALIDATION.md. This closes the stale Ubuntu package snapshot gap;
 other distro/sandbox and desktop acceptance items remain separate.
+
+### Recover invalid configuration through the configuration window
+
+The configuration window previously failed to open when runtime parsing rejected
+an INI value. It now opens a repair view for checker errors, showing the original
+text and diagnostics. Save/Ctrl+S validates the complete draft and atomically writes
+only after comparing the current file with the loaded baseline under the existing
+configuration lock. A stale draft cannot overwrite an external change. Reload/F5
+loads the current file explicitly, and Escape closes without saving. Successful
+repair returns to the normal form in the same native window; a frame guard prevents
+replaying the repair action against that form. A clean normal form enters repair
+when an external edit introduces an error.
+
+The shared writer now supplies both ordinary setting merges and validated source
+replacement. Tests retain the previous concurrent-writer coverage and additionally
+verify invalid/stale repair rejection, exact preservation of CRLF/comments/opaque
+external data, widget-button reload/save and repeated layout passes. Native Xvfb
+checks pass for all-feature and minimal builds, including cancel, invalid input,
+external conflict, reload, successful repair and live-error detection. The existing
+configuration conflict suite still passes; its unrelated custom key now resides in
+an External group, because an unknown General key is itself a checker error in the
+legacy schema. The complete local Rust gate passes. The new native test is included
+in the Rust workflow; hosted execution remains unverified.
+
+This closes access to a repair UI, not the full configuration compatibility gate.
+Runtime-wide default fallback/error presentation, the legacy resolver's convenient
+per-key reset/remove actions, and remaining setting semantics still require work.
+Current recovery deliberately saves only an explicit validated draft and does not
+silently reset or discard the original configuration.
