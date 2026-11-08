@@ -26,7 +26,7 @@ and ksni for the tray. Platform interfaces keep future OS support separate.
 | Daemon | Single instance, pins, tray, idle lifetime | Idle ownership, child shutdown, launcher descendants and About/save-directory/monitor tray actions tested; independent CLI/sandbox lifecycle audit remains |
 | CLI | Existing commands/options, stdout PNG, exit codes | Commands, numeric/repetition/help rules, parse statuses and completions implemented/tested; final command/shell behavior audit remains |
 | D-Bus | Existing service/path/methods and QDataStream payload fixtures | Signatures, NoReply metadata, singleton behavior and real Qt payload fixtures tested; final compatibility audit remains |
-| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | All Linux legacy keys have read paths; runtime fallback, repair UI, atomic writes, idle reload and conflict checks tested; save-directory write semantics and remaining audit pending |
+| Configuration | QSettings INI and QVariant round trips; unknown keys preserved | INI/QVariant round trips, unknown-data preservation, runtime fallback, repair UI, atomic writes, idle reload, conflict handling and save-directory semantics tested |
 | Resources | Existing icons and 49 translation catalogs; locale fallback | Catalogs embedded and tested; full UI translation coverage pending |
 | Desktop | Notifications, autostart, launcher, configuration windows | Tray/windows, sandbox Open With/SaveFile/web links tested with private services; real document FUSE saves verified; installed sandbox and host backend UI acceptance remains |
 | Network | Optional Imgur/history and update checking; mock tests | Local HTTP pipelines/preferences and upload/history/update widget flows tested; native network-window integration audit remains |
@@ -3526,3 +3526,25 @@ semantic gap or refresh the previously recorded release/package artifacts.
 The corrected full X11 suite and Sway/IME suite also pass on the minimal build,
 including mixed-scale negative-origin capture, grid/pixel picking and pin save/clipboard
 flows. These tests used private displays and buses; no host desktop was exercised.
+
+### Save-directory form writes agree with configuration validation
+
+The settings parser and writer now reject explicit empty savePath values, nonexistent
+paths and ordinary files, matching the existing directory checker. Clearing the form
+field removes the General/savePath override instead of serializing an invalid empty
+value. Every duplicate definition is removed, so an older shadowed path cannot become
+effective. Absence continues to select the platform default directory.
+
+Tests cover missing/file-path rejection without changing bytes, duplicate removal,
+CRLF/comments, an unrelated External/savePath key, Unicode/space-containing valid
+directories and successful subsequent writes. The legacy output-settings fixture now
+creates its Unicode directory explicitly rather than assuming a nonexistent /tmp path
+is valid. A new native form fixture verifies invalid edits, clearing and restoring the
+directory through real controls and checks the saved file with `config --check`.
+The fixture is registered in the Rust workflow and build guide.
+
+The complete local Rust gate and native directory-form test pass. This resolves the
+save-directory write inconsistency recorded in the previous entry. Hosted CI and
+fresh release/package artifacts remain separate final validation work.
+The native pin/editor save suite also passes, including remembered directories,
+failure/retry, overwrite confirmation, path clipboard lifetime and fixed-path BMP saves.

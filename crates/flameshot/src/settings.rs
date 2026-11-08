@@ -276,7 +276,10 @@ impl Settings {
             let mut ini = IniDocument::parse(source.to_owned());
             for &(section, values) in sections {
                 for (key, value) in values {
-                    if section == "General" && *key == "buttons" {
+                    if section == "General" && *key == "savePath" && value.is_empty() {
+                        // Absence means the platform default; an explicit empty path is invalid.
+                        ini.remove(section, key)?;
+                    } else if section == "General" && *key == "buttons" {
                         let buttons = if value.is_empty() {
                             Vec::new()
                         } else {
@@ -406,9 +409,11 @@ impl Settings {
         if let Some(value) = ini.string("General", "uiLanguage")? {
             settings.language = value;
         }
-        if let Some(value) = ini.string("General", "savePath")?
-            && !value.is_empty()
-        {
+        if let Some(value) = ini.string("General", "savePath")? {
+            ensure!(
+                !value.is_empty() && std::path::Path::new(&value).is_dir(),
+                "savePath must be an existing directory"
+            );
             settings.save_path = Some(value.into());
         }
         if let Some(value) = ini.string("General", "filenamePattern")? {
@@ -590,6 +595,37 @@ pub fn default_palette(large: bool) -> Vec<Option<[u8; 4]>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn save_directory_writes_validate_paths_and_clear_all_overrides() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("flameshot.ini");
+        let directory = root.path().join("截图 space");
+        std::fs::create_dir(&directory).unwrap();
+        let original = format!(
+            "; keep\r\n[General]\r\nsavePath=old-shadowed-value\r\n[External]\r\nsavePath=opaque\r\n[General]\r\nsavePath={}\r\n",
+            directory.display()
+        );
+        std::fs::write(&path, &original).unwrap();
+        let file = root.path().join("ordinary-file");
+        std::fs::write(&file, "data").unwrap();
+        for invalid in [root.path().join("missing"), file] {
+            assert!(
+                Settings::update_at(&path, &[("savePath", invalid.display().to_string())]).is_err()
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        }
+        Settings::update_at(&path, &[("savePath", String::new())]).unwrap();
+        let cleared = "; keep\r\n[General]\r\n[External]\r\nsavePath=opaque\r\n[General]\r\n";
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), cleared);
+        assert!(Settings::parse(cleared).unwrap().save_path.is_none());
+        assert!(crate::config_check::check(cleared).is_empty());
+        Settings::update_at(&path, &[("savePath", directory.display().to_string())]).unwrap();
+        let saved = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(Settings::parse(&saved).unwrap().save_path, Some(directory));
+        assert!(crate::config_check::check(&saved).is_empty());
+        assert!(saved.contains("[External]\r\nsavePath=opaque\r\n"));
+        assert!(Settings::parse("[General]\nsavePath=\n").is_err());
+    }
     #[test]
     fn runtime_errors_use_global_defaults_and_valid_sources_recover() {
         for invalid in [
@@ -917,8 +953,11 @@ mod tests {
     }
     #[test]
     fn reads_legacy_output_settings_and_ignores_other_typed_values() {
-        let settings=Settings::parse("[General]\nsavePath=\"/tmp/截图\"\nfilenamePattern=%F-test\nsaveAsFileExtension=.JPG\njpegQuality=90\nbuttons=@Variant(\\0)").unwrap();
-        assert_eq!(settings.save_path, Some(PathBuf::from("/tmp/截图")));
+        let temp = tempfile::tempdir().unwrap();
+        let directory = temp.path().join("截图");
+        std::fs::create_dir(&directory).unwrap();
+        let settings = Settings::parse(&format!("[General]\nsavePath=\"{}\"\nfilenamePattern=%F-test\nsaveAsFileExtension=.JPG\njpegQuality=90\nbuttons=@Variant(\\0)", directory.display())).unwrap();
+        assert_eq!(settings.save_path, Some(directory));
         assert_eq!(settings.extension, "jpg");
         assert_eq!(settings.jpeg_quality, 90);
     }
