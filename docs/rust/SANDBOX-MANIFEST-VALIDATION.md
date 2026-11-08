@@ -23,3 +23,14 @@ Flatpak/Snap workflows remain the authoritative build gates.
 Evidence: `target/flatpak-manifest-current/parsed.json`,
 `target/flatpak-manifest-current/flameshot-15.0.0-rust.tar.gz`, and
 `target/flatpak-manifest-current/parse.log`.
+
+## Local full-build attempt
+
+Using the extracted Flatpak 1.14.6 tools and the current source archive, I also ran
+`flatpak-builder --disable-rofiles-fuse --force-clean --user --install-deps-from=flathub`
+with isolated XDG/Flatpak directories and no host installation. The tool terminated
+with SIGSEGV (exit 139) before producing a build result; `target/flatpak-validation/current-build.log`
+contains the empty diagnostic. This is a builder/environment failure, not a passing
+build or an application compile failure. The manifest parser result above remains
+valid, while full SDK construction still requires the hosted Flatpak workflow or a
+working builder/runtime environment.
