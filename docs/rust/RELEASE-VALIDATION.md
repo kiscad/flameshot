@@ -65,8 +65,8 @@ unverified.
 
 ## Pure-Rust repository cleanup
 
-The current branch now tracks zero `.cpp`, C++ header, `.cmake` or `CMakeLists.txt`
-files. Legacy CMake/Qt workflows and the obsolete Windows installer assets were
+The current branch now tracks zero project `.cpp`, C++ header, `.cmake` or
+`CMakeLists.txt` files (vendored third-party crates remain dependency sources). Legacy CMake/Qt workflows and the obsolete Windows installer assets were
 removed; README, Debian copyright and CI point at the Cargo/Rust implementation.
 The final vendored source archive was extracted and its complete all-feature
 workspace tests passed offline after a serial rustc retry for a known parallel LLVM

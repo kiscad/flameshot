@@ -65,5 +65,6 @@ was generated from the current Git tree. It was extracted and tested offline wit
 empty Cargo home. The first parallel rustc run hit the known LLVM SIGSEGV while
 compiling `image`; the serial retry with `CARGO_BUILD_JOBS=1` and
 `RUST_MIN_STACK=33554432` passed the complete workspace/all-feature test suite.
-The extracted tree contains zero C++/CMake source files. The final report is under
+The extracted project tree contains zero C++/CMake implementation files; vendored
+third-party crates may contain native headers/sources needed by their build scripts. The final report is under
 `target/pure-rust-source-final-review/report.json`.
